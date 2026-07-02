@@ -1,4 +1,9 @@
 node_modules/
 dist/
-.env
+.astro/
 .wrangler/
+.env
+.env.local
+.DS_Store
+*.log
+.vscode/

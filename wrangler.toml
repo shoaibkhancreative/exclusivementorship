@@ -1,0 +1,10 @@
+name = "pem-mentorship"
+compatibility_date = "2024-11-01"
+pages_build_output_dir = "./dist"
+
+[[kv_namespaces]]
+binding = "KV"
+id = "REPLACE_WITH_YOUR_KV_ID"
+
+[vars]
+SITE_NAME = "Product Exclusive Mentorship"

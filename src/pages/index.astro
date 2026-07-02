@@ -1,39 +1,131 @@
 ---
-import BaseLayout from '../layouts/BaseLayout.astro';
-import Header from '../components/Header.astro';
-import Hero from '../components/Hero.astro';
-import Outcomes from '../components/Outcomes.astro';
-import Curriculum from '../components/Curriculum.astro';
-import About from '../components/About.astro';
-import Testimonials from '../components/Testimonials.astro';
-import HowItWorks from '../components/HowItWorks.astro';
-import Pricing from '../components/Pricing.astro';
-import Guarantee from '../components/Guarantee.astro';
-import Faq from '../components/Faq.astro';
-import FinalCta from '../components/FinalCta.astro';
-import Footer from '../components/Footer.astro';
-import MobileCta from '../components/MobileCta.astro';
-import chapters from '../data/chapters.json';
+import BaseLayout from "@/layouts/BaseLayout.astro";
+import { chapters, pricing } from "@/data/chapters";
 ---
-<BaseLayout title="Exclusive Mentorship — 7 chapters, 99 classes">
-  <Header />
-  <Hero />
-  <Outcomes />
-  <Curriculum chapters={chapters} />
-  <About />
-  <Testimonials />
-  <HowItWorks />
-  <Pricing />
-  <Guarantee />
-  <Faq />
-  <FinalCta />
-  <Footer />
-  <MobileCta />
-  <div class="sm:hidden h-20"></div>
+<BaseLayout>
+  <!-- HERO -->
+  <section class="relative overflow-hidden">
+    <div class="absolute inset-0 bg-[radial-gradient(circle_at_50%_-20%,rgba(212,175,55,0.15),transparent_60%)]"></div>
+    <div class="container-x relative py-24 md:py-32 text-center">
+      <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-neutral-800 bg-neutral-900/50 text-xs text-neutral-400 mb-6">
+        <span class="w-2 h-2 rounded-full bg-yellow-500 animate-pulse"></span>
+        Exclusive Mentorship Program
+      </div>
+      <h1 class="text-4xl md:text-6xl lg:text-7xl font-bold tracking-tight leading-[1.05]">
+        Trade like the <span class="text-yellow-500">1%</span>.<br/>
+        Not the crowd.
+      </h1>
+      <p class="mt-6 text-lg text-neutral-400 max-w-2xl mx-auto">
+        7 chapters. 99 scripted classes. One complete institutional trading system — built for serious traders only.
+      </p>
+      <div class="mt-10 flex flex-col sm:flex-row gap-3 justify-center">
+        <a href="#pricing" class="btn-primary">Get Full Access — ${pricing.tier2Bundle}</a>
+        <a href="#chapters" class="btn-secondary">Explore Curriculum</a>
+      </div>
+      <div class="mt-10 flex items-center justify-center gap-8 text-xs text-neutral-500">
+        <span>✓ 7-day refund</span>
+        <span>✓ Crypto payment</span>
+        <span>✓ Instant Telegram access</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- CHAPTERS -->
+  <section id="chapters" class="container-x py-24">
+    <div class="text-center mb-16">
+      <h2 class="text-3xl md:text-5xl font-bold">The Complete Curriculum</h2>
+      <p class="mt-4 text-neutral-400">7 chapters designed to transform your trading — from foundation to prop-firm level.</p>
+    </div>
+    <div class="grid md:grid-cols-2 gap-5">
+      {chapters.map((ch) => (
+        <div class="card group hover:border-yellow-500/30 transition-all">
+          <div class="flex items-start justify-between mb-3">
+            <span class="text-xs text-yellow-500 font-mono">CHAPTER 0{ch.id}</span>
+            <span class="text-xs text-neutral-500">{ch.classes} classes</span>
+          </div>
+          <h3 class="text-xl font-bold mb-2">{ch.title}</h3>
+          <p class="text-sm text-neutral-400 mb-4">{ch.tagline}</p>
+          <ul class="space-y-1.5 mb-5">
+            {ch.hooks.map((h) => (
+              <li class="text-sm text-neutral-500 flex items-start gap-2">
+                <span class="text-yellow-500 mt-0.5">→</span>{h}
+              </li>
+            ))}
+          </ul>
+          <div class="flex items-center justify-between pt-4 border-t border-neutral-800">
+            <span class="text-lg font-bold">${ch.price}</span>
+            <a href={`/checkout?tier=1&chapter=${ch.slug}`} class="text-sm text-yellow-500 hover:text-yellow-400">Get chapter →</a>
+          </div>
+        </div>
+      ))}
+    </div>
+  </section>
+
+  <!-- PRICING -->
+  <section id="pricing" class="container-x py-24">
+    <div class="text-center mb-16">
+      <h2 class="text-3xl md:text-5xl font-bold">Choose Your Path</h2>
+      <p class="mt-4 text-neutral-400">Pay chapter by chapter — or unlock everything and save.</p>
+    </div>
+    <div class="grid md:grid-cols-2 gap-6 max-w-4xl mx-auto">
+      <!-- Tier 1 -->
+      <div class="card relative">
+        <h3 class="text-sm text-neutral-500 uppercase tracking-wider mb-2">Tier 1</h3>
+        <div class="text-xl font-semibold mb-1">Chapter by Chapter</div>
+        <div class="flex items-baseline gap-2 mb-6">
+          <span class="text-5xl font-bold">${pricing.tier1Total}</span>
+          <span class="text-sm text-neutral-500">if all bought</span>
+        </div>
+        <ul class="space-y-3 text-sm text-neutral-400 mb-8">
+          <li>✓ Buy any chapter individually</li>
+          <li>✓ Chapter-specific Telegram access</li>
+          <li>✓ Lifetime access to purchased chapters</li>
+          <li>✗ Priority support (+$8 optional)</li>
+        </ul>
+        <a href="#chapters" class="btn-secondary w-full">Browse Chapters</a>
+      </div>
+      <!-- Tier 2 - Highlighted -->
+      <div class="card relative border-yellow-500/50 bg-gradient-to-b from-yellow-500/5 to-transparent">
+        <div class="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-yellow-500 text-black text-xs font-bold">MOST POPULAR</div>
+        <h3 class="text-sm text-yellow-500 uppercase tracking-wider mb-2">Tier 2 — Full Bundle</h3>
+        <div class="text-xl font-semibold mb-1">Complete Mentorship</div>
+        <div class="flex items-baseline gap-2 mb-1">
+          <span class="text-5xl font-bold text-yellow-500">${pricing.tier2Bundle}</span>
+          <span class="text-lg text-neutral-500 line-through">${pricing.tier1Total}</span>
+        </div>
+        <div class="text-xs text-green-500 mb-6">Save ${pricing.savings} + Priority Support included</div>
+        <ul class="space-y-3 text-sm text-neutral-300 mb-8">
+          <li>✓ All 7 chapters — 99 classes</li>
+          <li>✓ Main Telegram channel access</li>
+          <li>✓ Priority support included ($8 value)</li>
+          <li>✓ 7-day money back guarantee</li>
+          <li>✓ Lifetime access</li>
+        </ul>
+        <a href="/checkout?tier=2" class="btn-primary w-full">Get Full Access — ${pricing.tier2Bundle}</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section id="faq" class="container-x py-24">
+    <div class="text-center mb-12">
+      <h2 class="text-3xl md:text-5xl font-bold">Common Questions</h2>
+    </div>
+    <div class="max-w-2xl mx-auto space-y-3">
+      {[
+        {q: "How is the content delivered?", a: "সব ভিডিও private Telegram channel এ। Payment successful হলে automatic single-use invite link পাবেন।"},
+        {q: "Can I get a refund?", a: "Full bundle (Tier 2) তে 7-day refund guarantee। Individual chapters তে refund নেই।"},
+        {q: "What if I don't understand crypto payment?", a: "Request a support call — WhatsApp এ direct guide করে দেবো।"},
+        {q: "Are there any free classes?", a: "No. This is a premium mentorship — no free content, no fluff।"}
+      ].map((item) => (
+        <details class="card group cursor-pointer">
+          <summary class="flex justify-between items-center font-medium list-none">
+            {item.q}
+            <span class="text-yellow-500 group-open:rotate-45 transition">+</span>
+          </summary>
+          <p class="mt-3 text-sm text-neutral-400">{item.a}</p>
+        </details>
+      ))}
+    </div>
+  </section>
 </BaseLayout>
-<script>
-  const obs = new IntersectionObserver((entries) => {
-    entries.forEach((e) => { if (e.isIntersecting) { e.target.classList.add('in'); obs.unobserve(e.target); } });
-  }, { threshold: 0.12 });
-  document.querySelectorAll('.reveal').forEach((el) => obs.observe(el));
-</script>
