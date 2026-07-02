@@ -1,0 +1,39 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Header from '../components/Header.astro';
+import Hero from '../components/Hero.astro';
+import Outcomes from '../components/Outcomes.astro';
+import Curriculum from '../components/Curriculum.astro';
+import About from '../components/About.astro';
+import Testimonials from '../components/Testimonials.astro';
+import HowItWorks from '../components/HowItWorks.astro';
+import Pricing from '../components/Pricing.astro';
+import Guarantee from '../components/Guarantee.astro';
+import Faq from '../components/Faq.astro';
+import FinalCta from '../components/FinalCta.astro';
+import Footer from '../components/Footer.astro';
+import MobileCta from '../components/MobileCta.astro';
+import chapters from '../data/chapters.json';
+---
+<BaseLayout title="Exclusive Mentorship — 7 chapters, 99 classes">
+  <Header />
+  <Hero />
+  <Outcomes />
+  <Curriculum chapters={chapters} />
+  <About />
+  <Testimonials />
+  <HowItWorks />
+  <Pricing />
+  <Guarantee />
+  <Faq />
+  <FinalCta />
+  <Footer />
+  <MobileCta />
+  <div class="sm:hidden h-20"></div>
+</BaseLayout>
+<script>
+  const obs = new IntersectionObserver((entries) => {
+    entries.forEach((e) => { if (e.isIntersecting) { e.target.classList.add('in'); obs.unobserve(e.target); } });
+  }, { threshold: 0.12 });
+  document.querySelectorAll('.reveal').forEach((el) => obs.observe(el));
+</script>
