@@ -1,0 +1,38 @@
+<script>
+  document.addEventListener("DOMContentLoaded", () => {
+    document.querySelectorAll<HTMLButtonElement>(".load-more-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const card = btn.closest(".chapter-card");
+        if (!card) return;
+        const hidden = card.querySelector<HTMLElement>(".hidden-classes");
+        if (!hidden) return;
+
+        const isOpen = hidden.classList.contains("is-open");
+        const label = btn.querySelector<HTMLElement>(".btn-label");
+        const icon = btn.querySelector<HTMLElement>(".btn-icon");
+        const total = btn.dataset.total;
+
+        if (!isOpen) {
+          hidden.classList.add("is-open");
+          hidden.style.maxHeight = hidden.scrollHeight + "px";
+          hidden.style.opacity = "1";
+          if (label) label.textContent = "Show less";
+          if (icon) icon.style.transform = "rotate(180deg)";
+        } else {
+          hidden.classList.remove("is-open");
+          hidden.style.maxHeight = "0px";
+          hidden.style.opacity = "0";
+          if (label) label.textContent = `Load ${total} more classes`;
+          if (icon) icon.style.transform = "rotate(0deg)";
+        }
+      });
+    });
+  });
+</script>
+
+<style>
+  .hidden-classes.is-open {
+    max-height: 5000px !important;
+    opacity: 1 !important;
+  }
+</style>
