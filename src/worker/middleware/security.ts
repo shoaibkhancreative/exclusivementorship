@@ -9,11 +9,13 @@ import type { Env } from "../lib/config";
 export async function securityHeaders(c: Context<{ Bindings: Env }>, next: Next) {
   await next();
 
-  c.res.headers.set("X-Content-Type-Options", "nosniff");
-  c.res.headers.set("X-Frame-Options", "DENY");
-  c.res.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
-  c.res.headers.set("Permissions-Policy", "geolocation=(), microphone=(), camera=()");
-  c.res.headers.set(
+  const res = new Response(c.res.body, c.res);
+
+  res.headers.set("X-Content-Type-Options", "nosniff");
+  res.headers.set("X-Frame-Options", "DENY");
+  res.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.headers.set("Permissions-Policy", "geolocation=(), microphone=(), camera=()");
+  res.headers.set(
     "Content-Security-Policy",
     [
       "default-src 'self'",
@@ -30,16 +32,21 @@ export async function securityHeaders(c: Context<{ Bindings: Env }>, next: Next)
   );
 
   if (!c.req.url.startsWith("http://localhost") && !c.req.url.startsWith("http://127.0.0.1")) {
-    c.res.headers.set("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
+    res.headers.set("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
   }
+
+  c.res = res;
 }
 
 /** Restricts CORS to the configured APP_URL. The SPA and API share an origin in production. */
 export async function corsPolicy(c: Context<{ Bindings: Env }>, next: Next) {
   const origin = c.req.header("origin");
   await next();
+
   if (origin && (origin === c.env.APP_URL || origin.includes("localhost") || origin.includes("127.0.0.1"))) {
-    c.res.headers.set("Access-Control-Allow-Origin", origin);
-    c.res.headers.set("Access-Control-Allow-Credentials", "true");
+    const res = new Response(c.res.body, c.res);
+    res.headers.set("Access-Control-Allow-Origin", origin);
+    res.headers.set("Access-Control-Allow-Credentials", "true");
+    c.res = res;
   }
 }
