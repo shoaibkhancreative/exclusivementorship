@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
 import { useSession } from "../lib/SessionContext";
-import { useUnlockModal } from "../lib/UnlockModalContext";
 import { Avatar } from "./Avatar";
 
 /**
@@ -13,7 +12,6 @@ import { Avatar } from "./Avatar";
  */
 export function ProfileMenu() {
   const { me, refresh } = useSession();
-  const { openUnlockModal } = useUnlockModal();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -58,7 +56,7 @@ export function ProfileMenu() {
 
   function handleUnlockClick() {
     setOpen(false);
-    openUnlockModal();
+    navigate("/unlock");
   }
 
   return (

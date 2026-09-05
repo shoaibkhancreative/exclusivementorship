@@ -8,6 +8,7 @@ import Home from "./pages/Home";
 import Login from "./pages/Login";
 import Learn from "./pages/Learn";
 import Lesson from "./pages/Lesson";
+import Unlock from "./pages/Unlock";
 import Access from "./pages/Access";
 import Privacy from "./pages/Privacy";
 import Terms from "./pages/Terms";
@@ -45,11 +46,20 @@ export default function App() {
                   </RequireAuth>
                 }
               />
-              {/* /unlock and /payment/* no longer exist as pages — enrollment now
-                  happens entirely inside the closable checkout popup, triggered
-                  from the Class 6 play button or the profile card. Old links
-                  redirect straight to /learn instead of 404ing. */}
-              <Route path="/unlock" element={<Navigate to="/learn" replace />} />
+              {/* /unlock is the calm "premium reveal" transition (reference
+                  price, PDF, honest discount framing) shown before the actual
+                  crypto checkout popup ever opens — see product spec §14. */}
+              <Route
+                path="/unlock"
+                element={
+                  <RequireAuth>
+                    <Unlock />
+                  </RequireAuth>
+                }
+              />
+              {/* Old /payment/* links (from a prior checkout design) no longer
+                  correspond to real pages — status is now shown inside the
+                  closable checkout popup itself. Redirect instead of 404ing. */}
               <Route path="/payment/success" element={<Navigate to="/learn" replace />} />
               <Route path="/payment/pending" element={<Navigate to="/learn" replace />} />
               <Route

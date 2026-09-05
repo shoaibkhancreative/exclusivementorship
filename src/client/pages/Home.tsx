@@ -1,11 +1,9 @@
 import { useNavigate } from "react-router-dom";
 import { useSession } from "../lib/SessionContext";
-import { useConfig } from "../lib/useConfig";
 import { Button } from "../components/ui";
 
 export default function Home() {
   const { me, loading } = useSession();
-  const config = useConfig();
   const navigate = useNavigate();
 
   function handleStart() {
@@ -21,29 +19,15 @@ export default function Home() {
       <div className="mb-3 text-xs uppercase tracking-[0.25em] text-accent-500">Next Level Trader</div>
       <h1 className="mb-6 text-3xl font-semibold text-zinc-50 sm:text-4xl">Exclusive Mentorship</h1>
 
+      {/* First impression is deliberately just the intro video and a single
+          "Start Learning" action — no pricing, no PDF, no premium hints of
+          any kind. The mentorship is only ever revealed on /unlock, after
+          Class 5, per the value-first product strategy. */}
       <div className="relative mb-8 aspect-video w-full overflow-hidden rounded-xl border border-base-700 bg-base-900">
         <div className="flex h-full items-center justify-center text-sm text-zinc-500">
           {/* TODO: Replace with the real intro video (YouTube embed or hosted file) */}
           Intro video placeholder
         </div>
-
-        {/* PDF download lives here — a small corner badge on the video itself —
-            rather than as a second competing button below, so there's only one
-            primary action ("Start Learning") on the whole page. */}
-        {config?.mentorshipPdfUrl && (
-          <a
-            href={config.mentorshipPdfUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            title="Mentorship Details (PDF)"
-            aria-label="Download mentorship details PDF"
-            className="focus-ring absolute right-2 top-2 flex items-center gap-1.5 rounded-full border border-base-600/80 bg-base-950/80 px-2.5 py-1.5 text-[11px] font-medium text-zinc-300 backdrop-blur transition-colors hover:border-accent-500/60 hover:text-accent-300 sm:right-3 sm:top-3"
-          >
-            <span aria-hidden="true">↓</span>
-            <span className="hidden sm:inline">Details PDF</span>
-            <span className="sm:hidden">PDF</span>
-          </a>
-        )}
       </div>
 
       <p className="mb-8 max-w-md text-sm leading-relaxed text-zinc-400">

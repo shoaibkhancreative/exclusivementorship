@@ -17,6 +17,7 @@ interface LessonRow {
   thumbnail_url: string | null;
   youtube_video_id: string;
   description: string | null;
+  tagline: string | null;
   is_free: number;
   is_active: number;
   sort_order: number;
@@ -62,6 +63,7 @@ lessonRoutes.get("/", async (c) => {
       lessonNumber: lesson.lesson_number,
       title: lesson.title,
       chapterName: lesson.chapter_name,
+      tagline: lesson.tagline,
       thumbnailUrl: lesson.thumbnail_url,
       isFree: Boolean(lesson.is_free),
       state
@@ -117,6 +119,7 @@ lessonRoutes.get("/:number", async (c) => {
       lessonNumber: lesson.lesson_number,
       title: lesson.title,
       chapterName: lesson.chapter_name,
+      tagline: lesson.tagline,
       description: lesson.description,
       youtubeVideoId: null,
       assignmentTitle: null,
@@ -138,6 +141,7 @@ lessonRoutes.get("/:number", async (c) => {
       lessonNumber: lesson.lesson_number,
       title: lesson.title,
       chapterName: lesson.chapter_name,
+      tagline: lesson.tagline,
       description: null,
       youtubeVideoId: null,
       assignmentTitle: null,
@@ -163,6 +167,7 @@ lessonRoutes.get("/:number", async (c) => {
     lessonNumber: lesson.lesson_number,
     title: lesson.title,
     chapterName: lesson.chapter_name,
+    tagline: lesson.tagline,
     description: lesson.description,
     youtubeVideoId: lesson.youtube_video_id,
     assignmentTitle: lesson.assignment_title,

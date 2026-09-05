@@ -110,16 +110,17 @@ describe("Lesson access rules (HTTP)", () => {
     expect(body.youtubeVideoId).toBeNull();
   });
 
-  it("lesson 7 (a normal lesson) is not marked as a Telegram gateway", async () => {
+  it("no on-site lesson exists past the Telegram gateway, even for paid users", async () => {
+    // By design, only the free lessons and the single Telegram-gateway lesson
+    // are modeled as website rows — everything past the gate is delivered
+    // inside the private Telegram mentorship, never as an on-site video.
     const { user, cookie } = await loginNewUser(env, "grace@example.com");
     await env.DB.prepare("UPDATE users SET course_status = 'paid', current_lesson = 8 WHERE id = ?")
       .bind(user.id)
       .run();
 
     const res = await call(env, "/api/lessons/7", { cookie });
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { isTelegramGate: boolean };
-    expect(body.isTelegramGate).toBe(false);
+    expect(res.status).toBe(404);
   });
 
   it("rejects unauthenticated attempts to submit an assignment", async () => {
@@ -216,6 +217,97 @@ describe("Payment order creation + NOWPayments webhook (HTTP)", () => {
     vi.unstubAllGlobals();
   });
 
+  it("reopening checkout (reusing an existing order) never consumes rate-limit quota", async () => {
+    // Regression test: /create-order used to run the per-user rate check
+    // BEFORE checking for a reusable existing order, so merely reopening the
+    // checkout popup several times (e.g. closing and re-opening the modal)
+    // would silently burn through the 5-per-hour quota with no new payment
+    // ever being created, eventually surfacing "Please wait before creating
+    // another payment attempt." to a user who never actually created 5
+    // payments. Reuse must be free — only real NOWPayments order creation
+    // should count against the limit.
+    const { cookie } = await loginNewUser(env, "olive@example.com");
+
+    fetchSpy.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          payment_id: "np-reuse",
+          pay_address: "TAddressReuse",
+          pay_amount: 39,
+          pay_currency: "usdtbsc",
+          payment_status: "waiting"
+        }),
+        { status: 200 }
+      )
+    );
+
+    const first = await call(env, "/api/payments/create-order", { method: "POST", cookie, body: "{}" });
+    expect(first.status).toBe(200);
+    const { orderId } = (await first.json()) as { orderId: string };
+
+    // Reopen the checkout far more than the 5/hour limit would allow if it
+    // were (incorrectly) charged against reuse. Only the first call above
+    // should ever have hit the NOWPayments API (fetchSpy is mocked once).
+    for (let i = 0; i < 10; i++) {
+      const res = await call(env, "/api/payments/create-order", { method: "POST", cookie, body: "{}" });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { orderId: string };
+      expect(body.orderId).toBe(orderId);
+    }
+  });
+
+  it("does NOT reuse a still-'waiting' order once its expires_at has passed, and generates a fresh one instead", async () => {
+    // NOWPayments doesn't reliably send an IPN purely for a timeout, so a
+    // stale order can be stuck 'waiting' in our DB long after NOWPayments
+    // stopped watching that address. This is what powers the client's
+    // "Generate New Address" button: calling create-order again after the
+    // window passes must return a brand-new address, not the dead one.
+    const { cookie } = await loginNewUser(env, "nadia@example.com");
+
+    const pastExpiry = new Date(Date.now() - 60_000).toISOString(); // 1 min ago
+    fetchSpy.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          payment_id: "np-stale",
+          pay_address: "TAddressStale",
+          pay_amount: 39,
+          pay_currency: "usdtbsc",
+          payment_status: "waiting",
+          expiration_estimate_date: pastExpiry
+        }),
+        { status: 200 }
+      )
+    );
+
+    const first = await call(env, "/api/payments/create-order", { method: "POST", cookie, body: "{}" });
+    const { orderId: staleOrderId } = (await first.json()) as { orderId: string };
+
+    fetchSpy.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          payment_id: "np-fresh",
+          pay_address: "TAddressFresh",
+          pay_amount: 39,
+          pay_currency: "usdtbsc",
+          payment_status: "waiting",
+          expiration_estimate_date: new Date(Date.now() + 20 * 60_000).toISOString()
+        }),
+        { status: 200 }
+      )
+    );
+
+    const second = await call(env, "/api/payments/create-order", { method: "POST", cookie, body: "{}" });
+    expect(second.status).toBe(200);
+    const secondBody = (await second.json()) as { orderId: string; payAddress: string };
+    expect(secondBody.orderId).not.toBe(staleOrderId);
+    expect(secondBody.payAddress).toBe("TAddressFresh");
+
+    const staleOrder = await env.DB.prepare("SELECT status FROM payment_orders WHERE id = ?")
+      .bind(staleOrderId)
+      .first<{ status: string }>();
+    expect(staleOrder?.status).toBe("expired");
+  });
+
   it("creates an order using the server-configured price, ignoring any client-supplied amount", async () => {
     const { cookie } = await loginNewUser(env, "irene@example.com");
 
@@ -225,7 +317,7 @@ describe("Payment order creation + NOWPayments webhook (HTTP)", () => {
           payment_id: "np-1",
           pay_address: "TAddressNp1",
           pay_amount: 39,
-          pay_currency: "usdttrc20",
+          pay_currency: "usdtbsc",
           payment_status: "waiting"
         }),
         { status: 200 }
@@ -254,7 +346,7 @@ describe("Payment order creation + NOWPayments webhook (HTTP)", () => {
           payment_id: "np-2",
           pay_address: "TAddressNp2",
           pay_amount: 39,
-          pay_currency: "usdttrc20",
+          pay_currency: "usdtbsc",
           payment_status: "waiting"
         }),
         { status: 200 }
@@ -294,7 +386,7 @@ describe("Payment order creation + NOWPayments webhook (HTTP)", () => {
           payment_id: "np-3",
           pay_address: "TAddressNp3",
           pay_amount: 39,
-          pay_currency: "usdttrc20",
+          pay_currency: "usdtbsc",
           payment_status: "waiting"
         }),
         { status: 200 }
@@ -344,6 +436,105 @@ describe("Payment order creation + NOWPayments webhook (HTTP)", () => {
       headers: { "x-nowpayments-sig": sig }
     });
     expect(res.status).toBe(404);
+  });
+
+  it("auto-unlocks a buyer who underpaid by less than the tolerance (e.g. didn't account for the network fee)", async () => {
+    const { user, cookie } = await loginNewUser(env, "priya@example.com");
+
+    fetchSpy.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          payment_id: "np-under-ok",
+          pay_address: "TAddressUnderOk",
+          pay_amount: 39,
+          pay_currency: "usdtbsc",
+          payment_status: "waiting"
+        }),
+        { status: 200 }
+      )
+    );
+    const createRes = await call(env, "/api/payments/create-order", { method: "POST", cookie, body: "{}" });
+    const { orderId } = (await createRes.json()) as { orderId: string };
+
+    const { createHmac } = await import("node:crypto");
+    // Buyer sent 37.2 instead of 39 — a 1.8 USDT shortfall, within the
+    // default 2 USDT tolerance — so this should still unlock access.
+    const payload = {
+      actually_paid: 37.2,
+      order_id: orderId,
+      payment_id: "np-under-ok",
+      payment_status: "partially_paid"
+    };
+    const sig = createHmac("sha512", "test-ipn-secret").update(JSON.stringify(payload)).digest("hex");
+
+    const res = await call(env, "/api/webhooks/nowpayments", {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: { "x-nowpayments-sig": sig }
+    });
+    expect(res.status).toBe(200);
+
+    const updatedUser = await env.DB.prepare("SELECT course_status FROM users WHERE id = ?")
+      .bind(user.id)
+      .first<{ course_status: string }>();
+    expect(updatedUser?.course_status).toBe("paid");
+
+    const order = await env.DB.prepare(
+      "SELECT status, underpaid_tolerated, actually_paid FROM payment_orders WHERE id = ?"
+    )
+      .bind(orderId)
+      .first<{ status: string; underpaid_tolerated: number; actually_paid: number }>();
+    expect(order?.status).toBe("finished");
+    expect(order?.underpaid_tolerated).toBe(1);
+    expect(order?.actually_paid).toBe(37.2);
+  });
+
+  it("does NOT auto-unlock a buyer who underpaid by more than the tolerance", async () => {
+    const { user, cookie } = await loginNewUser(env, "quentin@example.com");
+
+    fetchSpy.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          payment_id: "np-under-bad",
+          pay_address: "TAddressUnderBad",
+          pay_amount: 39,
+          pay_currency: "usdtbsc",
+          payment_status: "waiting"
+        }),
+        { status: 200 }
+      )
+    );
+    const createRes = await call(env, "/api/payments/create-order", { method: "POST", cookie, body: "{}" });
+    const { orderId } = (await createRes.json()) as { orderId: string };
+
+    const { createHmac } = await import("node:crypto");
+    // 10 USDT short — well beyond tolerance, so this stays unpaid for
+    // manual review rather than being silently unlocked.
+    const payload = {
+      actually_paid: 29,
+      order_id: orderId,
+      payment_id: "np-under-bad",
+      payment_status: "partially_paid"
+    };
+    const sig = createHmac("sha512", "test-ipn-secret").update(JSON.stringify(payload)).digest("hex");
+
+    const res = await call(env, "/api/webhooks/nowpayments", {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: { "x-nowpayments-sig": sig }
+    });
+    expect(res.status).toBe(200);
+
+    const updatedUser = await env.DB.prepare("SELECT course_status FROM users WHERE id = ?")
+      .bind(user.id)
+      .first<{ course_status: string }>();
+    expect(updatedUser?.course_status).not.toBe("paid");
+
+    const order = await env.DB.prepare("SELECT status, underpaid_tolerated FROM payment_orders WHERE id = ?")
+      .bind(orderId)
+      .first<{ status: string; underpaid_tolerated: number }>();
+    expect(order?.status).toBe("failed");
+    expect(order?.underpaid_tolerated).toBe(0);
   });
 });
 

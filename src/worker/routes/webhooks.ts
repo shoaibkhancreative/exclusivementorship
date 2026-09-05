@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type { Env } from "../lib/config";
+import { getUnderpaymentToleranceUsdt } from "../lib/config";
 import { PAID_STATUSES, mapNowPaymentsStatus, verifyNowPaymentsSignature } from "../services/nowpayments";
 import { logAuditEvent } from "../db";
 
@@ -9,6 +10,8 @@ interface NowPaymentsIpnPayload {
   payment_id?: string;
   payment_status?: string;
   order_id?: string;
+  /** Amount NOWPayments actually saw arrive on-chain, in `pay_currency` units. */
+  actually_paid?: number;
   [key: string]: unknown;
 }
 
@@ -17,6 +20,7 @@ interface OrderRow {
   user_id: string;
   status: string;
   confirmed_at: string | null;
+  pay_amount_crypto: number | null;
 }
 
 webhookRoutes.post("/nowpayments", async (c) => {
@@ -53,7 +57,28 @@ webhookRoutes.post("/nowpayments", async (c) => {
     return c.json({ error: "unknown_order" }, 404);
   }
 
-  const mappedStatus = mapNowPaymentsStatus(npStatus);
+  // --- Underpayment tolerance -----------------------------------------------
+  // NOWPayments reports "partially_paid" whenever the buyer sent less than
+  // the exact quoted amount — the most common reason being that they didn't
+  // realize the BEP20 network fee is deducted separately from what they
+  // send, and end up a dollar or two short. Rather than stranding those
+  // buyers in a "failed" state, anything within getUnderpaymentToleranceUsdt
+  // is treated as paid; anything beyond it is left failed for manual review.
+  // USDT is ~1:1 with USD, so comparing the raw crypto amounts is safe.
+  let effectiveNpStatus = npStatus;
+  let underpaidTolerated = false;
+  const actuallyPaid = typeof payload.actually_paid === "number" ? payload.actually_paid : null;
+
+  if (npStatus === "partially_paid" && actuallyPaid !== null && order.pay_amount_crypto) {
+    const shortfall = order.pay_amount_crypto - actuallyPaid;
+    const tolerance = getUnderpaymentToleranceUsdt(c.env);
+    if (shortfall >= 0 && shortfall <= tolerance) {
+      effectiveNpStatus = "finished";
+      underpaidTolerated = true;
+    }
+  }
+
+  const mappedStatus = mapNowPaymentsStatus(effectiveNpStatus);
 
   // --- Idempotency guard ----------------------------------------------------
   // If we've already recorded this order as confirmed/finished, acknowledge
@@ -68,11 +93,33 @@ webhookRoutes.post("/nowpayments", async (c) => {
   await c.env.DB.prepare(
     `UPDATE payment_orders
        SET status = ?, nowpayments_payment_id = COALESCE(?, nowpayments_payment_id),
-           raw_last_webhook = ?, confirmed_at = CASE WHEN ? THEN COALESCE(confirmed_at, datetime('now')) ELSE confirmed_at END
+           raw_last_webhook = ?, actually_paid = COALESCE(?, actually_paid),
+           underpaid_tolerated = CASE WHEN ? THEN 1 ELSE underpaid_tolerated END,
+           confirmed_at = CASE WHEN ? THEN COALESCE(confirmed_at, datetime('now')) ELSE confirmed_at END
      WHERE id = ?`
   )
-    .bind(mappedStatus, paymentId ?? null, rawText.slice(0, 4000), isNowPaid ? 1 : 0, orderId)
+    .bind(
+      mappedStatus,
+      paymentId ?? null,
+      rawText.slice(0, 4000),
+      actuallyPaid,
+      underpaidTolerated ? 1 : 0,
+      isNowPaid ? 1 : 0,
+      orderId
+    )
     .run();
+
+  if (underpaidTolerated) {
+    await logAuditEvent(c.env, "payment_underpaid_within_tolerance", {
+      userId: order.user_id,
+      metadata: { orderId, paymentId, expected: order.pay_amount_crypto, actuallyPaid }
+    });
+  } else if (npStatus === "partially_paid") {
+    await logAuditEvent(c.env, "payment_underpaid_rejected", {
+      userId: order.user_id,
+      metadata: { orderId, paymentId, expected: order.pay_amount_crypto, actuallyPaid }
+    });
+  }
 
   if (isNowPaid) {
     // Mark the user paid (idempotent — repeated UPDATEs are harmless).

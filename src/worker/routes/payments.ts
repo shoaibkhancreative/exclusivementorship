@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { Env } from "../lib/config";
-import { RATE_LIMITS, getEnrollmentAmount } from "../lib/config";
+import { RATE_LIMITS, getEnrollmentAmount, PAY_CURRENCY } from "../lib/config";
 import type { AppVariables } from "../middleware/session";
 import { requireAuth } from "../middleware/session";
 import { checkRateLimit, logAuditEvent } from "../db";
@@ -30,28 +30,35 @@ paymentRoutes.post("/create-order", requireAuth, async (c) => {
   const user = c.get("user")!;
 
   if (user.course_status === "paid") {
-    return c.json({ error: "already_paid", message: "You're already enrolled." }, 400);
-  }
-
-  const rate = await checkRateLimit(
-    c.env,
-    `payment_create:user:${user.id}`,
-    RATE_LIMITS.paymentCreatePerUserPerHour,
-    3600
-  );
-  if (!rate.allowed) {
-    return c.json({ error: "rate_limited", message: "Please wait before creating another payment attempt." }, 429);
+    return c.json({ error: "already_paid", message: "আপনি ইতিমধ্যে ভর্তি হয়ে গেছেন।" }, 400);
   }
 
   // Reuse an existing non-terminal order if one already exists, so we don't
   // spam NOWPayments with duplicate active payments for the same user.
+  // IMPORTANT: this check happens BEFORE the rate limit below, and does not
+  // consume any of the rate limit's quota — merely reopening the checkout
+  // popup (which re-calls this endpoint) must never count against the
+  // limit, or a user who opens/closes it a handful of times in an hour
+  // would get wrongly rate-limited even though no new payment was ever
+  // created. The rate limit only protects genuine new-order creation
+  // (the actual call to the NOWPayments API) below.
+  //
+  // NOTE: NOWPayments does not reliably send an IPN purely for a timeout
+  // (only for actual on-chain activity), so a stale order can sit in
+  // 'waiting' in our DB long after NOWPayments itself has stopped watching
+  // that address. We treat an order whose `expires_at` has already passed
+  // as NOT reusable — we mark it 'expired' ourselves and fall through to
+  // creating a genuinely new one. This is what powers the "Generate New
+  // Address" button once the client-side countdown hits zero.
   const existing = await c.env.DB.prepare(
     `SELECT * FROM payment_orders WHERE user_id = ? AND status IN ('created','waiting','confirming') ORDER BY created_at DESC LIMIT 1`
   )
     .bind(user.id)
     .first<OrderRow>();
 
-  if (existing && existing.pay_address) {
+  const existingIsTimeExpired = existing?.expires_at ? new Date(existing.expires_at).getTime() <= Date.now() : false;
+
+  if (existing && existing.pay_address && !existingIsTimeExpired) {
     return c.json({
       ok: true,
       orderId: existing.id,
@@ -63,20 +70,34 @@ paymentRoutes.post("/create-order", requireAuth, async (c) => {
     });
   }
 
+  if (existing && existingIsTimeExpired) {
+    await c.env.DB.prepare("UPDATE payment_orders SET status = 'expired' WHERE id = ?").bind(existing.id).run();
+  }
+
+  const rate = await checkRateLimit(
+    c.env,
+    `payment_create:user:${user.id}`,
+    RATE_LIMITS.paymentCreatePerUserPerHour,
+    3600
+  );
+  if (!rate.allowed) {
+    return c.json({ error: "rate_limited", message: "আরেকটি পেমেন্ট চেষ্টা করার আগে একটু অপেক্ষা করুন।" }, 429);
+  }
+
   const orderId = randomUuid();
   const amount = getEnrollmentAmount(c.env);
 
   await c.env.DB.prepare(
-    `INSERT INTO payment_orders (id, user_id, amount, currency, status) VALUES (?, ?, ?, 'usdttrc20', 'created')`
+    `INSERT INTO payment_orders (id, user_id, amount, currency, status) VALUES (?, ?, ?, ?, 'created')`
   )
-    .bind(orderId, user.id, amount)
+    .bind(orderId, user.id, amount, PAY_CURRENCY)
     .run();
 
   try {
     const payment = await createNowPaymentsPayment(c.env, {
       orderId,
       amount,
-      currency: "usdttrc20",
+      currency: PAY_CURRENCY,
       customerEmail: user.email
     });
 
@@ -103,7 +124,7 @@ paymentRoutes.post("/create-order", requireAuth, async (c) => {
     // eslint-disable-next-line no-console
     console.error("createNowPaymentsPayment failed", err);
     await c.env.DB.prepare("UPDATE payment_orders SET status = 'failed' WHERE id = ?").bind(orderId).run();
-    return c.json({ error: "payment_creation_failed", message: "We couldn't start the payment. Please try again." }, 502);
+    return c.json({ error: "payment_creation_failed", message: "পেমেন্ট শুরু করা যায়নি। আবার চেষ্টা করুন।" }, 502);
   }
 });
 

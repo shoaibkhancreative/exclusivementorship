@@ -15,6 +15,11 @@ export interface Env {
   TURNSTILE_SITE_KEY: string;
   ENROLLMENT_PRICE_USDT: string;
   REFERENCE_PRICE_USDT: string;
+  // Optional — how much (in USDT, ~1:1 with USD since it's a stablecoin) a
+  // buyer may underpay by and still be auto-unlocked. Covers people who
+  // didn't realize the network fee is deducted separately and send a
+  // dollar or two short. Defaults to 2 if unset. See getUnderpaymentToleranceUsdt.
+  UNDERPAYMENT_TOLERANCE_USDT?: string;
   // Telegram destinations for the floating support button. Which one is used
   // is decided server-side (via /config/public) but the routing choice on the
   // client is always based on the real, authenticated course_status — never
@@ -64,4 +69,28 @@ export function getEnrollmentAmount(env: Env): number {
 export function getReferenceAmount(env: Env): number {
   const n = Number(env.REFERENCE_PRICE_USDT);
   return Number.isFinite(n) && n > 0 ? n : 100;
+}
+
+/**
+ * The only crypto currency we accept, and the only one shown to buyers:
+ * USDT on BNB Smart Chain (BEP20). Chosen deliberately over TRC20/ERC20
+ * because it has the lowest network fee of NOWPayments' supported USDT
+ * networks — fewer support tickets about "why did $2 disappear".
+ * Kept as a single constant so it's changed in exactly one place.
+ */
+export const PAY_CURRENCY = "usdtbsc";
+export const PAY_NETWORK_LABEL = "BNB Smart Chain (BEP20)";
+
+/**
+ * How much a buyer may underpay (in USDT — a stablecoin, so ~1:1 with USD)
+ * and still be treated as fully paid. Exists because first-time crypto users
+ * often don't know the network deducts its own fee from what they send, and
+ * end up 1-2 USDT short of the exact amount. Rather than manually reviewing
+ * every "partially_paid" IPN, anything within this tolerance is unlocked
+ * automatically; anything beyond it is still held for manual review.
+ * Overpayment is never a problem — NOWPayments confirms those normally.
+ */
+export function getUnderpaymentToleranceUsdt(env: Env): number {
+  const n = Number(env.UNDERPAYMENT_TOLERANCE_USDT);
+  return Number.isFinite(n) && n >= 0 ? n : 2;
 }

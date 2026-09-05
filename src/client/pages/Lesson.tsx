@@ -4,12 +4,10 @@ import { api, ApiError, type LessonDetail, type OutlineResponse } from "../lib/a
 import { Button, LoadingScreen } from "../components/ui";
 import { OutlineList } from "../components/OutlineList";
 import { TelegramAccessPanel } from "../components/TelegramAccessPanel";
-import { useUnlockModal } from "../lib/UnlockModalContext";
 
 export default function Lesson() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { openUnlockModal } = useUnlockModal();
   const [lesson, setLesson] = useState<LessonDetail | null>(null);
   const [outline, setOutline] = useState<OutlineResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -140,8 +138,8 @@ export default function Lesson() {
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-gradient-to-b from-black/40 to-black/80 px-6 text-center">
               <button
                 type="button"
-                onClick={openUnlockModal}
-                aria-label="Unlock to play this class"
+                onClick={() => navigate("/unlock")}
+                aria-label="View Exclusive Mentorship details to unlock this class"
                 className="focus-ring flex h-16 w-16 items-center justify-center rounded-full bg-accent-500 text-2xl text-base-950 shadow-lg transition-transform hover:scale-105 active:scale-95"
               >
                 ▶

@@ -56,6 +56,7 @@ export interface OutlineItem {
   lessonNumber: number;
   title: string;
   chapterName: string;
+  tagline: string | null;
   thumbnailUrl: string | null;
   isFree: boolean;
   state: "locked" | "available" | "current" | "completed" | "preview";
@@ -72,6 +73,7 @@ export interface LessonDetail {
   lessonNumber: number;
   title: string;
   chapterName: string;
+  tagline: string | null;
   description: string | null;
   youtubeVideoId: string | null;
   assignmentTitle: string | null;

@@ -1,27 +1,19 @@
-import { useEffect, useState } from "react";
-import { api, ApiError, type PublicConfig } from "../lib/api";
+import { useConfig } from "../lib/useConfig";
 import { Button, Card, LoadingScreen } from "../components/ui";
+import { useUnlockModal } from "../lib/UnlockModalContext";
 
+/**
+ * The calm transition between the free foundation and the paid checkout —
+ * this is "the most important conversion screen" per the product spec:
+ * no aggressive sales copy, just a plain acknowledgement that the free
+ * foundation is complete, an optional PDF with the full mentorship details,
+ * and a transparent Reference/Enrollment price framing. The actual crypto
+ * checkout (address/QR/status polling) lives in UnlockModal — this page's
+ * only job is to show the offer honestly before that popup ever opens.
+ */
 export default function Unlock() {
-  const [config, setConfig] = useState<PublicConfig | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    api.get<PublicConfig>("/config/public").then(setConfig);
-  }, []);
-
-  async function handleUnlock() {
-    setSubmitting(true);
-    setError(null);
-    try {
-      const result = await api.post<{ payUrl: string }>("/payments/create-order");
-      window.location.href = result.payUrl;
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Couldn't start the payment. Please try again.");
-      setSubmitting(false);
-    }
-  }
+  const config = useConfig();
+  const { openUnlockModal } = useUnlockModal();
 
   if (!config) return <LoadingScreen />;
 
@@ -35,16 +27,18 @@ export default function Unlock() {
         </p>
       </div>
 
-      <Card className="mb-6 text-center">
-        <a
-          href={config.mentorshipPdfUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="focus-ring inline-block text-sm text-accent-400 hover:underline"
-        >
-          View Mentorship Details PDF
-        </a>
-      </Card>
+      {config.mentorshipPdfUrl && (
+        <Card className="mb-6 text-center">
+          <a
+            href={config.mentorshipPdfUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="focus-ring inline-block text-sm text-accent-400 hover:underline"
+          >
+            View Mentorship Details PDF
+          </a>
+        </Card>
+      )}
 
       <Card className="text-center">
         <div className="mb-1 text-xs uppercase tracking-wide text-zinc-500">Premium Enrollment</div>
@@ -52,10 +46,8 @@ export default function Unlock() {
         <div className="mb-1 text-3xl font-semibold text-zinc-50">${config.enrollmentPrice} USDT</div>
         <div className="mb-6 text-xs font-medium text-accent-400">{config.discountPercent}% OFF</div>
 
-        {error && <p className="mb-4 text-sm text-red-400">{error}</p>}
-
-        <Button onClick={handleUnlock} disabled={submitting} className="w-full">
-          {submitting ? "Preparing checkout…" : "Unlock Exclusive Mentorship"}
+        <Button onClick={openUnlockModal} className="w-full">
+          Unlock Exclusive Mentorship
         </Button>
       </Card>
     </div>

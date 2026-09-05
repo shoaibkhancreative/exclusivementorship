@@ -33,18 +33,33 @@ export function OutlineList({
 
         const content = (
           <div
-            className={`flex items-center gap-4 rounded-lg border px-4 py-3 transition-colors ${
+            className={`flex items-center gap-3 rounded-lg border px-3 py-3 transition-colors sm:gap-4 sm:px-4 ${
               isActive ? "border-accent-500/60 bg-accent-500/10" : "border-base-700 bg-base-900"
             } ${locked ? "opacity-50" : preview ? "opacity-80" : isActive ? "" : "hover:border-accent-500/60"}`}
           >
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-base-800 text-xs text-zinc-500">
-              {String(item.lessonNumber).padStart(2, "0")}
+            <div className="relative h-12 w-16 shrink-0 overflow-hidden rounded-md bg-base-800 sm:h-14 sm:w-20">
+              {item.thumbnailUrl ? (
+                <img
+                  src={item.thumbnailUrl}
+                  alt=""
+                  className="h-full w-full object-cover"
+                  loading="lazy"
+                  onError={(e) => {
+                    (e.currentTarget as HTMLImageElement).style.display = "none";
+                  }}
+                />
+              ) : null}
+              <div className="absolute bottom-0.5 right-1 text-[10px] font-medium text-zinc-300">
+                {String(item.lessonNumber).padStart(2, "0")}
+              </div>
             </div>
             <div className="min-w-0 flex-1">
               <div className={`truncate text-sm font-medium ${isActive ? "text-accent-300" : "text-zinc-100"}`}>
                 {item.title}
               </div>
-              <div className="text-xs text-zinc-500">{item.chapterName}</div>
+              {item.tagline && (
+                <div className="mt-0.5 line-clamp-1 text-xs text-zinc-500">{item.tagline}</div>
+              )}
             </div>
             <div className="text-base" aria-hidden="true">
               {STATE_ICON[item.state]}
