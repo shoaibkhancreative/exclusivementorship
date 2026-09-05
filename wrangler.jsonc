@@ -22,7 +22,7 @@
     {
       "binding": "DB",
       "database_name": "exclusive-mentorship-db",
-      "database_id": "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+      "database_id": "57165448-b946-44e9-b9b9-b87ffacb283f"
     }
   ],
 
@@ -31,10 +31,10 @@
   "vars": {
     "APP_URL": "https://exclusivementorship.xyz",
     "EMAIL_FROM": "Next Level Trader <support@exclusivementorship.xyz>",
-    "MENTORSHIP_PDF_URL": "https://REPLACE_WITH_PDF_URL/mentorship-details.pdf",
-    "TELEGRAM_CHANNEL_ID": "REPLACE_WITH_CHANNEL_ID",
-    "TELEGRAM_GROUP_ID": "REPLACE_WITH_GROUP_ID",
-    "TURNSTILE_SITE_KEY": "REPLACE_WITH_TURNSTILE_SITE_KEY",
+    "MENTORSHIP_PDF_URL": "https://drive.google.com/uc?export=download&id=1s4bVQJob9v7GY26IGOOPBJgnp9ne9CS6",
+    "TELEGRAM_CHANNEL_ID": "-1004456691657",
+    "TELEGRAM_GROUP_ID": "  -1004386610368",
+    "TURNSTILE_SITE_KEY": "0x4AAAAAAEo5D0k14ZdX8XP5",
     "ENROLLMENT_PRICE_USDT": "39",
     "REFERENCE_PRICE_USDT": "100"
   },
