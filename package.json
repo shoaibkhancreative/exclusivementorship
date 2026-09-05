@@ -1,22 +1,39 @@
 {
-  "name": "exclusivementorship",
+  "name": "exclusive-mentorship",
+  "private": true,
+  "version": "1.0.0",
   "type": "module",
-  "version": "0.0.1",
-  "engines": {
-    "node": ">=22.12.0"
-  },
   "scripts": {
-    "dev": "astro dev",
-    "build": "astro build",
-    "preview": "astro preview",
-    "astro": "astro"
+    "dev": "npm run build && (vite build --watch --mode development & wrangler dev)",
+    "dev:client": "vite dev",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit -p tsconfig.worker.json && tsc --noEmit -p tsconfig.client.json && tsc --noEmit -p tsconfig.test.json",
+    "test": "vitest run",
+    "deploy": "npm run build && wrangler deploy",
+    "db:create": "wrangler d1 create exclusive-mentorship-db",
+    "db:migrate:local": "wrangler d1 migrations apply exclusive-mentorship-db --local",
+    "db:migrate:remote": "wrangler d1 migrations apply exclusive-mentorship-db --remote",
+    "db:seed:local": "wrangler d1 execute exclusive-mentorship-db --local --file=./seed/seed.sql",
+    "db:seed:remote": "wrangler d1 execute exclusive-mentorship-db --remote --file=./seed/seed.sql"
   },
   "dependencies": {
-    "@tailwindcss/vite": "^4.3.2",
-    "astro": "^7.0.5",
-    "tailwindcss": "^4.3.2"
+    "hono": "^4.6.9",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.27.0"
   },
   "devDependencies": {
-    "@astrojs/cloudflare": "^14.1.0"
+    "@cloudflare/workers-types": "^4.20240925.0",
+    "@types/node": "^26.4.1",
+    "@types/react": "^18.3.11",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.2",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.47",
+    "tailwindcss": "^3.4.13",
+    "typescript": "^5.6.2",
+    "vite": "^5.4.8",
+    "vitest": "^2.1.2",
+    "wrangler": "^3.80.0"
   }
 }
