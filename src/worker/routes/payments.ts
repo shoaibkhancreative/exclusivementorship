@@ -4,7 +4,7 @@ import { RATE_LIMITS, getEnrollmentAmount } from "../lib/config";
 import type { AppVariables } from "../middleware/session";
 import { requireAuth } from "../middleware/session";
 import { checkRateLimit, logAuditEvent } from "../db";
-import { createNowPaymentsInvoice } from "../services/nowpayments";
+import { createNowPaymentsPayment } from "../services/nowpayments";
 import { randomUuid } from "../lib/crypto";
 
 export const paymentRoutes = new Hono<{ Bindings: Env; Variables: AppVariables }>();
@@ -13,7 +13,10 @@ interface OrderRow {
   id: string;
   user_id: string;
   status: string;
-  pay_url: string | null;
+  pay_address: string | null;
+  pay_amount_crypto: number | null;
+  pay_currency: string | null;
+  expires_at: string | null;
   amount: number;
   currency: string;
   created_at: string;
@@ -41,15 +44,23 @@ paymentRoutes.post("/create-order", requireAuth, async (c) => {
   }
 
   // Reuse an existing non-terminal order if one already exists, so we don't
-  // spam NOWPayments with duplicate active invoices for the same user.
+  // spam NOWPayments with duplicate active payments for the same user.
   const existing = await c.env.DB.prepare(
     `SELECT * FROM payment_orders WHERE user_id = ? AND status IN ('created','waiting','confirming') ORDER BY created_at DESC LIMIT 1`
   )
     .bind(user.id)
     .first<OrderRow>();
 
-  if (existing && existing.pay_url) {
-    return c.json({ ok: true, orderId: existing.id, payUrl: existing.pay_url });
+  if (existing && existing.pay_address) {
+    return c.json({
+      ok: true,
+      orderId: existing.id,
+      payAddress: existing.pay_address,
+      payAmount: existing.pay_amount_crypto,
+      payCurrency: existing.pay_currency,
+      expiresAt: existing.expires_at,
+      priceUsd: existing.amount
+    });
   }
 
   const orderId = randomUuid();
@@ -62,7 +73,7 @@ paymentRoutes.post("/create-order", requireAuth, async (c) => {
     .run();
 
   try {
-    const invoice = await createNowPaymentsInvoice(c.env, {
+    const payment = await createNowPaymentsPayment(c.env, {
       orderId,
       amount,
       currency: "usdttrc20",
@@ -70,23 +81,33 @@ paymentRoutes.post("/create-order", requireAuth, async (c) => {
     });
 
     await c.env.DB.prepare(
-      `UPDATE payment_orders SET nowpayments_payment_id = ?, pay_url = ?, status = 'waiting' WHERE id = ?`
+      `UPDATE payment_orders
+         SET nowpayments_payment_id = ?, pay_address = ?, pay_amount_crypto = ?, pay_currency = ?, expires_at = ?, status = 'waiting'
+       WHERE id = ?`
     )
-      .bind(invoice.paymentId, invoice.payUrl, orderId)
+      .bind(payment.paymentId, payment.payAddress, payment.payAmount, payment.payCurrency, payment.expiresAt, orderId)
       .run();
 
     await logAuditEvent(c.env, "payment_order_created", { userId: user.id, metadata: { orderId } });
 
-    return c.json({ ok: true, orderId, payUrl: invoice.payUrl });
+    return c.json({
+      ok: true,
+      orderId,
+      payAddress: payment.payAddress,
+      payAmount: payment.payAmount,
+      payCurrency: payment.payCurrency,
+      expiresAt: payment.expiresAt,
+      priceUsd: amount
+    });
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error("createNowPaymentsInvoice failed", err);
+    console.error("createNowPaymentsPayment failed", err);
     await c.env.DB.prepare("UPDATE payment_orders SET status = 'failed' WHERE id = ?").bind(orderId).run();
     return c.json({ error: "payment_creation_failed", message: "We couldn't start the payment. Please try again." }, 502);
   }
 });
 
-/** Lets the pending-payment page poll for confirmation without hitting NOWPayments directly. */
+/** Lets the checkout popup poll for confirmation without hitting NOWPayments directly. */
 paymentRoutes.get("/status/:orderId", requireAuth, async (c) => {
   const user = c.get("user")!;
   const orderId = c.req.param("orderId");
@@ -97,5 +118,14 @@ paymentRoutes.get("/status/:orderId", requireAuth, async (c) => {
 
   if (!order) return c.json({ error: "not_found" }, 404);
 
-  return c.json({ orderId: order.id, status: order.status, courseStatus: user.course_status });
+  return c.json({
+    orderId: order.id,
+    status: order.status,
+    courseStatus: user.course_status,
+    payAddress: order.pay_address,
+    payAmount: order.pay_amount_crypto,
+    payCurrency: order.pay_currency,
+    expiresAt: order.expires_at,
+    priceUsd: order.amount
+  });
 });

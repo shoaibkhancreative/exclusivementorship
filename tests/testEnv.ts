@@ -21,6 +21,8 @@ export async function createTestEnv(overrides: Partial<Env> = {}): Promise<Env> 
     TURNSTILE_SITE_KEY: "test-site-key",
     ENROLLMENT_PRICE_USDT: "39",
     REFERENCE_PRICE_USDT: "100",
+    SUPPORT_TELEGRAM_PREMIUM_URL: "https://t.me/AskNLT",
+    SUPPORT_TELEGRAM_FREE_URL: "https://t.me/exclusivementor",
     SESSION_SECRET: "test-session-secret-not-for-production",
     NOWPAYMENTS_IPN_SECRET: "test-ipn-secret",
     // RESEND_API_KEY, NOWPAYMENTS_API_KEY, TELEGRAM_BOT_TOKEN, and

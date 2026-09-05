@@ -1,16 +1,9 @@
-import { Link, useNavigate } from "react-router-dom";
-import { api } from "../lib/api";
+import { Link } from "react-router-dom";
 import { useSession } from "../lib/SessionContext";
+import { ProfileMenu } from "./ProfileMenu";
 
 export function TopBar() {
-  const { me, refresh } = useSession();
-  const navigate = useNavigate();
-
-  async function handleLogout() {
-    await api.post("/auth/logout");
-    await refresh();
-    navigate("/");
-  }
+  const { me } = useSession();
 
   return (
     <header className="border-b border-base-700/60">
@@ -26,9 +19,7 @@ export function TopBar() {
               <Link to="/learn" className="focus-ring rounded text-zinc-300 hover:text-zinc-100">
                 Learn
               </Link>
-              <button onClick={handleLogout} className="focus-ring rounded text-zinc-400 hover:text-zinc-100">
-                Log out
-              </button>
+              <ProfileMenu />
             </>
           ) : (
             <Link

@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { Env } from "../lib/config";
-import { RATE_LIMITS } from "../lib/config";
+import { RATE_LIMITS, FREE_LESSON_COUNT, TELEGRAM_GATEWAY_LESSON } from "../lib/config";
 import type { AppVariables } from "../middleware/session";
 import { readCookie, revokeSession, buildLogoutCookie, buildSessionCookie, createSession, issueOtp, verifyOtp } from "../auth";
 import { checkRateLimit, logAuditEvent } from "../db";
@@ -13,6 +13,23 @@ export const authRoutes = new Hono<{ Bindings: Env; Variables: AppVariables }>()
 
 function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length <= 254;
+}
+
+/**
+ * Login is email-only (OTP) — there is no name field collected anywhere in
+ * the product. Rather than inventing one, we derive a readable display name
+ * from the email's local part for use in the profile card/avatar. This is
+ * deterministic and never stored.
+ */
+function deriveDisplayName(email: string): string {
+  const local = email.split("@")[0] ?? email;
+  const cleaned = local.replace(/[._+-]+/g, " ").trim();
+  if (!cleaned) return email;
+  return cleaned
+    .split(" ")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 authRoutes.post("/request-otp", async (c) => {
@@ -116,7 +133,10 @@ authRoutes.get("/me", async (c) => {
   return c.json({
     authenticated: true,
     email: user.email,
+    displayName: deriveDisplayName(user.email),
     currentLesson: user.current_lesson,
-    courseStatus: user.course_status
+    courseStatus: user.course_status,
+    freeLessonCount: FREE_LESSON_COUNT,
+    telegramGatewayLesson: TELEGRAM_GATEWAY_LESSON
   });
 });

@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "hono": "^4.6.9",
+    "qrcode": "^1.5.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.27.0"
@@ -25,6 +26,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20240925.0",
     "@types/node": "^26.4.1",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^18.3.11",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.2",

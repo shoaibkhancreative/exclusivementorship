@@ -85,9 +85,19 @@ describe("lessonState", () => {
     expect(lessonState(4, false, { lessonNumber: 4, ...base })).toBe("locked");
   });
 
-  it("marks premium lessons locked for free users even if current_lesson has advanced", () => {
+  it("marks a sequentially-reached premium lesson as a navigable 'preview' for free users (not a dead lock)", () => {
     expect(
       lessonState(6, false, { lessonNumber: 6, currentLesson: 6, courseStatus: "free" })
+    ).toBe("preview");
+  });
+
+  it("still marks a premium lesson as locked if the free user hasn't reached it sequentially yet", () => {
+    expect(
+      lessonState(7, false, { lessonNumber: 7, currentLesson: 6, courseStatus: "free" })
     ).toBe("locked");
+  });
+
+  it("real access control (canAccessLesson) still blocks the 'preview' lesson's actual content", () => {
+    expect(canAccessLesson({ lessonNumber: 6, currentLesson: 6, courseStatus: "free" })).toBe(false);
   });
 });

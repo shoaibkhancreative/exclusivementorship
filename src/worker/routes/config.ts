@@ -11,6 +11,8 @@ configRoutes.get("/public", (c) => {
     referencePrice: getReferenceAmount(c.env),
     discountPercent: Math.round((1 - getEnrollmentAmount(c.env) / getReferenceAmount(c.env)) * 100),
     mentorshipPdfUrl: c.env.MENTORSHIP_PDF_URL,
-    turnstileSiteKey: c.env.TURNSTILE_SITE_KEY
+    turnstileSiteKey: c.env.TURNSTILE_SITE_KEY,
+    supportTelegramPremiumUrl: c.env.SUPPORT_TELEGRAM_PREMIUM_URL,
+    supportTelegramFreeUrl: c.env.SUPPORT_TELEGRAM_FREE_URL
   });
 });

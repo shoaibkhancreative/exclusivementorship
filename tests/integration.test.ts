@@ -56,7 +56,7 @@ describe("Lesson access rules (HTTP)", () => {
     expect(res.status).toBe(200);
   });
 
-  it("lesson 6 is inaccessible without payment, even once sequentially reached", async () => {
+  it("lesson 6, once sequentially reached without payment, is a navigable but locked preview (not a 403)", async () => {
     const { cookie } = await loginNewUser(env, "dave@example.com");
 
     // Walk through lessons 1-5 to reach the premium boundary.
@@ -69,9 +69,16 @@ describe("Lesson access rules (HTTP)", () => {
     expect(lastGate).toBe(true);
 
     const res = await call(env, "/api/lessons/6", { cookie });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { isLocked: boolean; youtubeVideoId: string | null };
+    expect(body.isLocked).toBe(true);
+    expect(body.youtubeVideoId).toBeNull();
+  });
+
+  it("lesson 6 is still a real 403 if a free user hasn't sequentially reached it yet", async () => {
+    const { cookie } = await loginNewUser(env, "heidi@example.com");
+    const res = await call(env, "/api/lessons/6", { cookie });
     expect(res.status).toBe(403);
-    const body = (await res.json()) as { error: string };
-    expect(body.error).toBe("payment_required");
   });
 
   it("lesson 6 becomes accessible once the user is marked paid", async () => {
@@ -86,6 +93,33 @@ describe("Lesson access rules (HTTP)", () => {
 
     const res = await call(env, "/api/lessons/6", { cookie });
     expect(res.status).toBe(200);
+  });
+
+  it("lesson 6 is a Telegram gateway (no video) for paid users, not for free users", async () => {
+    const { user, cookie } = await loginNewUser(env, "frank@example.com");
+
+    for (let n = 1; n <= 5; n++) {
+      await call(env, `/api/lessons/${n}/submit-assignment`, { method: "POST", cookie, body: "{}" });
+    }
+    await env.DB.prepare("UPDATE users SET course_status = 'paid' WHERE id = ?").bind(user.id).run();
+
+    const res = await call(env, "/api/lessons/6", { cookie });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { isTelegramGate: boolean; youtubeVideoId: string | null };
+    expect(body.isTelegramGate).toBe(true);
+    expect(body.youtubeVideoId).toBeNull();
+  });
+
+  it("lesson 7 (a normal lesson) is not marked as a Telegram gateway", async () => {
+    const { user, cookie } = await loginNewUser(env, "grace@example.com");
+    await env.DB.prepare("UPDATE users SET course_status = 'paid', current_lesson = 8 WHERE id = ?")
+      .bind(user.id)
+      .run();
+
+    const res = await call(env, "/api/lessons/7", { cookie });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { isTelegramGate: boolean };
+    expect(body.isTelegramGate).toBe(false);
   });
 
   it("rejects unauthenticated attempts to submit an assignment", async () => {
@@ -186,9 +220,16 @@ describe("Payment order creation + NOWPayments webhook (HTTP)", () => {
     const { cookie } = await loginNewUser(env, "irene@example.com");
 
     fetchSpy.mockResolvedValueOnce(
-      new Response(JSON.stringify({ id: "np-1", invoice_url: "https://nowpayments.example/pay/np-1", payment_status: "waiting" }), {
-        status: 200
-      })
+      new Response(
+        JSON.stringify({
+          payment_id: "np-1",
+          pay_address: "TAddressNp1",
+          pay_amount: 39,
+          pay_currency: "usdttrc20",
+          payment_status: "waiting"
+        }),
+        { status: 200 }
+      )
     );
 
     // Attempting to smuggle a custom amount — the route accepts no body fields for amount at all.
@@ -208,9 +249,16 @@ describe("Payment order creation + NOWPayments webhook (HTTP)", () => {
     const { user, cookie } = await loginNewUser(env, "james@example.com");
 
     fetchSpy.mockResolvedValueOnce(
-      new Response(JSON.stringify({ id: "np-2", invoice_url: "https://nowpayments.example/pay/np-2", payment_status: "waiting" }), {
-        status: 200
-      })
+      new Response(
+        JSON.stringify({
+          payment_id: "np-2",
+          pay_address: "TAddressNp2",
+          pay_amount: 39,
+          pay_currency: "usdttrc20",
+          payment_status: "waiting"
+        }),
+        { status: 200 }
+      )
     );
     const createRes = await call(env, "/api/payments/create-order", { method: "POST", cookie, body: "{}" });
     const { orderId } = (await createRes.json()) as { orderId: string };
@@ -241,9 +289,16 @@ describe("Payment order creation + NOWPayments webhook (HTTP)", () => {
     const { cookie } = await loginNewUser(env, "karen@example.com");
 
     fetchSpy.mockResolvedValueOnce(
-      new Response(JSON.stringify({ id: "np-3", invoice_url: "https://nowpayments.example/pay/np-3", payment_status: "waiting" }), {
-        status: 200
-      })
+      new Response(
+        JSON.stringify({
+          payment_id: "np-3",
+          pay_address: "TAddressNp3",
+          pay_amount: 39,
+          pay_currency: "usdttrc20",
+          payment_status: "waiting"
+        }),
+        { status: 200 }
+      )
     );
     const createRes = await call(env, "/api/payments/create-order", { method: "POST", cookie, body: "{}" });
     const { orderId } = (await createRes.json()) as { orderId: string };

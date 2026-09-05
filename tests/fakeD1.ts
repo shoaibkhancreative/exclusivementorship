@@ -4,7 +4,7 @@
 // (prepare().bind().first()/.all()/.run()), so our real route/service code
 // can be exercised against a real SQLite engine without needing a live
 // `wrangler dev`/Miniflare process.
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createRequire } from "node:module";
 
@@ -19,10 +19,18 @@ export async function createTestD1() {
   const { DatabaseSync } = nodeRequire("node:sqlite") as typeof import("node:sqlite");
   const db = new DatabaseSync(":memory:");
 
-  const migration = readFileSync(join(__dirname, "..", "migrations", "0001_init.sql"), "utf-8");
+  // Apply every migration in order (not just 0001) so the in-memory test DB
+  // schema always matches what actually gets deployed via `wrangler d1
+  // migrations apply`.
+  const migrationsDir = join(__dirname, "..", "migrations");
+  const migrationFiles = readdirSync(migrationsDir)
+    .filter((f) => f.endsWith(".sql"))
+    .sort();
+  for (const file of migrationFiles) {
+    const migration = readFileSync(join(migrationsDir, file), "utf-8");
+    db.exec(migration);
+  }
   const seed = readFileSync(join(__dirname, "..", "seed", "seed.sql"), "utf-8");
-
-  db.exec(migration);
   db.exec(seed);
 
   function boundStatement(stmt: ReturnType<typeof db.prepare>, args: unknown[]) {

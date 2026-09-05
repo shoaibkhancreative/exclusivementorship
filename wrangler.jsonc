@@ -36,7 +36,9 @@
     "TELEGRAM_GROUP_ID": "-1004386610368",
     "TURNSTILE_SITE_KEY": "0x4AAAAAAEo5D0k14ZdX8XP5",
     "ENROLLMENT_PRICE_USDT": "39",
-    "REFERENCE_PRICE_USDT": "100"
+    "REFERENCE_PRICE_USDT": "100",
+    "SUPPORT_TELEGRAM_PREMIUM_URL": "https://t.me/AskNLT",
+    "SUPPORT_TELEGRAM_FREE_URL": "https://t.me/exclusivementor"
   },
 
   "observability": {

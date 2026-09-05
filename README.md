@@ -58,7 +58,7 @@ hosting on the site — those are explicit v1 non-goals (see
 | Backend | [Hono](https://hono.dev) running on Cloudflare Workers |
 | Database | Cloudflare D1 (SQLite) |
 | Email (OTP) | [Resend](https://resend.com) |
-| Payments | [NOWPayments](https://nowpayments.io) (hosted invoice) |
+| Payments | [NOWPayments](https://nowpayments.io) (non-hosted "payment" API — custom in-site checkout popup, no NOWPayments branding shown) |
 | Community delivery | Telegram Bot API (one-time invite links) |
 | Bot protection | Cloudflare Turnstile |
 | Hosting | A single Cloudflare Worker, serving both the API and the built SPA via [Workers Static Assets](https://developers.cloudflare.com/workers/static-assets/) |
@@ -105,7 +105,7 @@ exclusive-mentorship/
 │   │   │   └── config.ts        # /api/config/public
 │   │   └── services/
 │   │       ├── email.ts          # Resend
-│   │       ├── nowpayments.ts     # Invoice creation + IPN signature verification
+│   │       ├── nowpayments.ts     # Non-hosted payment creation + IPN signature verification
 │   │       ├── telegram.ts        # One-time invite link generation
 │   │       └── turnstile.ts       # Turnstile siteverify
 │   └── client/               # Frontend (React SPA)
@@ -154,7 +154,8 @@ See `.env.example` for the full list. Two categories:
 
 - **Non-secret** (`APP_URL`, `EMAIL_FROM`, `MENTORSHIP_PDF_URL`,
   `TELEGRAM_CHANNEL_ID`, `TELEGRAM_GROUP_ID`, `TURNSTILE_SITE_KEY`,
-  `ENROLLMENT_PRICE_USDT`, `REFERENCE_PRICE_USDT`) — these live in
+  `ENROLLMENT_PRICE_USDT`, `REFERENCE_PRICE_USDT`,
+  `SUPPORT_TELEGRAM_PREMIUM_URL`, `SUPPORT_TELEGRAM_FREE_URL`) — these live in
   `wrangler.jsonc` under `"vars"` for production, and in `.env` for local dev.
 - **Secrets** (`RESEND_API_KEY`, `NOWPAYMENTS_API_KEY`,
   `NOWPAYMENTS_IPN_SECRET`, `TELEGRAM_BOT_TOKEN`, `SESSION_SECRET`,
@@ -356,13 +357,37 @@ whatever `/api/config/public` returns.
 ## How to change the PDF
 
 Update `MENTORSHIP_PDF_URL` in `wrangler.jsonc` `"vars"` to the new hosted
-PDF URL, then redeploy. No code changes needed.
+PDF URL, then redeploy. No code changes needed. The link is surfaced as a
+small corner badge on the homepage (`/`) intro video, and inside the unlock
+checkout popup.
 
-## How to change Telegram destination
+## How to change Telegram destinations
 
-Update `TELEGRAM_CHANNEL_ID` / `TELEGRAM_GROUP_ID` in `wrangler.jsonc`
-`"vars"` (and make sure the bot is an administrator of the new chat(s)),
-then redeploy.
+- **Mentorship channel/group** (the actual course content, Class 6 onward):
+  update `TELEGRAM_CHANNEL_ID` / `TELEGRAM_GROUP_ID` in `wrangler.jsonc`
+  `"vars"` (and make sure the bot is an administrator of the new chat(s)),
+  then redeploy.
+- **Support chat** (the floating bottom-right button): update
+  `SUPPORT_TELEGRAM_PREMIUM_URL` / `SUPPORT_TELEGRAM_FREE_URL` in
+  `wrangler.jsonc` `"vars"`, then redeploy. Which one a visitor sees is
+  decided from their real, server-confirmed `course_status` — paid users get
+  the premium link, everyone else (including logged-out visitors) gets the
+  free link.
+
+## Class 6 — the Telegram handoff point
+
+Class 6 (`TELEGRAM_GATEWAY_LESSON` in `src/worker/lib/config.ts`, currently
+`FREE_LESSON_COUNT + 1`) is special-cased for **paid** users only: instead of
+a video and assignment, `GET /api/lessons/6` returns `isTelegramGate: true`
+and the class-learning page (`/lesson/6`) renders the same Telegram
+channel/group join flow used on `/access`, embedded in place of the video —
+the course outline underneath stays visible and untouched. Free users hitting
+`/lesson/6` now see a locked preview (thumbnail + play button) instead of
+being redirected away — tapping play opens the unlock checkout popup.
+Premium users can always get back to this same join flow later from the
+profile menu → "Access" (which links to `/access`), so a failed or abandoned
+join right after payment is never a dead
+end.
 
 ## How to add more lessons later
 

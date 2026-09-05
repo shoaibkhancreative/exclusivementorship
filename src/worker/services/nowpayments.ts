@@ -4,17 +4,24 @@ const NOWPAYMENTS_API_BASE = "https://api.nowpayments.io/v1";
 
 export interface CreatePaymentResult {
   paymentId: string;
-  payUrl: string;
+  payAddress: string;
+  payAmount: number;
+  payCurrency: string;
   status: string;
+  /** ISO timestamp — NOWPayments payments expire ~20 min after creation. */
+  expiresAt: string | null;
 }
 
 /**
- * Creates a payment via NOWPayments' invoice endpoint. We use the "invoice"
- * flow (hosted payment page) rather than raw "payment" so the user is
- * redirected to a NOWPayments-hosted page — simpler and doesn't require us
- * to build our own crypto payment UI.
+ * Creates a payment via NOWPayments' non-hosted "payment" endpoint (as
+ * opposed to "invoice", which redirects the user to a NOWPayments-hosted
+ * page). This returns a raw pay-to address, amount, and currency, which we
+ * render inside our own checkout UI — the user never leaves our site and
+ * never sees the NOWPayments name or brand. This is the standard, documented
+ * way to build a custom-branded checkout on top of NOWPayments; it's not a
+ * workaround, it's simply choosing "payment" over "invoice" in their API.
  */
-export async function createNowPaymentsInvoice(
+export async function createNowPaymentsPayment(
   env: Env,
   opts: { orderId: string; amount: number; currency: string; customerEmail: string }
 ): Promise<CreatePaymentResult> {
@@ -22,7 +29,7 @@ export async function createNowPaymentsInvoice(
     throw new Error("NOWPAYMENTS_API_KEY is not configured.");
   }
 
-  const res = await fetch(`${NOWPAYMENTS_API_BASE}/invoice`, {
+  const res = await fetch(`${NOWPAYMENTS_API_BASE}/payment`, {
     method: "POST",
     headers: {
       "x-api-key": env.NOWPAYMENTS_API_KEY,
@@ -34,27 +41,31 @@ export async function createNowPaymentsInvoice(
       pay_currency: opts.currency,
       order_id: opts.orderId,
       order_description: "Exclusive Mentorship — Enrollment",
-      ipn_callback_url: `${env.APP_URL}/api/webhooks/nowpayments`,
-      success_url: `${env.APP_URL}/payment/success?order=${opts.orderId}`,
-      cancel_url: `${env.APP_URL}/payment/pending?order=${opts.orderId}`
+      ipn_callback_url: `${env.APP_URL}/api/webhooks/nowpayments`
     })
   });
 
   const data = (await res.json()) as {
-    id?: string;
-    invoice_url?: string;
+    payment_id?: string;
+    pay_address?: string;
+    pay_amount?: number;
+    pay_currency?: string;
     payment_status?: string;
+    expiration_estimate_date?: string;
     message?: string;
   };
 
-  if (!res.ok || !data.id || !data.invoice_url) {
+  if (!res.ok || !data.payment_id || !data.pay_address || !data.pay_amount) {
     throw new Error(`NOWPayments error: ${data.message ?? res.statusText}`);
   }
 
   return {
-    paymentId: data.id,
-    payUrl: data.invoice_url,
-    status: data.payment_status ?? "waiting"
+    paymentId: data.payment_id,
+    payAddress: data.pay_address,
+    payAmount: data.pay_amount,
+    payCurrency: data.pay_currency ?? opts.currency,
+    status: data.payment_status ?? "waiting",
+    expiresAt: data.expiration_estimate_date ?? null
   };
 }
 

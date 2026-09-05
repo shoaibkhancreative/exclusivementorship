@@ -2,13 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type OutlineResponse } from "../lib/api";
 import { LoadingScreen } from "../components/ui";
-
-const STATE_ICON: Record<string, string> = {
-  completed: "✓",
-  current: "▶",
-  available: "○",
-  locked: "🔒"
-};
+import { OutlineList } from "../components/OutlineList";
 
 export default function Learn() {
   const [data, setData] = useState<OutlineResponse | null>(null);
@@ -41,35 +35,7 @@ export default function Learn() {
         )}
       </div>
 
-      <div className="space-y-2">
-        {data.outline.map((item) => {
-          const locked = item.state === "locked";
-          const content = (
-            <div
-              className={`flex items-center gap-4 rounded-lg border border-base-700 bg-base-900 px-4 py-3 ${
-                locked ? "opacity-50" : "hover:border-accent-500/60"
-              }`}
-            >
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-base-800 text-xs text-zinc-500">
-                {String(item.lessonNumber).padStart(2, "0")}
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-medium text-zinc-100">{item.title}</div>
-                <div className="text-xs text-zinc-500">{item.chapterName}</div>
-              </div>
-              <div className="text-base">{STATE_ICON[item.state]}</div>
-            </div>
-          );
-
-          return locked ? (
-            <div key={item.lessonNumber}>{content}</div>
-          ) : (
-            <Link key={item.lessonNumber} to={`/lesson/${item.lessonNumber}`} className="focus-ring block rounded-lg">
-              {content}
-            </Link>
-          );
-        })}
-      </div>
+      <OutlineList items={data.outline} activeLessonNumber={data.currentLesson} />
     </div>
   );
 }

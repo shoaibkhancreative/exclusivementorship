@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { Env } from "../lib/config";
-import { FREE_LESSON_COUNT } from "../lib/config";
+import { FREE_LESSON_COUNT, TELEGRAM_GATEWAY_LESSON } from "../lib/config";
 import type { AppVariables } from "../middleware/session";
 import { requireAuth } from "../middleware/session";
 import { canAccessLesson, computeNextCurrentLesson, lessonState, shouldShowPremiumGate } from "../lib/course";
@@ -96,9 +96,58 @@ lessonRoutes.get("/:number", async (c) => {
   const courseStatus = user?.course_status ?? "free";
 
   const allowed = canAccessLesson({ lessonNumber, currentLesson, courseStatus });
-  if (!allowed) {
+
+  // Class 6 (TELEGRAM_GATEWAY_LESSON) is special-cased so a free user who has
+  // sequentially reached it can still open the page and see it — just locked,
+  // with no real video/content delivered — rather than being bounced away.
+  // This is what lets clicking "Next" after class 5 always land on class 6's
+  // page instead of dead-ending. Real access (`allowed`) is still enforced:
+  // no video id, no assignment, nothing playable is ever sent to the client.
+  const sequentiallyReached = lessonNumber <= currentLesson;
+  const isPreviewGate =
+    !allowed && lessonNumber === TELEGRAM_GATEWAY_LESSON && sequentiallyReached && courseStatus !== "paid";
+
+  if (!allowed && !isPreviewGate) {
     const reason = lessonNumber > FREE_LESSON_COUNT && courseStatus !== "paid" ? "payment_required" : "locked";
     return c.json({ error: reason, message: "This lesson isn't unlocked yet." }, 403);
+  }
+
+  if (isPreviewGate) {
+    return c.json({
+      lessonNumber: lesson.lesson_number,
+      title: lesson.title,
+      chapterName: lesson.chapter_name,
+      description: lesson.description,
+      youtubeVideoId: null,
+      assignmentTitle: null,
+      assignmentInstruction: null,
+      videoCompleted: false,
+      assignmentSubmitted: false,
+      isLastFreeLesson: false,
+      isTelegramGate: false,
+      isLocked: true
+    });
+  }
+
+  // Class 6 (TELEGRAM_GATEWAY_LESSON) is the handoff point into the private
+  // Telegram mentorship for PAID users only.
+  const isTelegramGate = lessonNumber === TELEGRAM_GATEWAY_LESSON && courseStatus === "paid";
+
+  if (isTelegramGate) {
+    return c.json({
+      lessonNumber: lesson.lesson_number,
+      title: lesson.title,
+      chapterName: lesson.chapter_name,
+      description: null,
+      youtubeVideoId: null,
+      assignmentTitle: null,
+      assignmentInstruction: null,
+      videoCompleted: false,
+      assignmentSubmitted: false,
+      isLastFreeLesson: false,
+      isTelegramGate: true,
+      isLocked: false
+    });
   }
 
   let progress: ProgressRow | null = null;
@@ -120,7 +169,9 @@ lessonRoutes.get("/:number", async (c) => {
     assignmentInstruction: lesson.assignment_instruction,
     videoCompleted: Boolean(progress?.video_completed),
     assignmentSubmitted: Boolean(progress?.assignment_submitted),
-    isLastFreeLesson: lessonNumber === FREE_LESSON_COUNT
+    isLastFreeLesson: lessonNumber === FREE_LESSON_COUNT,
+    isTelegramGate: false,
+    isLocked: false
   });
 });
 
@@ -139,6 +190,11 @@ lessonRoutes.post("/:number/complete-video", requireAuth, async (c) => {
     courseStatus: user.course_status
   });
   if (!allowed) return c.json({ error: "locked" }, 403);
+
+  // Class 6 has no video for paid users (Telegram gateway) — nothing to mark.
+  if (lessonNumber === TELEGRAM_GATEWAY_LESSON && user.course_status === "paid") {
+    return c.json({ ok: true });
+  }
 
   await c.env.DB.prepare(
     `INSERT INTO lesson_progress (user_id, lesson_id, video_completed, updated_at)

@@ -15,6 +15,12 @@ export interface Env {
   TURNSTILE_SITE_KEY: string;
   ENROLLMENT_PRICE_USDT: string;
   REFERENCE_PRICE_USDT: string;
+  // Telegram destinations for the floating support button. Which one is used
+  // is decided server-side (via /config/public) but the routing choice on the
+  // client is always based on the real, authenticated course_status — never
+  // a visual/UI assumption.
+  SUPPORT_TELEGRAM_PREMIUM_URL: string;
+  SUPPORT_TELEGRAM_FREE_URL: string;
 
   // secrets (wrangler secret put ...) — undefined locally unless in .dev.vars
   RESEND_API_KEY?: string;
@@ -26,6 +32,13 @@ export interface Env {
 }
 
 export const FREE_LESSON_COUNT = 5;
+
+/**
+ * The first premium lesson (Class 6) no longer plays normal video content
+ * for paid users — it acts as the handoff point into the private Telegram
+ * mentorship. See routes/lessons.ts.
+ */
+export const TELEGRAM_GATEWAY_LESSON = FREE_LESSON_COUNT + 1;
 
 export const OTP_LENGTH = 6;
 export const OTP_EXPIRY_MINUTES = 10;

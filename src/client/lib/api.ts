@@ -38,13 +38,18 @@ export interface PublicConfig {
   discountPercent: number;
   mentorshipPdfUrl: string;
   turnstileSiteKey: string;
+  supportTelegramPremiumUrl: string;
+  supportTelegramFreeUrl: string;
 }
 
 export interface MeResponse {
   authenticated: boolean;
   email?: string;
+  displayName?: string;
   currentLesson?: number;
   courseStatus?: "free" | "paid";
+  freeLessonCount?: number;
+  telegramGatewayLesson?: number;
 }
 
 export interface OutlineItem {
@@ -53,7 +58,7 @@ export interface OutlineItem {
   chapterName: string;
   thumbnailUrl: string | null;
   isFree: boolean;
-  state: "locked" | "available" | "current" | "completed";
+  state: "locked" | "available" | "current" | "completed" | "preview";
 }
 
 export interface OutlineResponse {
@@ -68,10 +73,35 @@ export interface LessonDetail {
   title: string;
   chapterName: string;
   description: string | null;
-  youtubeVideoId: string;
+  youtubeVideoId: string | null;
   assignmentTitle: string | null;
   assignmentInstruction: string | null;
   videoCompleted: boolean;
   assignmentSubmitted: boolean;
   isLastFreeLesson: boolean;
+  /** Class 6, for paid users: no video — this lesson is the Telegram handoff. */
+  isTelegramGate: boolean;
+  /** Sequentially reached but payment-gated: show a locked preview, not the real video. */
+  isLocked: boolean;
+}
+
+export interface CreateOrderResponse {
+  ok: true;
+  orderId: string;
+  payAddress: string;
+  payAmount: number;
+  payCurrency: string;
+  expiresAt: string | null;
+  priceUsd: number;
+}
+
+export interface PaymentStatusResponse {
+  orderId: string;
+  status: "created" | "waiting" | "confirming" | "confirmed" | "finished" | "failed" | "expired" | "cancelled";
+  courseStatus: "free" | "paid";
+  payAddress: string | null;
+  payAmount: number | null;
+  payCurrency: string | null;
+  expiresAt: string | null;
+  priceUsd: number;
 }

@@ -8,7 +8,15 @@ export interface AccessInput {
   courseStatus: CourseStatus;
 }
 
-export type LessonState = "locked" | "available" | "current" | "completed";
+/**
+ * "preview" is distinct from "locked": it means the learner has sequentially
+ * reached this lesson (finished everything before it) but hasn't paid yet.
+ * Unlike "locked", a "preview" lesson IS navigable — the learner can open it,
+ * see its thumbnail, and see the unlock prompt when they hit play. It's what
+ * lets the "Next" button stay active right after the last free class instead
+ * of dead-ending.
+ */
+export type LessonState = "locked" | "available" | "current" | "completed" | "preview";
 
 /**
  * Server-side authority on lesson access. The frontend must never be
@@ -50,6 +58,12 @@ export function lessonState(
   input: AccessInput
 ): LessonState {
   if (completed) return "completed";
-  if (!canAccessLesson(input)) return "locked";
+
+  const sequentiallyUnlocked = lessonNumber <= input.currentLesson;
+  if (!sequentiallyUnlocked) return "locked";
+
+  // Reached in sequence but payment-gated: navigable preview, not a dead lock.
+  if (isPremiumLesson(lessonNumber) && input.courseStatus !== "paid") return "preview";
+
   return lessonNumber === input.currentLesson ? "current" : "available";
 }
