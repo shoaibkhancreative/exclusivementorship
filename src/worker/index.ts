@@ -1,27 +1,36 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import type { Env } from "./lib/config";
 import type { AppVariables } from "./middleware/session";
+import type { AdminVariables } from "./middleware/adminSession";
 import { sessionMiddleware } from "./middleware/session";
+import { adminSessionMiddleware } from "./middleware/adminSession";
 import { corsPolicy, securityHeaders } from "./middleware/security";
 import { authRoutes } from "./routes/auth";
 import { lessonRoutes } from "./routes/lessons";
 import { paymentRoutes } from "./routes/payments";
 import { webhookRoutes } from "./routes/webhooks";
-import { telegramRoutes } from "./routes/telegram";
 import { configRoutes } from "./routes/config";
+import { adminRoutes } from "./routes/admin";
+import { runScheduledCleanup } from "./scheduled";
 
-const app = new Hono<{ Bindings: Env; Variables: AppVariables }>();
+const app = new Hono<{ Bindings: Env; Variables: AppVariables & AdminVariables }>();
 
 app.use("*", securityHeaders);
 app.use("/api/*", corsPolicy);
-app.use("/api/*", sessionMiddleware);
+// Student session middleware never runs on /api/admin/* and vice versa —
+// two completely separate cookies/sessions, one per surface.
+app.use("/api/admin/*", adminSessionMiddleware);
+app.use("/api/*", async (c, next) => {
+  if (c.req.path.startsWith("/api/admin/")) return next();
+  return sessionMiddleware(c as unknown as Context<{ Bindings: Env; Variables: AppVariables }>, next);
+});
 
 app.route("/api/auth", authRoutes);
 app.route("/api/lessons", lessonRoutes);
 app.route("/api/payments", paymentRoutes);
 app.route("/api/webhooks", webhookRoutes);
-app.route("/api/telegram", telegramRoutes);
 app.route("/api/config", configRoutes);
+app.route("/api/admin", adminRoutes);
 
 app.get("/api/health", (c) => c.json({ ok: true }));
 
@@ -40,4 +49,16 @@ app.notFound((c) => {
   return c.env.ASSETS.fetch(c.req.raw);
 });
 
-export default app;
+export default {
+  fetch: app.fetch,
+
+  /**
+   * Cloudflare Worker Cron Trigger handler — runs the daily cleanup
+   * (otp_codes, rate_limits, audit_events). See scheduled.ts for exactly
+   * what it does and why. Wired up via the single daily cron trigger
+   * configured in wrangler.jsonc.
+   */
+  async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
+    ctx.waitUntil(runScheduledCleanup(env));
+  }
+};

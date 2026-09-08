@@ -18,33 +18,36 @@ export default function Unlock() {
   if (!config) return <LoadingScreen />;
 
   return (
-    <div className="mx-auto max-w-xl px-6 py-14">
-      <div className="mb-8 text-center">
-        <h1 className="text-2xl font-semibold text-zinc-50">You've completed the free foundation.</h1>
-        <p className="mt-3 text-sm leading-relaxed text-zinc-400">
+    <div className="mx-auto max-w-lg px-6 py-16 sm:px-8">
+      <div className="mb-10 text-center">
+        <h1 className="text-[26px] font-semibold leading-snug text-zinc-50 sm:text-[28px]">
+          You've completed the free foundation.
+        </h1>
+        <p className="mx-auto mt-4 max-w-sm text-[15px] leading-relaxed text-zinc-400">
           The next lessons are part of Exclusive Mentorship — the full framework for intraday execution, risk
           management, and building a personal trading process.
         </p>
       </div>
 
       {config.mentorshipPdfUrl && (
-        <Card className="mb-6 text-center">
+        <div className="mb-8 text-center">
           <a
             href={config.mentorshipPdfUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="focus-ring inline-block text-sm text-accent-400 hover:underline"
           >
-            View Mentorship Details PDF
+            View mentorship details (PDF)
           </a>
-        </Card>
+        </div>
       )}
 
       <Card className="text-center">
-        <div className="mb-1 text-xs uppercase tracking-wide text-zinc-500">Premium Enrollment</div>
-        <div className="mb-1 text-sm text-zinc-500 line-through">Reference Value: ${config.referencePrice} USDT</div>
-        <div className="mb-1 text-3xl font-semibold text-zinc-50">${config.enrollmentPrice} USDT</div>
-        <div className="mb-6 text-xs font-medium text-accent-400">{config.discountPercent}% OFF</div>
+        <div className="mb-3 flex items-baseline justify-center gap-2">
+          <span className="text-3xl font-semibold text-zinc-50">${config.enrollmentPrice}</span>
+          <span className="text-sm text-zinc-500 line-through">${config.referencePrice}</span>
+        </div>
+        <div className="mb-7 text-sm text-zinc-500">USDT · {config.discountPercent}% off today</div>
 
         <Button onClick={openUnlockModal} className="w-full">
           Unlock Exclusive Mentorship

@@ -16,19 +16,18 @@ export async function createTestEnv(overrides: Partial<Env> = {}): Promise<Env> 
     APP_URL: "http://localhost:8787",
     EMAIL_FROM: "Next Level Trader <support@exclusivementorship.xyz>",
     MENTORSHIP_PDF_URL: "https://example.com/mentorship-details.pdf",
-    TELEGRAM_CHANNEL_ID: "-100123",
-    TELEGRAM_GROUP_ID: "-100456",
     TURNSTILE_SITE_KEY: "test-site-key",
+    GOOGLE_CLIENT_ID: "test-google-client-id.apps.googleusercontent.com",
     ENROLLMENT_PRICE_USDT: "39",
     REFERENCE_PRICE_USDT: "100",
-    SUPPORT_TELEGRAM_PREMIUM_URL: "https://t.me/AskNLT",
-    SUPPORT_TELEGRAM_FREE_URL: "https://t.me/exclusivementor",
+    SUPPORT_TELEGRAM_FREE_URL: "https://t.me/AskNLT",
+    SUPPORT_TELEGRAM_PREMIUM_URL: "https://t.me/exclusivementor",
     SESSION_SECRET: "test-session-secret-not-for-production",
     NOWPAYMENTS_IPN_SECRET: "test-ipn-secret",
-    // RESEND_API_KEY, NOWPAYMENTS_API_KEY, TELEGRAM_BOT_TOKEN, and
-    // TURNSTILE_SECRET_KEY are intentionally left unset: each service module
-    // has an explicit "not configured" dev-mode fallback (see
-    // services/email.ts, services/turnstile.ts) or is stubbed per-test via
+    // RESEND_API_KEY, NOWPAYMENTS_API_KEY, and TURNSTILE_SECRET_KEY are
+    // intentionally left unset: each service module has an explicit "not
+    // configured" dev-mode fallback (see services/email.ts,
+    // services/turnstile.ts) or is stubbed per-test via
     // vi.stubGlobal('fetch', ...) where a real network call would occur.
     ...overrides
   };

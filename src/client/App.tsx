@@ -12,6 +12,7 @@ import Unlock from "./pages/Unlock";
 import Access from "./pages/Access";
 import Privacy from "./pages/Privacy";
 import Terms from "./pages/Terms";
+import AdminApp from "./admin/AdminApp";
 
 function RequireAuth({ children }: { children: JSX.Element }) {
   const { me, loading } = useSession();
@@ -20,7 +21,13 @@ function RequireAuth({ children }: { children: JSX.Element }) {
   return children;
 }
 
-export default function App() {
+/**
+ * The original student-facing app tree, unchanged in behavior — just moved
+ * into its own component so /admin/* (see App() below) can render a
+ * completely separate tree without the student SessionProvider, TopBar, or
+ * SupportButton anywhere near it.
+ */
+function StudentApp() {
   return (
     <SessionProvider>
       <UnlockModalProvider>
@@ -79,5 +86,17 @@ export default function App() {
         </div>
       </UnlockModalProvider>
     </SessionProvider>
+  );
+}
+
+export default function App() {
+  return (
+    <Routes>
+      {/* Admin panel: its own session system (em_admin_session cookie),
+          own layout, own login page — deliberately never wrapped by the
+          student SessionProvider/TopBar/SupportButton above. */}
+      <Route path="/admin/*" element={<AdminApp />} />
+      <Route path="/*" element={<StudentApp />} />
+    </Routes>
   );
 }

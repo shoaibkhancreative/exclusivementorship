@@ -6,9 +6,9 @@ import { Avatar } from "./Avatar";
 
 /**
  * Deliberately minimal: name, email, and a single status-driven action.
- * - Free users who haven't finished the 5 free classes see nothing extra.
- * - Free users who HAVE finished the 5 free classes see an "Unlock" button.
- * - Paid users see an "Access" button (their Telegram mentorship access).
+ * - Free users who haven't finished the free classes see nothing extra.
+ * - Free users who HAVE finished the free classes see an "Unlock" button.
+ * - Paid users see an "Access" button (their unlocked mentorship dashboard).
  */
 export function ProfileMenu() {
   const { me, refresh } = useSession();
@@ -38,14 +38,14 @@ export function ProfileMenu() {
   const isPremium = me.courseStatus === "paid";
   const label = me.displayName || me.email || "?";
 
-  // A free user has "finished the 5 free classes" once current_lesson has
-  // advanced past the free threshold (i.e. reached the Telegram gateway
-  // lesson) — mirrors the server's own definition, nothing re-invented here.
+  // A free user has "finished the free classes" once current_lesson has
+  // advanced past the admin-editable free-lesson-count threshold — mirrors
+  // the server's own definition (see lib/course.ts), nothing re-invented here.
   const hasFinishedFreeClasses =
     !isPremium &&
     typeof me.currentLesson === "number" &&
-    typeof me.telegramGatewayLesson === "number" &&
-    me.currentLesson >= me.telegramGatewayLesson;
+    typeof me.freeLessonCount === "number" &&
+    me.currentLesson > me.freeLessonCount;
 
   async function handleLogout() {
     await api.post("/auth/logout");
@@ -75,9 +75,9 @@ export function ProfileMenu() {
       {open && (
         <div
           role="menu"
-          className="absolute right-0 top-full z-50 mt-2 w-64 max-w-[90vw] rounded-xl border border-base-700 bg-base-900 p-4 shadow-xl shadow-black/40"
+          className="absolute right-0 top-full z-50 mt-2 w-64 max-w-[90vw] rounded-xl border border-base-800 bg-base-900 p-4 shadow-xl shadow-black/40"
         >
-          <div className="mb-3 flex items-center gap-3">
+          <div className="mb-4 flex items-center gap-3">
             <Avatar label={label} premium={isPremium} size={44} />
             <div className="min-w-0">
               <div className="truncate text-sm font-medium text-zinc-100">{label}</div>

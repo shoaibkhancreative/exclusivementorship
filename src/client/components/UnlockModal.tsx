@@ -81,7 +81,7 @@ export function UnlockModal({ onClose }: { onClose: () => void }) {
       const result = await api.post<CreateOrderResponse>("/payments/create-order");
       setOrder(result);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "পেমেন্ট শুরু করা যায়নি। আবার চেষ্টা করুন।");
+      setError(err instanceof ApiError ? err.message : "Couldn't start the payment. Please try again.");
     } finally {
       isRegenerate ? setRegenerating(false) : setLoading(false);
     }
@@ -151,14 +151,14 @@ export function UnlockModal({ onClose }: { onClose: () => void }) {
   }, [onClose]);
 
   const statusLabel: Record<string, string> = {
-    created: "প্রস্তুত হচ্ছে…",
-    waiting: "পেমেন্টের অপেক্ষায়…",
-    confirming: "পেমেন্ট পাওয়া গেছে, কনফার্ম হচ্ছে…",
-    confirmed: "কনফার্ম হয়েছে! এক্সেস খোলা হচ্ছে…",
-    finished: "কনফার্ম হয়েছে! এক্সেস খোলা হচ্ছে…",
-    failed: "পেমেন্ট সম্পন্ন হয়নি। আবার চেষ্টা করুন।",
-    expired: "সময় শেষ। নতুন Address জেনারেট করুন।",
-    cancelled: "পেমেন্ট বাতিল হয়েছে।"
+    created: "Preparing…",
+    waiting: "Waiting for payment…",
+    confirming: "Payment received, confirming…",
+    confirmed: "Confirmed! Unlocking access…",
+    finished: "Confirmed! Unlocking access…",
+    failed: "Payment didn't go through. Please try again.",
+    expired: "Time expired. Generate a new address.",
+    cancelled: "Payment was cancelled."
   };
 
   const progressPercent =
@@ -174,17 +174,14 @@ export function UnlockModal({ onClose }: { onClose: () => void }) {
       aria-modal="true"
       aria-label="Unlock Exclusive Mentorship"
     >
-      <div className="max-h-[92vh] w-full overflow-y-auto rounded-t-2xl border border-base-700 bg-base-900 p-6 shadow-2xl shadow-black/50 sm:max-w-sm sm:rounded-2xl">
-        <div className="mb-4 flex items-start justify-between gap-3">
+      <div className="max-h-[92vh] w-full overflow-y-auto rounded-t-xl border border-base-800 bg-base-900 p-6 sm:max-w-sm sm:rounded-xl">
+        <div className="mb-5 flex items-start justify-between gap-3">
           <div>
-            <div className="text-xs uppercase tracking-wide text-zinc-500">মেন্টরশিপ আনলক করুন</div>
+            <div className="text-sm text-zinc-500">Unlock Mentorship</div>
             {config && (
-              <div className="mt-1 flex items-baseline gap-2">
+              <div className="mt-1.5 flex items-baseline gap-2">
                 <span className="text-2xl font-semibold text-zinc-50">${config.enrollmentPrice} USDT</span>
                 <span className="text-sm text-zinc-500 line-through">${config.referencePrice}</span>
-                <span className="rounded-full bg-accent-500/15 px-2 py-0.5 text-[11px] font-semibold text-accent-400">
-                  {config.discountPercent}% OFF
-                </span>
               </div>
             )}
           </div>
@@ -192,7 +189,7 @@ export function UnlockModal({ onClose }: { onClose: () => void }) {
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="focus-ring -m-2 rounded-lg p-2 text-zinc-500 transition-colors hover:text-zinc-200"
+            className="focus-ring -m-2 rounded-md p-2 text-zinc-500 transition-colors hover:text-zinc-200"
           >
             ✕
           </button>
@@ -200,17 +197,16 @@ export function UnlockModal({ onClose }: { onClose: () => void }) {
 
         {paid ? (
           <div className="py-8 text-center">
-            <div className="mb-2 text-3xl">✓</div>
-            <p className="text-sm font-medium text-accent-400">পেমেন্ট কনফার্ম হয়েছে।</p>
-            <p className="mt-1 text-sm text-zinc-400">এক্সেস খোলা হচ্ছে…</p>
+            <p className="text-sm font-medium text-accent-400">Payment confirmed.</p>
+            <p className="mt-1 text-sm text-zinc-400">Unlocking access…</p>
           </div>
         ) : loading ? (
-          <div className="py-10 text-center text-sm text-zinc-500">প্রস্তুত হচ্ছে…</div>
+          <div className="py-10 text-center text-sm text-zinc-500">Preparing…</div>
         ) : error ? (
           <div className="py-6 text-center">
             <p className="mb-4 text-sm text-red-400">{error}</p>
             <Button variant="secondary" onClick={onClose} className="w-full">
-              বন্ধ করুন
+              Close
             </Button>
           </div>
         ) : order ? (
@@ -229,53 +225,50 @@ export function UnlockModal({ onClose }: { onClose: () => void }) {
 
             {timeExpired ? (
               <div className="space-y-3 py-4 text-center">
-                <div className="text-3xl">⏱</div>
-                <p className="text-sm text-zinc-300">এই Address-এর মেয়াদ শেষ হয়ে গেছে।</p>
-                <p className="text-xs text-zinc-500">টাকা এখনো পাঠাননি? নতুন Address নিয়ে নিন।</p>
+                <p className="text-sm text-zinc-300">This address has expired.</p>
+                <p className="text-xs text-zinc-500">Haven't sent the payment yet? Get a new address.</p>
                 <Button
                   onClick={() => beginCheckout(true)}
                   disabled={regenerating}
                   className="w-full"
                 >
-                  {regenerating ? "নতুন Address আসছে…" : "নতুন Address জেনারেট করুন"}
+                  {regenerating ? "Generating new address…" : "Generate new address"}
                 </Button>
               </div>
             ) : (
               <>
                 <div className="flex justify-center">
-                  <div className="rounded-xl bg-white p-3">
+                  <div className="rounded-md bg-white p-3">
                     {qrDataUrl ? (
                       <img src={qrDataUrl} alt="Scan to pay" width={180} height={180} />
                     ) : (
                       <div className="flex h-[180px] w-[180px] items-center justify-center text-xs text-zinc-400">
-                        QR লোড হচ্ছে…
+                        Loading QR…
                       </div>
                     )}
                   </div>
                 </div>
 
                 <div className="text-center text-sm text-zinc-400">
-                  ঠিক{" "}
+                  Send exactly{" "}
                   <span className="font-semibold text-zinc-100">
                     {order.payAmount} {(order.payCurrency ?? "").toUpperCase()}
                   </span>{" "}
-                  পাঠান, শুধু <span className="font-semibold text-zinc-200">Network: BEP20</span>-তে।
+                  on <span className="font-semibold text-zinc-200">Network: BEP20</span> only.
                 </div>
 
                 <button
                   type="button"
                   onClick={handleCopy}
-                  className="focus-ring block w-full rounded-lg border border-base-700 bg-base-950 px-3 py-3 text-left transition-colors hover:border-accent-500/60"
+                  className="focus-ring block w-full rounded-md border border-base-700 bg-base-950 px-3 py-3 text-left transition-colors hover:border-base-600"
                 >
-                  <div className="mb-1 text-[10px] uppercase tracking-wide text-zinc-500">
-                    Address (ট্যাপ করে কপি করুন)
-                  </div>
+                  <div className="mb-1 text-xs text-zinc-500">Address (tap to copy)</div>
                   <div className="break-all font-mono text-xs text-zinc-100">{order.payAddress}</div>
-                  {copied && <div className="mt-1 text-xs text-accent-400">কপি হয়েছে ✓</div>}
+                  {copied && <div className="mt-1 text-xs text-accent-400">Copied ✓</div>}
                 </button>
 
-                <div className="flex items-center justify-between rounded-lg border border-base-700 bg-base-950 px-3 py-2.5 text-xs text-zinc-400">
-                  <span>{statusLabel["status" in order ? order.status : "waiting"] ?? "পেমেন্টের অপেক্ষায়…"}</span>
+                <div className="flex items-center justify-between rounded-md border border-base-700 bg-base-950 px-3 py-2.5 text-xs text-zinc-400">
+                  <span>{statusLabel["status" in order ? order.status : "waiting"] ?? "Waiting for payment…"}</span>
                   {secondsLeft !== null && (
                     <span className={`font-mono ${progressPercent <= 15 ? "text-red-400" : "text-zinc-500"}`}>
                       {mm}:{String(ss).padStart(2, "0")}
@@ -286,6 +279,10 @@ export function UnlockModal({ onClose }: { onClose: () => void }) {
             )}
           </div>
         ) : null}
+
+        {/* Discreet attribution, not a feature — smallest readable size,
+            muted, tucked in the corner so it never competes with checkout. */}
+        <div className="mt-4 text-right text-[9px] leading-none text-zinc-700">Powered by NOWPayments</div>
       </div>
     </div>
   );

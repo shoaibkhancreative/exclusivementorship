@@ -1,8 +1,8 @@
 // simulate-payment.js
 //
 // Simulates a NOWPayments IPN webhook call so you can test the
-// "payment confirmed -> user marked paid -> Telegram invite generated"
-// flow WITHOUT sending any real crypto.
+// "payment confirmed -> user marked paid -> lessons unlocked" flow WITHOUT
+// sending any real crypto.
 
 const crypto = require("crypto");
 

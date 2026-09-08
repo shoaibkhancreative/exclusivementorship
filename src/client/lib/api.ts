@@ -29,15 +29,21 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   get: <T>(path: string) => request<T>(path, { method: "GET" }),
   post: <T>(path: string, body?: unknown) =>
-    request<T>(path, { method: "POST", body: body ? JSON.stringify(body) : undefined })
+    request<T>(path, { method: "POST", body: body ? JSON.stringify(body) : undefined }),
+  patch: <T>(path: string, body?: unknown) =>
+    request<T>(path, { method: "PATCH", body: body ? JSON.stringify(body) : undefined }),
+  delete: <T>(path: string) => request<T>(path, { method: "DELETE" })
 };
 
 export interface PublicConfig {
   enrollmentPrice: number;
   referencePrice: number;
   discountPercent: number;
+  freeLessonCount: number;
+  introVideoEmbedUrl: string | null;
   mentorshipPdfUrl: string;
   turnstileSiteKey: string;
+  googleClientId: string | null;
   supportTelegramPremiumUrl: string;
   supportTelegramFreeUrl: string;
 }
@@ -49,7 +55,6 @@ export interface MeResponse {
   currentLesson?: number;
   courseStatus?: "free" | "paid";
   freeLessonCount?: number;
-  telegramGatewayLesson?: number;
 }
 
 export interface OutlineItem {
@@ -62,11 +67,19 @@ export interface OutlineItem {
   state: "locked" | "available" | "current" | "completed" | "preview";
 }
 
+export interface SemesterMeta {
+  number: number;
+  chapterName: string;
+  name: string;
+  tagline: string;
+}
+
 export interface OutlineResponse {
   outline: OutlineItem[];
   currentLesson: number;
   courseStatus: "free" | "paid";
   freeLessonCount: number;
+  semesters: SemesterMeta[];
 }
 
 export interface LessonDetail {
@@ -75,14 +88,9 @@ export interface LessonDetail {
   chapterName: string;
   tagline: string | null;
   description: string | null;
-  youtubeVideoId: string | null;
-  assignmentTitle: string | null;
-  assignmentInstruction: string | null;
+  videoEmbedUrl: string | null;
   videoCompleted: boolean;
-  assignmentSubmitted: boolean;
   isLastFreeLesson: boolean;
-  /** Class 6, for paid users: no video — this lesson is the Telegram handoff. */
-  isTelegramGate: boolean;
   /** Sequentially reached but payment-gated: show a locked preview, not the real video. */
   isLocked: boolean;
 }

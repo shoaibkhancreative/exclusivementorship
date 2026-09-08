@@ -2,26 +2,27 @@ import { useSession } from "../lib/SessionContext";
 import { useConfig } from "../lib/useConfig";
 
 /**
- * Routing uses the real, server-confirmed `courseStatus` from the session
- * (never a visual/UI assumption). Logged-out visitors fall back to the free
- * support destination, matching existing product behavior for anonymous
- * users elsewhere in the app.
+ * Opens the correct Telegram support chat directly — no in-site message
+ * form, no admin inbox to check. Which link is used is decided from the
+ * learner's real, authenticated course_status (never a client-side guess):
+ * free/logged-out visitors go to the free-support Telegram, enrolled
+ * (paid) students go to the dedicated mentor Telegram. Both URLs come from
+ * the server (see routes/config.ts) so they can be changed without a
+ * redeploy. This is the one Telegram touchpoint intentionally kept on the
+ * site — everything else Telegram-related has been removed.
  */
 export function SupportButton() {
   const { me } = useSession();
   const config = useConfig();
 
-  function handleClick() {
-    if (!config) return;
-    const isPremium = me?.authenticated && me.courseStatus === "paid";
-    const url = isPremium ? config.supportTelegramPremiumUrl : config.supportTelegramFreeUrl;
-    window.open(url, "_blank", "noopener,noreferrer");
-  }
+  const isPaid = me?.authenticated && me.courseStatus === "paid";
+  const href = isPaid ? config?.supportTelegramPremiumUrl : config?.supportTelegramFreeUrl;
 
   return (
-    <button
-      type="button"
-      onClick={handleClick}
+    <a
+      href={href || "#"}
+      target="_blank"
+      rel="noopener noreferrer"
       aria-label="Contact support on Telegram"
       title="Support"
       className="focus-ring fixed bottom-5 right-5 z-40 flex items-center justify-center rounded-full bg-accent-500 text-base-950 shadow-lg shadow-black/40 transition-transform hover:scale-105 hover:bg-accent-400 sm:bottom-6 sm:right-6"
@@ -39,6 +40,6 @@ export function SupportButton() {
         <circle cx="12" cy="12.5" r="0.9" fill="currentColor" />
         <circle cx="15.5" cy="12.5" r="0.9" fill="currentColor" />
       </svg>
-    </button>
+    </a>
   );
 }

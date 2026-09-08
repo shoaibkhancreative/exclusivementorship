@@ -32,17 +32,48 @@
     "APP_URL": "https://exclusivementorship.xyz",
     "EMAIL_FROM": "Next Level Trader <support@exclusivementorship.xyz>",
     "MENTORSHIP_PDF_URL": "https://drive.google.com/uc?export=download&id=1s4bVQJob9v7GY26IGOOPBJgnp9ne9CS6",
-    "TELEGRAM_CHANNEL_ID": "-1004456691657",
-    "TELEGRAM_GROUP_ID": "-1004386610368",
     "TURNSTILE_SITE_KEY": "0x4AAAAAAEo5D0k14ZdX8XP5",
-    "ENROLLMENT_PRICE_USDT": "39",
+    // "Sign in with Google" — added as a second login method alongside
+    // email OTP, because OTP emails were landing in spam for some users
+    // (domain reputation, not something fixable in code). This is a public
+    // OAuth Client ID (not a secret) from Google Cloud Console → APIs &
+    // Services → Credentials → OAuth client ID → Web application, with
+    // https://exclusivementorship.xyz added under "Authorized JavaScript
+    // origins". Leave empty to keep Google sign-in hidden and OTP-only.
+    "GOOGLE_CLIENT_ID": "911372350454-hrsmpbv3jnrue6opb801le8qrpdj7838.apps.googleusercontent.com",
+    "ENROLLMENT_PRICE_USDT": "49",
     "REFERENCE_PRICE_USDT": "100",
     "UNDERPAYMENT_TOLERANCE_USDT": "2",
-    "SUPPORT_TELEGRAM_PREMIUM_URL": "https://t.me/AskNLT",
-    "SUPPORT_TELEGRAM_FREE_URL": "https://t.me/exclusivementor"
+    // Support button destinations — the one Telegram touchpoint kept on the
+    // site. Free learners and paid (Exclusive Mentorship) learners are
+    // routed to two different Telegram contacts — which one is used is
+    // decided server-side from the learner's real course_status (see
+    // routes/config.ts + SupportButton.tsx), never a client-side guess.
+    "SUPPORT_TELEGRAM_FREE_URL": "https://t.me/AskNLT",
+    "SUPPORT_TELEGRAM_PREMIUM_URL": "https://t.me/exclusivementor"
   },
 
   "observability": {
     "enabled": true
+  },
+
+  // Scheduled cleanup job (Cron Trigger) — ENABLED. The Worker's exported
+  // `scheduled` handler (src/worker/index.ts, logic in
+  // src/worker/scheduled.ts) deletes stale rows from otp_codes,
+  // rate_limits, and audit_events (financial audit events like
+  // 'payment_confirmed' are always kept). Runs once a day at 03:17 UTC — an
+  // off-peak, deliberately non-round minute to avoid piling up alongside
+  // other crons on the shared Cloudflare fleet.
+  //
+  // Optionally set a non-default retention window by adding
+  // "AUDIT_RETENTION_DAYS": "90" (or whatever you want, in days) to the
+  // "vars" block above — it defaults to 90 days if omitted.
+  //
+  // Cron Triggers are only registered on deploy, not on local edits — run
+  // `npm run deploy` (or `npx wrangler deploy`) to push this, then confirm
+  // with `npx wrangler triggers` or the Cloudflare dashboard (Workers &
+  // Pages → your Worker → Triggers).
+  "triggers": {
+    "crons": ["17 3 * * *"]
   }
 }

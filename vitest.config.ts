@@ -7,6 +7,7 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["tests/**/*.test.ts"],
+    setupFiles: ["./tests/htmlRewriterPolyfill.ts"],
     server: {
       deps: {
         external: ["node:sqlite"]

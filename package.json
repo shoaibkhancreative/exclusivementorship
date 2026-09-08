@@ -14,10 +14,13 @@
     "db:migrate:local": "wrangler d1 migrations apply exclusive-mentorship-db --local",
     "db:migrate:remote": "wrangler d1 migrations apply exclusive-mentorship-db --remote",
     "db:seed:local": "wrangler d1 execute exclusive-mentorship-db --local --file=./seed/seed.sql",
-    "db:seed:remote": "wrangler d1 execute exclusive-mentorship-db --remote --file=./seed/seed.sql"
+    "db:seed:remote": "wrangler d1 execute exclusive-mentorship-db --remote --file=./seed/seed.sql",
+    "admin:create:local": "node scripts/create-admin.mjs",
+    "admin:create:remote": "node scripts/create-admin.mjs --remote"
   },
   "dependencies": {
     "hono": "^4.6.9",
+    "jose": "^5.10.0",
     "qrcode": "^1.5.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

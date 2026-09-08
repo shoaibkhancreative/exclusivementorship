@@ -41,37 +41,6 @@
   database — the `--local` variants only affect your machine's local dev
   copy.
 
-## "Payment confirmed but Telegram link not generated"
-
-This is an explicitly handled case, not a data-loss bug:
-
-- The database intentionally records `payment_status = confirmed` (or
-  `finished`) and `telegram_access.status = 'pending'` as two independent
-  facts. If Telegram invite generation fails (bot not an admin, wrong chat
-  ID, Telegram API hiccup), the user's paid status is **never** rolled back.
-- The user can simply reopen the `/access` page (or you can tell them to),
-  which automatically retries generation — no repayment required.
-- To confirm this for yourself: check `SELECT course_status FROM users
-  WHERE email = '...'` (should be `paid`) and `SELECT status FROM
-  telegram_access WHERE user_id = '...'` (will show `pending` or `failed`
-  until generation succeeds).
-- If it keeps failing, see the next section.
-
-## "Telegram bot cannot generate invite link"
-
-Almost always one of:
-
-1. **Bot isn't an administrator** of the channel/group — add it via
-   Channel/Group Settings → Administrators (SETUP_GUIDE.md STEP 32).
-2. **Wrong chat ID** — `TELEGRAM_CHANNEL_ID`/`TELEGRAM_GROUP_ID` must be the
-   exact numeric ID (e.g. `-1001234567890`), not the `@username`. Re-fetch
-   via @userinfobot per SETUP_GUIDE.md STEP 33.
-3. **Bot lacks "Invite Users via Link" permission** even though it's an
-   admin — re-check the specific permission toggle when adding it.
-4. **`TELEGRAM_BOT_TOKEN` not set or wrong** — `wrangler secret list` to
-   confirm it exists; regenerate via BotFather (`/token`) if you suspect
-   it's wrong, and re-run `wrangler secret put TELEGRAM_BOT_TOKEN`.
-
 ## "Custom domain not working"
 
 1. DNS/nameserver changes can take from a few minutes up to 24-48 hours.
@@ -124,9 +93,14 @@ Almost always one of:
    not arriving" above). If it's `confirming`, that's expected — crypto
    confirmations can take anywhere from a couple of minutes to over an hour
    depending on network congestion and the chosen currency/network.
-3. The pending page polls automatically for a few minutes and then stops;
-   reloading `/payment/pending?order=<id>` restarts polling without
-   creating a new order.
+3. Checkout status is shown live inside the `UnlockModal` popup, which
+   polls `/api/payments/status/:orderId` every few seconds while it's open
+   — there's no separate pending page to reload. If the user closed the
+   popup, ask them to reopen it from `/unlock`; it re-fetches the order's
+   current status immediately rather than starting a new one. If the
+   order's countdown window has expired, the modal shows "This address has
+   expired" with a "Generate New Address" button, which is the expected way
+   to get a fresh address rather than reloading anything.
 
 ## "Turnstile not loading"
 
@@ -142,13 +116,22 @@ Almost always one of:
    script — this is a client-side issue, not a deployment bug; if QA is
    failing locally, try an incognito window with extensions disabled.
 
+## "Support button doesn't open a chat"
+
+- The floating support button is the only Telegram integration left on the
+  site (support conversations only, never course content or access). If
+  clicking it does nothing or opens a broken link, check
+  `SUPPORT_TELEGRAM_FREE_URL` / `SUPPORT_TELEGRAM_PREMIUM_URL` in
+  `wrangler.jsonc` `"vars"` are set to valid `https://t.me/...` links, then
+  redeploy.
+
 ## General debugging tips
 
 - `wrangler tail` streams your production Worker's live logs — invaluable
   for seeing the actual error behind a generic "Something went wrong"
   message shown to users (we deliberately never expose stack traces to the
   client — see `app.onError` in `src/worker/index.ts`).
-- `npm test` re-runs the full automated test suite (72 tests) covering
-  exactly these categories — auth, course progression, rate limiting,
-  payment idempotency, webhook signature verification, and Telegram
-  generation/retry — so regressions surface before you deploy them.
+- `npm test` re-runs the full automated test suite covering exactly these
+  categories — auth, course progression, rate limiting, payment
+  idempotency, and webhook signature verification — so regressions surface
+  before you deploy them.

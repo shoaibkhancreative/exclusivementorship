@@ -8,7 +8,12 @@ import type { Env } from "../src/worker/lib/config";
 async function call(env: Env, path: string, init: RequestInit & { cookie?: string } = {}) {
   const headers = new Headers(init.headers);
   if (init.cookie) headers.set("cookie", init.cookie);
-  if (init.body && !headers.has("content-type")) headers.set("content-type", "application/json");
+  // FormData bodies must NOT get a manual content-type — Request sets its
+  // own multipart/form-data boundary automatically, and overriding it here
+  // would break form parsing on the receiving end.
+  if (init.body && !(init.body instanceof FormData) && !headers.has("content-type")) {
+    headers.set("content-type", "application/json");
+  }
   const request = new Request(`http://localhost${path}`, { ...init, headers });
   return worker.fetch(request, env);
 }
@@ -38,22 +43,36 @@ describe("Lesson access rules (HTTP)", () => {
     expect(body.lessonNumber).toBe(1);
   });
 
-  it("lesson 2 is locked until lesson 1's assignment is submitted", async () => {
+  it("lesson 2 is locked until lesson 1's video is finished", async () => {
     const { cookie } = await loginNewUser(env, "bob@example.com");
     const res = await call(env, "/api/lessons/2", { cookie });
     expect(res.status).toBe(403);
   });
 
-  it("submitting lesson 1's assignment unlocks lesson 2", async () => {
+  it("finishing lesson 1's video unlocks lesson 2", async () => {
     const { cookie } = await loginNewUser(env, "carol@example.com");
 
-    const submit = await call(env, "/api/lessons/1/submit-assignment", { method: "POST", cookie, body: "{}" });
-    expect(submit.status).toBe(200);
-    const submitBody = (await submit.json()) as { nextLessonNumber: number };
-    expect(submitBody.nextLessonNumber).toBe(2);
+    const complete = await call(env, "/api/lessons/1/complete-video", { method: "POST", cookie, body: "{}" });
+    expect(complete.status).toBe(200);
+    const completeBody = (await complete.json()) as { nextLessonNumber: number };
+    expect(completeBody.nextLessonNumber).toBe(2);
 
     const res = await call(env, "/api/lessons/2", { cookie });
     expect(res.status).toBe(200);
+  });
+
+  it("re-finishing an already-completed lesson never regresses current_lesson", async () => {
+    const { user, cookie } = await loginNewUser(env, "nina@example.com");
+    await call(env, "/api/lessons/1/complete-video", { method: "POST", cookie, body: "{}" });
+    await call(env, "/api/lessons/2/complete-video", { method: "POST", cookie, body: "{}" });
+    // Re-complete lesson 1 (e.g. the learner re-watched it) — must not undo
+    // the fact that they've already reached lesson 3.
+    await call(env, "/api/lessons/1/complete-video", { method: "POST", cookie, body: "{}" });
+
+    const updated = await env.DB.prepare("SELECT current_lesson FROM users WHERE id = ?").bind(user.id).first<{
+      current_lesson: number;
+    }>();
+    expect(updated?.current_lesson).toBe(3);
   });
 
   it("lesson 6, once sequentially reached without payment, is a navigable but locked preview (not a 403)", async () => {
@@ -62,17 +81,17 @@ describe("Lesson access rules (HTTP)", () => {
     // Walk through lessons 1-5 to reach the premium boundary.
     let lastGate = false;
     for (let n = 1; n <= 5; n++) {
-      const submit = await call(env, `/api/lessons/${n}/submit-assignment`, { method: "POST", cookie, body: "{}" });
-      const body = (await submit.json()) as { showPremiumGate: boolean };
+      const complete = await call(env, `/api/lessons/${n}/complete-video`, { method: "POST", cookie, body: "{}" });
+      const body = (await complete.json()) as { showPremiumGate: boolean };
       lastGate = body.showPremiumGate;
     }
     expect(lastGate).toBe(true);
 
     const res = await call(env, "/api/lessons/6", { cookie });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { isLocked: boolean; youtubeVideoId: string | null };
+    const body = (await res.json()) as { isLocked: boolean; videoEmbedUrl: string | null };
     expect(body.isLocked).toBe(true);
-    expect(body.youtubeVideoId).toBeNull();
+    expect(body.videoEmbedUrl).toBeNull();
   });
 
   it("lesson 6 is still a real 403 if a free user hasn't sequentially reached it yet", async () => {
@@ -85,7 +104,7 @@ describe("Lesson access rules (HTTP)", () => {
     const { user, cookie } = await loginNewUser(env, "erin@example.com");
 
     for (let n = 1; n <= 5; n++) {
-      await call(env, `/api/lessons/${n}/submit-assignment`, { method: "POST", cookie, body: "{}" });
+      await call(env, `/api/lessons/${n}/complete-video`, { method: "POST", cookie, body: "{}" });
     }
 
     // Simulate a confirmed payment the way the webhook handler would.
@@ -93,39 +112,42 @@ describe("Lesson access rules (HTTP)", () => {
 
     const res = await call(env, "/api/lessons/6", { cookie });
     expect(res.status).toBe(200);
+    const body = (await res.json()) as { isLocked: boolean };
+    expect(body.isLocked).toBe(false);
   });
 
-  it("lesson 6 is a Telegram gateway (no video) for paid users, not for free users", async () => {
-    const { user, cookie } = await loginNewUser(env, "frank@example.com");
-
-    for (let n = 1; n <= 5; n++) {
-      await call(env, `/api/lessons/${n}/submit-assignment`, { method: "POST", cookie, body: "{}" });
-    }
-    await env.DB.prepare("UPDATE users SET course_status = 'paid' WHERE id = ?").bind(user.id).run();
-
-    const res = await call(env, "/api/lessons/6", { cookie });
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { isTelegramGate: boolean; youtubeVideoId: string | null };
-    expect(body.isTelegramGate).toBe(true);
-    expect(body.youtubeVideoId).toBeNull();
+  it("a locked class can't be completed early to skip ahead", async () => {
+    const { cookie } = await loginNewUser(env, "grace2@example.com");
+    // Never watched lesson 1 — trying to complete lesson 2 directly must fail.
+    const res = await call(env, "/api/lessons/2/complete-video", { method: "POST", cookie, body: "{}" });
+    expect(res.status).toBe(403);
   });
 
-  it("no on-site lesson exists past the Telegram gateway, even for paid users", async () => {
-    // By design, only the free lessons and the single Telegram-gateway lesson
-    // are modeled as website rows — everything past the gate is delivered
-    // inside the private Telegram mentorship, never as an on-site video.
-    const { user, cookie } = await loginNewUser(env, "grace@example.com");
-    await env.DB.prepare("UPDATE users SET course_status = 'paid', current_lesson = 8 WHERE id = ?")
-      .bind(user.id)
-      .run();
-
-    const res = await call(env, "/api/lessons/7", { cookie });
-    expect(res.status).toBe(404);
-  });
-
-  it("rejects unauthenticated attempts to submit an assignment", async () => {
-    const res = await call(env, "/api/lessons/1/submit-assignment", { method: "POST", body: "{}" });
+  it("rejects unauthenticated attempts to complete a video", async () => {
+    const res = await call(env, "/api/lessons/1/complete-video", { method: "POST", body: "{}" });
     expect(res.status).toBe(401);
+  });
+});
+
+describe("Admin-editable free-lesson-count changes access immediately (HTTP)", () => {
+  let env: Env;
+  beforeEach(async () => {
+    env = await createTestEnv();
+  });
+
+  it("lowering the free lesson count locks a previously-free class for unpaid users", async () => {
+    const { cookie } = await loginNewUser(env, "yara@example.com");
+    await env.DB.prepare("INSERT INTO site_settings (key, value) VALUES ('free_lesson_count', '2')").run();
+
+    // current_lesson is 1 by default, so lesson 3 is out of sequence too —
+    // advance them there first via the normal video-completion path.
+    await call(env, "/api/lessons/1/complete-video", { method: "POST", cookie, body: "{}" });
+    await call(env, "/api/lessons/2/complete-video", { method: "POST", cookie, body: "{}" });
+
+    const res = await call(env, "/api/lessons/3", { cookie });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { isLocked: boolean };
+    expect(body.isLocked).toBe(true);
   });
 });
 
@@ -337,7 +359,7 @@ describe("Payment order creation + NOWPayments webhook (HTTP)", () => {
     expect(sentBody.price_amount).toBe(39); // server-side ENROLLMENT_PRICE_USDT, not the client's "1"
   });
 
-  it("processes a validly signed webhook, marks the user paid, and preps telegram_access", async () => {
+  it("processes a validly signed webhook and marks the user paid", async () => {
     const { user, cookie } = await loginNewUser(env, "james@example.com");
 
     fetchSpy.mockResolvedValueOnce(
@@ -370,11 +392,6 @@ describe("Payment order creation + NOWPayments webhook (HTTP)", () => {
       .bind(user.id)
       .first<{ course_status: string }>();
     expect(updatedUser?.course_status).toBe("paid");
-
-    const telegramRow = await env.DB.prepare("SELECT status FROM telegram_access WHERE user_id = ?")
-      .bind(user.id)
-      .first<{ status: string }>();
-    expect(telegramRow?.status).toBe("pending");
   });
 
   it("is idempotent under a duplicate/replayed webhook", async () => {
@@ -535,91 +552,5 @@ describe("Payment order creation + NOWPayments webhook (HTTP)", () => {
       .first<{ status: string; underpaid_tolerated: number }>();
     expect(order?.status).toBe("failed");
     expect(order?.underpaid_tolerated).toBe(0);
-  });
-});
-
-describe("Telegram access generation (HTTP)", () => {
-  let env: Env;
-  let fetchSpy: ReturnType<typeof vi.fn>;
-
-  beforeEach(async () => {
-    env = await createTestEnv({ TELEGRAM_BOT_TOKEN: "test-bot-token" });
-    fetchSpy = vi.fn();
-    vi.stubGlobal("fetch", fetchSpy);
-  });
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
-  async function markPaid(userId: string) {
-    await env.DB.prepare("UPDATE users SET course_status = 'paid' WHERE id = ?").bind(userId).run();
-  }
-
-  it("rejects generation for a user who hasn't paid", async () => {
-    const { cookie } = await loginNewUser(env, "liam@example.com");
-    const res = await call(env, "/api/telegram/generate", { method: "POST", cookie });
-    expect(res.status).toBe(402);
-  });
-
-  it("generates channel and group invite links with member_limit=1", async () => {
-    const { user, cookie } = await loginNewUser(env, "mia@example.com");
-    await markPaid(user.id);
-
-    fetchSpy.mockImplementation(
-      async () =>
-        new Response(JSON.stringify({ ok: true, result: { invite_link: "https://t.me/joinchat/abc" } }), { status: 200 })
-    );
-
-    const res = await call(env, "/api/telegram/generate", { method: "POST", cookie });
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { channelInviteLink: string; groupInviteLink: string };
-    expect(body.channelInviteLink).toContain("t.me");
-    expect(body.groupInviteLink).toContain("t.me");
-
-    // Both Telegram API calls must have requested member_limit: 1.
-    for (const call of fetchSpy.mock.calls) {
-      const init = call[1] as RequestInit;
-      const sent = JSON.parse(init.body as string);
-      expect(sent.member_limit).toBe(1);
-    }
-  });
-
-  it("does not generate duplicate invite links on a second call (idempotent)", async () => {
-    const { user, cookie } = await loginNewUser(env, "noah@example.com");
-    await markPaid(user.id);
-
-    fetchSpy.mockImplementation(
-      async () =>
-        new Response(JSON.stringify({ ok: true, result: { invite_link: "https://t.me/joinchat/xyz" } }), { status: 200 })
-    );
-
-    await call(env, "/api/telegram/generate", { method: "POST", cookie });
-    const callCountAfterFirst = fetchSpy.mock.calls.length;
-
-    const second = await call(env, "/api/telegram/generate", { method: "POST", cookie });
-    expect(second.status).toBe(200);
-    expect(fetchSpy.mock.calls.length).toBe(callCountAfterFirst); // no additional Telegram API calls
-  });
-
-  it("keeps the user's paid status intact if Telegram generation fails, allowing a later retry", async () => {
-    const { user, cookie } = await loginNewUser(env, "olivia@example.com");
-    await markPaid(user.id);
-
-    fetchSpy.mockRejectedValueOnce(new Error("network down"));
-    const failedRes = await call(env, "/api/telegram/generate", { method: "POST", cookie });
-    expect(failedRes.status).toBe(502);
-
-    const stillPaid = await env.DB.prepare("SELECT course_status FROM users WHERE id = ?")
-      .bind(user.id)
-      .first<{ course_status: string }>();
-    expect(stillPaid?.course_status).toBe("paid");
-
-    // Retry succeeds without requiring repayment.
-    fetchSpy.mockImplementation(
-      async () =>
-        new Response(JSON.stringify({ ok: true, result: { invite_link: "https://t.me/joinchat/retry" } }), { status: 200 })
-    );
-    const retryRes = await call(env, "/api/telegram/generate", { method: "POST", cookie });
-    expect(retryRes.status).toBe(200);
   });
 });

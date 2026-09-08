@@ -1,11 +1,11 @@
-import { FREE_LESSON_COUNT } from "./config";
-
 export type CourseStatus = "free" | "paid";
 
 export interface AccessInput {
   lessonNumber: number;
   currentLesson: number; // highest lesson the user has unlocked
   courseStatus: CourseStatus;
+  /** Admin-editable — how many classes (in sequence) are free. See lib/config.ts getFreeLessonCount. */
+  freeLessonCount: number;
 }
 
 /**
@@ -14,7 +14,8 @@ export interface AccessInput {
  * Unlike "locked", a "preview" lesson IS navigable — the learner can open it,
  * see its thumbnail, and see the unlock prompt when they hit play. It's what
  * lets the "Next" button stay active right after the last free class instead
- * of dead-ending.
+ * of dead-ending. This now applies uniformly to every premium class, not
+ * just a single hardcoded "gateway" lesson.
  */
 export type LessonState = "locked" | "available" | "current" | "completed" | "preview";
 
@@ -23,47 +24,50 @@ export type LessonState = "locked" | "available" | "current" | "completed" | "pr
  * trusted to enforce this — every protected lesson route re-checks it.
  *
  * Rules:
- *  - Lessons 1..FREE_LESSON_COUNT: accessible once unlocked sequentially
+ *  - Lessons 1..freeLessonCount: accessible once unlocked sequentially
  *    (lessonNumber <= currentLesson).
- *  - Lessons beyond FREE_LESSON_COUNT: additionally require course_status
+ *  - Lessons beyond freeLessonCount: additionally require course_status
  *    === 'paid', regardless of currentLesson.
  */
 export function canAccessLesson(input: AccessInput): boolean {
-  const { lessonNumber, currentLesson, courseStatus } = input;
+  const { lessonNumber, currentLesson, courseStatus, freeLessonCount } = input;
   const sequentiallyUnlocked = lessonNumber <= currentLesson;
   if (!sequentiallyUnlocked) return false;
-  if (lessonNumber > FREE_LESSON_COUNT && courseStatus !== "paid") return false;
+  if (lessonNumber > freeLessonCount && courseStatus !== "paid") return false;
   return true;
 }
 
 /**
- * After completing `lessonNumber`, what should the user's new
+ * After finishing the video for `lessonNumber` (see POST
+ * /lessons/:number/complete-video), what should the user's new
  * `current_lesson` value be? Advances by exactly one, and never regresses.
+ * This is now the ONLY way progression advances — there is no more
+ * assignment-submission path.
  */
 export function computeNextCurrentLesson(lessonNumber: number, currentLesson: number): number {
   return Math.max(currentLesson, lessonNumber + 1);
 }
 
-export function isPremiumLesson(lessonNumber: number): boolean {
-  return lessonNumber > FREE_LESSON_COUNT;
+export function isPremiumLesson(lessonNumber: number, freeLessonCount: number): boolean {
+  return lessonNumber > freeLessonCount;
 }
 
-export function shouldShowPremiumGate(completedLessonNumber: number, courseStatus: CourseStatus): boolean {
-  return completedLessonNumber === FREE_LESSON_COUNT && courseStatus !== "paid";
+export function shouldShowPremiumGate(
+  completedLessonNumber: number,
+  courseStatus: CourseStatus,
+  freeLessonCount: number
+): boolean {
+  return completedLessonNumber === freeLessonCount && courseStatus !== "paid";
 }
 
-export function lessonState(
-  lessonNumber: number,
-  completed: boolean,
-  input: AccessInput
-): LessonState {
+export function lessonState(lessonNumber: number, completed: boolean, input: AccessInput): LessonState {
   if (completed) return "completed";
 
   const sequentiallyUnlocked = lessonNumber <= input.currentLesson;
   if (!sequentiallyUnlocked) return "locked";
 
   // Reached in sequence but payment-gated: navigable preview, not a dead lock.
-  if (isPremiumLesson(lessonNumber) && input.courseStatus !== "paid") return "preview";
+  if (isPremiumLesson(lessonNumber, input.freeLessonCount) && input.courseStatus !== "paid") return "preview";
 
   return lessonNumber === input.currentLesson ? "current" : "available";
 }

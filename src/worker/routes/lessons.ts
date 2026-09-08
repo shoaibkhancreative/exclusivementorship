@@ -1,11 +1,10 @@
 import { Hono } from "hono";
 import type { Env } from "../lib/config";
-import { FREE_LESSON_COUNT, TELEGRAM_GATEWAY_LESSON } from "../lib/config";
+import { getFreeLessonCount } from "../lib/config";
 import type { AppVariables } from "../middleware/session";
 import { requireAuth } from "../middleware/session";
 import { canAccessLesson, computeNextCurrentLesson, lessonState, shouldShowPremiumGate } from "../lib/course";
-import { randomUuid } from "../lib/crypto";
-import { logAuditEvent } from "../db";
+import { listChapters, logAuditEvent } from "../db";
 
 export const lessonRoutes = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
@@ -15,33 +14,32 @@ interface LessonRow {
   title: string;
   chapter_name: string;
   thumbnail_url: string | null;
-  youtube_video_id: string;
+  video_embed_url: string | null;
   description: string | null;
   tagline: string | null;
   is_free: number;
   is_active: number;
   sort_order: number;
-  assignment_title: string | null;
-  assignment_instruction: string | null;
 }
 
 interface ProgressRow {
   lesson_id: number;
   video_completed: number;
-  assignment_submitted: number;
 }
 
 /** Public outline — safe for logged-out visitors too. */
 lessonRoutes.get("/", async (c) => {
   const user = c.get("user");
-  const lessons = await c.env.DB.prepare(
-    "SELECT * FROM lessons WHERE is_active = 1 ORDER BY sort_order ASC"
-  ).all<LessonRow>();
+  const [lessons, chapters, freeLessonCount] = await Promise.all([
+    c.env.DB.prepare("SELECT * FROM lessons WHERE is_active = 1 ORDER BY sort_order ASC").all<LessonRow>(),
+    listChapters(c.env),
+    getFreeLessonCount(c.env)
+  ]);
 
   let progressByLessonId = new Map<number, ProgressRow>();
   if (user) {
     const progress = await c.env.DB.prepare(
-      "SELECT lesson_id, video_completed, assignment_submitted FROM lesson_progress WHERE user_id = ?"
+      "SELECT lesson_id, video_completed FROM lesson_progress WHERE user_id = ?"
     )
       .bind(user.id)
       .all<ProgressRow>();
@@ -53,11 +51,12 @@ lessonRoutes.get("/", async (c) => {
 
   const outline = lessons.results.map((lesson) => {
     const progress = progressByLessonId.get(lesson.id);
-    const completed = Boolean(progress?.assignment_submitted);
+    const completed = Boolean(progress?.video_completed);
     const state = lessonState(lesson.lesson_number, completed, {
       lessonNumber: lesson.lesson_number,
       currentLesson,
-      courseStatus
+      courseStatus,
+      freeLessonCount
     });
     return {
       lessonNumber: lesson.lesson_number,
@@ -65,7 +64,7 @@ lessonRoutes.get("/", async (c) => {
       chapterName: lesson.chapter_name,
       tagline: lesson.tagline,
       thumbnailUrl: lesson.thumbnail_url,
-      isFree: Boolean(lesson.is_free),
+      isFree: lesson.lesson_number <= freeLessonCount,
       state
     };
   });
@@ -74,7 +73,8 @@ lessonRoutes.get("/", async (c) => {
     outline,
     currentLesson,
     courseStatus,
-    freeLessonCount: FREE_LESSON_COUNT
+    freeLessonCount,
+    semesters: chapters.map((ch) => ({ number: ch.sort_order, chapterName: ch.name, name: ch.name, tagline: ch.tagline ?? "" }))
   });
 });
 
@@ -96,21 +96,21 @@ lessonRoutes.get("/:number", async (c) => {
   const user = c.get("user");
   const currentLesson = user?.current_lesson ?? 1;
   const courseStatus = user?.course_status ?? "free";
+  const freeLessonCount = await getFreeLessonCount(c.env);
 
-  const allowed = canAccessLesson({ lessonNumber, currentLesson, courseStatus });
+  const allowed = canAccessLesson({ lessonNumber, currentLesson, courseStatus, freeLessonCount });
 
-  // Class 6 (TELEGRAM_GATEWAY_LESSON) is special-cased so a free user who has
-  // sequentially reached it can still open the page and see it — just locked,
-  // with no real video/content delivered — rather than being bounced away.
-  // This is what lets clicking "Next" after class 5 always land on class 6's
-  // page instead of dead-ending. Real access (`allowed`) is still enforced:
-  // no video id, no assignment, nothing playable is ever sent to the client.
+  // A premium class the learner has sequentially reached (finished
+  // everything before it) but hasn't paid for yet is still openable — just
+  // as a locked preview (thumbnail + unlock prompt, no real video sent to
+  // the client) rather than a dead-end 403. This is what lets "Next" stay
+  // clickable right after the last free class, for every premium class,
+  // not just one hardcoded lesson.
   const sequentiallyReached = lessonNumber <= currentLesson;
-  const isPreviewGate =
-    !allowed && lessonNumber === TELEGRAM_GATEWAY_LESSON && sequentiallyReached && courseStatus !== "paid";
+  const isPreviewGate = !allowed && sequentiallyReached && courseStatus !== "paid";
 
   if (!allowed && !isPreviewGate) {
-    const reason = lessonNumber > FREE_LESSON_COUNT && courseStatus !== "paid" ? "payment_required" : "locked";
+    const reason = lessonNumber > freeLessonCount && courseStatus !== "paid" ? "payment_required" : "locked";
     return c.json({ error: reason, message: "This lesson isn't unlocked yet." }, 403);
   }
 
@@ -121,43 +121,17 @@ lessonRoutes.get("/:number", async (c) => {
       chapterName: lesson.chapter_name,
       tagline: lesson.tagline,
       description: lesson.description,
-      youtubeVideoId: null,
-      assignmentTitle: null,
-      assignmentInstruction: null,
+      videoEmbedUrl: null,
       videoCompleted: false,
-      assignmentSubmitted: false,
       isLastFreeLesson: false,
-      isTelegramGate: false,
       isLocked: true
-    });
-  }
-
-  // Class 6 (TELEGRAM_GATEWAY_LESSON) is the handoff point into the private
-  // Telegram mentorship for PAID users only.
-  const isTelegramGate = lessonNumber === TELEGRAM_GATEWAY_LESSON && courseStatus === "paid";
-
-  if (isTelegramGate) {
-    return c.json({
-      lessonNumber: lesson.lesson_number,
-      title: lesson.title,
-      chapterName: lesson.chapter_name,
-      tagline: lesson.tagline,
-      description: null,
-      youtubeVideoId: null,
-      assignmentTitle: null,
-      assignmentInstruction: null,
-      videoCompleted: false,
-      assignmentSubmitted: false,
-      isLastFreeLesson: false,
-      isTelegramGate: true,
-      isLocked: false
     });
   }
 
   let progress: ProgressRow | null = null;
   if (user) {
     progress = await c.env.DB.prepare(
-      "SELECT lesson_id, video_completed, assignment_submitted FROM lesson_progress WHERE user_id = ? AND lesson_id = ?"
+      "SELECT lesson_id, video_completed FROM lesson_progress WHERE user_id = ? AND lesson_id = ?"
     )
       .bind(user.id, lesson.id)
       .first<ProgressRow>();
@@ -169,22 +143,30 @@ lessonRoutes.get("/:number", async (c) => {
     chapterName: lesson.chapter_name,
     tagline: lesson.tagline,
     description: lesson.description,
-    youtubeVideoId: lesson.youtube_video_id,
-    assignmentTitle: lesson.assignment_title,
-    assignmentInstruction: lesson.assignment_instruction,
+    videoEmbedUrl: lesson.video_embed_url,
     videoCompleted: Boolean(progress?.video_completed),
-    assignmentSubmitted: Boolean(progress?.assignment_submitted),
-    isLastFreeLesson: lessonNumber === FREE_LESSON_COUNT,
-    isTelegramGate: false,
+    isLastFreeLesson: lessonNumber === freeLessonCount,
     isLocked: false
   });
 });
 
+/**
+ * Marks the video for `lessonNumber` as watched to the end, and — this is
+ * the entire "must finish this video before moving on" mechanism — is the
+ * ONLY thing that advances `users.current_lesson`. The client only calls
+ * this once its player actually reports the video ended (YouTube's IFrame
+ * API "ended" state, or Bunny.net's player.js "ended" event — see
+ * Lesson.tsx), never on page load. As with every other lesson route, the
+ * server still re-checks `canAccessLesson` itself — a client that calls
+ * this out of turn cannot unlock anything it wasn't already allowed to
+ * reach.
+ */
 lessonRoutes.post("/:number/complete-video", requireAuth, async (c) => {
   const lessonNumber = Number(c.req.param("number"));
   const user = c.get("user")!;
+  const freeLessonCount = await getFreeLessonCount(c.env);
 
-  const lesson = await c.env.DB.prepare("SELECT id FROM lessons WHERE lesson_number = ?")
+  const lesson = await c.env.DB.prepare("SELECT id FROM lessons WHERE lesson_number = ? AND is_active = 1")
     .bind(lessonNumber)
     .first<{ id: number }>();
   if (!lesson) return c.json({ error: "not_found" }, 404);
@@ -192,56 +174,15 @@ lessonRoutes.post("/:number/complete-video", requireAuth, async (c) => {
   const allowed = canAccessLesson({
     lessonNumber,
     currentLesson: user.current_lesson,
-    courseStatus: user.course_status
+    courseStatus: user.course_status,
+    freeLessonCount
   });
   if (!allowed) return c.json({ error: "locked" }, 403);
 
-  // Class 6 has no video for paid users (Telegram gateway) — nothing to mark.
-  if (lessonNumber === TELEGRAM_GATEWAY_LESSON && user.course_status === "paid") {
-    return c.json({ ok: true });
-  }
-
   await c.env.DB.prepare(
-    `INSERT INTO lesson_progress (user_id, lesson_id, video_completed, updated_at)
-     VALUES (?, ?, 1, datetime('now'))
-     ON CONFLICT(user_id, lesson_id) DO UPDATE SET video_completed = 1, updated_at = datetime('now')`
-  )
-    .bind(user.id, lesson.id)
-    .run();
-
-  return c.json({ ok: true });
-});
-
-lessonRoutes.post("/:number/submit-assignment", requireAuth, async (c) => {
-  const lessonNumber = Number(c.req.param("number"));
-  const user = c.get("user")!;
-  const body = await c.req.json<{ fileName?: string }>().catch(() => ({}) as { fileName?: string });
-
-  const lesson = await c.env.DB.prepare("SELECT id FROM lessons WHERE lesson_number = ?")
-    .bind(lessonNumber)
-    .first<{ id: number }>();
-  if (!lesson) return c.json({ error: "not_found" }, 404);
-
-  const allowed = canAccessLesson({
-    lessonNumber,
-    currentLesson: user.current_lesson,
-    courseStatus: user.course_status
-  });
-  if (!allowed) return c.json({ error: "locked" }, 403);
-
-  // Record the submission event (metadata only — no file is ever stored,
-  // per product spec: assignments are an engagement mechanic, not
-  // human-reviewed submissions).
-  await c.env.DB.prepare(
-    `INSERT INTO assignments (id, user_id, lesson_id, file_name) VALUES (?, ?, ?, ?)`
-  )
-    .bind(randomUuid(), user.id, lesson.id, body.fileName ?? null)
-    .run();
-
-  await c.env.DB.prepare(
-    `INSERT INTO lesson_progress (user_id, lesson_id, assignment_submitted, completed_at, updated_at)
+    `INSERT INTO lesson_progress (user_id, lesson_id, video_completed, completed_at, updated_at)
      VALUES (?, ?, 1, datetime('now'), datetime('now'))
-     ON CONFLICT(user_id, lesson_id) DO UPDATE SET assignment_submitted = 1, completed_at = datetime('now'), updated_at = datetime('now')`
+     ON CONFLICT(user_id, lesson_id) DO UPDATE SET video_completed = 1, completed_at = datetime('now'), updated_at = datetime('now')`
   )
     .bind(user.id, lesson.id)
     .run();
@@ -251,12 +192,14 @@ lessonRoutes.post("/:number/submit-assignment", requireAuth, async (c) => {
     .bind(nextCurrentLesson, user.id)
     .run();
 
-  await logAuditEvent(c.env, "assignment_submitted", { userId: user.id, metadata: { lessonNumber } });
+  await logAuditEvent(c.env, "video_completed", {
+    userId: user.id,
+    metadata: { lessonNumber }
+  });
 
   return c.json({
     ok: true,
-    message: "Assignment submitted. Your next lesson is now unlocked.",
     nextLessonNumber: nextCurrentLesson,
-    showPremiumGate: shouldShowPremiumGate(lessonNumber, user.course_status)
+    showPremiumGate: shouldShowPremiumGate(lessonNumber, user.course_status, freeLessonCount)
   });
 });

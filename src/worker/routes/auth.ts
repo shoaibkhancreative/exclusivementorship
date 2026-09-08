@@ -1,11 +1,12 @@
 import { Hono } from "hono";
 import type { Env } from "../lib/config";
-import { RATE_LIMITS, FREE_LESSON_COUNT, TELEGRAM_GATEWAY_LESSON } from "../lib/config";
+import { RATE_LIMITS, getFreeLessonCount, OTP_RESEND_COOLDOWN_SECONDS } from "../lib/config";
 import type { AppVariables } from "../middleware/session";
 import { readCookie, revokeSession, buildLogoutCookie, buildSessionCookie, createSession, issueOtp, verifyOtp } from "../auth";
-import { checkRateLimit, logAuditEvent } from "../db";
+import { checkRateLimit, getOrCreateUserByGoogle, logAuditEvent, secondsSinceLastOtpRequest } from "../db";
 import { sendOtpEmail } from "../services/email";
 import { verifyTurnstile } from "../services/turnstile";
+import { verifyGoogleIdToken } from "../services/google";
 import { sha256Hex } from "../lib/crypto";
 import { SESSION_COOKIE_NAME } from "../lib/config";
 
@@ -65,6 +66,14 @@ authRoutes.post("/request-otp", async (c) => {
     );
   }
 
+  const secondsSinceLast = await secondsSinceLastOtpRequest(c.env, email);
+  if (secondsSinceLast !== null && secondsSinceLast < OTP_RESEND_COOLDOWN_SECONDS) {
+    return c.json(
+      { error: "resend_cooldown", message: "Please wait a moment before requesting another code." },
+      429
+    );
+  }
+
   const code = await issueOtp(c.env, email);
 
   try {
@@ -120,6 +129,48 @@ authRoutes.post("/verify-otp", async (c) => {
   return c.json({ ok: true, user: { email: result.user.email, courseStatus: result.user.course_status } });
 });
 
+/**
+ * Alternative to email-OTP login. Added because OTP emails were landing in
+ * some users' spam folders (a domain-reputation issue, not something a code
+ * change fixes quickly) — for anyone with a Google account this skips email
+ * delivery entirely, since Google hands us an already-verified email
+ * directly. OTP remains fully intact as the primary/fallback method for
+ * everyone else.
+ */
+authRoutes.post("/google", async (c) => {
+  const body = await c.req.json<{ credential?: string }>().catch(() => ({}) as { credential?: string });
+  const credential = (body.credential ?? "").trim();
+
+  if (!credential) {
+    return c.json({ error: "invalid_input", message: "Missing Google credential." }, 400);
+  }
+
+  const ip = c.req.header("cf-connecting-ip") ?? "unknown";
+  const ipHash = await sha256Hex(ip);
+
+  const rate = await checkRateLimit(c.env, `google_auth:ip:${ipHash}`, RATE_LIMITS.googleAuthPerIpPer10Min, 600);
+  if (!rate.allowed) {
+    return c.json({ error: "rate_limited", message: "Too many attempts. Please try again shortly." }, 429);
+  }
+
+  const result = await verifyGoogleIdToken(c.env, credential);
+  if (!result.ok) {
+    const messages: Record<string, string> = {
+      invalid_token: "Google sign-in failed. Please try again.",
+      email_not_verified: "That Google account's email isn't verified.",
+      not_configured: "Google sign-in isn't available right now."
+    };
+    return c.json({ error: result.reason, message: messages[result.reason] }, 400);
+  }
+
+  const user = await getOrCreateUserByGoogle(c.env, result.identity.sub, result.identity.email);
+  const token = await createSession(c.env, user.id);
+  c.header("Set-Cookie", buildSessionCookie(c.env, token));
+  await logAuditEvent(c.env, "login_google", { userId: user.id, ipHash });
+
+  return c.json({ ok: true, user: { email: user.email, courseStatus: user.course_status } });
+});
+
 authRoutes.post("/logout", async (c) => {
   const token = readCookie(c.req.header("cookie") ?? null, SESSION_COOKIE_NAME);
   if (token) await revokeSession(c.env, token);
@@ -136,7 +187,6 @@ authRoutes.get("/me", async (c) => {
     displayName: deriveDisplayName(user.email),
     currentLesson: user.current_lesson,
     courseStatus: user.course_status,
-    freeLessonCount: FREE_LESSON_COUNT,
-    telegramGatewayLesson: TELEGRAM_GATEWAY_LESSON
+    freeLessonCount: await getFreeLessonCount(c.env)
   });
 });

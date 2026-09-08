@@ -2,7 +2,7 @@
 
 A click-by-click guide to get Exclusive Mentorship live at
 `exclusivementorship.xyz`. Written for someone who hasn't used Cloudflare
-Workers, D1, NOWPayments, Resend, or Telegram's Bot API before.
+Workers, D1, NOWPayments, or Resend before.
 
 Do these sections in order. Each one tells you exactly what to click and
 exactly what value to paste where.
@@ -154,7 +154,7 @@ Paste it when prompted.
 
 ---
 
-## Part 6 — NOWPayments (accepts the $39 USDT payment)
+## Part 6 — NOWPayments (accepts the $49 USDT payment)
 
 **STEP 22.** Go to https://nowpayments.io and create a merchant account.
 Complete whatever verification they require.
@@ -183,72 +183,31 @@ Paste each value when prompted.
 
 **STEP 27.** Before going live, use NOWPayments' sandbox/test mode (see
 their dashboard for a toggle) to send yourself a test $1 payment and confirm
-you land on the "Payment successful" Telegram-access screen.
+you land on the "Payment successful" screen with your lessons unlocked.
 
 ---
 
-## Part 7 — Telegram bot (delivers mentorship access)
+## Part 7 — The Mentorship Details PDF
 
-**STEP 28.** Open Telegram, search for **@BotFather**, and start a chat.
-
-**STEP 29.** Send `/newbot`. Follow the prompts (pick a name, then a
-username ending in `bot`). BotFather replies with a **token** that looks
-like `123456789:ABCDefGhIJKlmNoPQRsTUVwxyZ`. Copy it.
-
-**STEP 30.** In your terminal:
-
-```bash
-wrangler secret put TELEGRAM_BOT_TOKEN
-```
-
-Paste the token when prompted.
-
-**STEP 31.** Create your two Telegram destinations if you haven't already:
-a **Channel** (e.g. "NLT — Exclusive Mentorship") and a **Group** (e.g.
-"NLT — Mentorship Chat").
-
-**STEP 32.** In each one: **Channel/Group settings** → **Administrators** →
-**Add Admin** → search for your bot's username → add it. Make sure
-**"Invite Users via Link"** is enabled for the bot (it usually is by
-default for admins).
-
-**STEP 33.** Get each chat's ID:
-- Forward any message from the channel (and separately from the group) to
-  **@userinfobot** or **@JsonDumpBot** on Telegram — it will reply with the
-  chat ID (a negative number like `-1001234567890` for channels/groups).
-
-**STEP 34.** Open `wrangler.jsonc`, find `"TELEGRAM_CHANNEL_ID"` and
-`"TELEGRAM_GROUP_ID"` under `"vars"`, and paste in the two IDs.
-
-**STEP 35.** After you deploy (Part 9), do a real test: enroll as a test
-user, click "Join Channel"/"Join Group" from the Access page, and confirm
-you're admitted. Then try opening the *same* invite link a second time from
-a different Telegram account — it should be refused, since each link only
-admits one member.
-
----
-
-## Part 8 — The Mentorship Details PDF
-
-**STEP 36.** Upload your mentorship-details PDF anywhere that gives you a
+**STEP 28.** Upload your mentorship-details PDF anywhere that gives you a
 direct, public URL (Cloudflare R2 with a public bucket, Google Drive with
 "Anyone with the link" sharing set to a direct-download link, your own
 site, etc.).
 
-**STEP 37.** Open `wrangler.jsonc`, find `"MENTORSHIP_PDF_URL"` under
+**STEP 29.** Open `wrangler.jsonc`, find `"MENTORSHIP_PDF_URL"` under
 `"vars"`, and paste the URL in.
 
 ---
 
-## Part 9 — Session secret & first deploy
+## Part 8 — Session secret & first deploy
 
-**STEP 38.** Generate a random secret:
+**STEP 30.** Generate a random secret:
 
 ```bash
 openssl rand -hex 32
 ```
 
-**STEP 39.**
+**STEP 31.**
 
 ```bash
 wrangler secret put SESSION_SECRET
@@ -256,7 +215,7 @@ wrangler secret put SESSION_SECRET
 
 Paste the random string you just generated.
 
-**STEP 40.** Deploy:
+**STEP 32.** Deploy:
 
 ```bash
 npm run deploy
@@ -268,27 +227,124 @@ your real domain.
 
 ---
 
-## Part 10 — Connect exclusivementorship.xyz
+## Part 9 — Connect exclusivementorship.xyz
 
-**STEP 41.** Cloudflare Dashboard → **Add a Site** → type
+**STEP 33.** Cloudflare Dashboard → **Add a Site** → type
 `exclusivementorship.xyz` → follow the prompts.
 
-**STEP 42.** Cloudflare shows you two nameservers (e.g.
+**STEP 34.** Cloudflare shows you two nameservers (e.g.
 `aaron.ns.cloudflare.com`, `uma.ns.cloudflare.com`). Go to wherever you
 registered the domain (GoDaddy, Namecheap, etc.) → find "Nameservers" →
 replace the existing ones with Cloudflare's two. This can take up to 24
 hours to fully propagate, though it's often much faster.
 
-**STEP 43.** Back in Cloudflare: **Workers & Pages** → click your
+**STEP 35.** Back in Cloudflare: **Workers & Pages** → click your
 `exclusive-mentorship` Worker → **Settings** → **Domains & Routes** → **Add
 Custom Domain** → type `exclusivementorship.xyz` → **Add Domain**.
 Cloudflare provisions SSL automatically — no separate certificate steps
 needed.
 
-**STEP 44.** Also update `APP_URL` in `wrangler.jsonc` `"vars"` to
+**STEP 36.** Also update `APP_URL` in `wrangler.jsonc` `"vars"` to
 `https://exclusivementorship.xyz` if it isn't already, then run
 `npm run deploy` again so the app knows its own public URL (used in email
 links and payment redirect URLs).
+
+---
+
+---
+
+## Optional — Enabling the scheduled cleanup job
+
+The Worker includes a `scheduled` handler (`src/worker/scheduled.ts`) that
+deletes stale rows from `otp_codes`, `rate_limits`, and `audit_events` —
+tables that otherwise grow forever. It ships **disabled**: no Cron Trigger
+is registered, so it never runs until you turn it on. This isn't urgent at
+low traffic, but is ready for when it becomes one.
+
+**To enable it:**
+
+1. Open `wrangler.jsonc` and find the commented-out `"triggers"` block near
+   the bottom of the file. Uncomment it:
+   ```jsonc
+   "triggers": {
+     "crons": ["17 3 * * *"]
+   }
+   ```
+   (This example runs once a day at 03:17 UTC — edit the cron expression if
+   you'd prefer a different time.)
+2. (Optional) In the `"vars"` block, add `"AUDIT_RETENTION_DAYS": "90"` to
+   set how long `audit_events` rows are kept before deletion (default is 90
+   days if you skip this). Rows with `event_type` `payment_confirmed` or
+   `payment_underpaid_tolerated` are always kept regardless of this setting.
+3. Run `npm run deploy`. Cron Triggers are only registered when you deploy
+   — editing `wrangler.jsonc` locally has no effect until then.
+4. Confirm it's live: Cloudflare Dashboard → **Workers & Pages** → your
+   Worker → **Settings** → **Triggers**, or run `npx wrangler triggers`.
+
+Once enabled, each run logs a one-line summary per table (rows deleted, or
+an error) — visible via `wrangler tail` or the dashboard's Logs tab.
+
+---
+
+## Optional — Google Sign-In (fixes OTP emails landing in spam)
+
+Email-OTP login still works exactly as before and needs nothing extra. This
+adds a **second, optional** login method — "Continue with Google" — so
+anyone with a Google account can log in without ever waiting on an email at
+all. It's the fastest fix for OTP codes landing in spam, since it sidesteps
+email delivery entirely for those users; it doesn't replace OTP, which stays
+as the only method for everyone else.
+
+**STEP 1.** Go to
+[Google Cloud Console → Credentials](https://console.cloud.google.com/apis/credentials)
+(create a new project first if you don't have one — it's free, no billing
+needed for this).
+
+**STEP 2.** **Create Credentials** → **OAuth client ID**.
+   - If prompted, configure the **OAuth consent screen** first: External,
+     app name "Exclusive Mentorship", your support email — the rest can be
+     left default.
+   - Application type: **Web application**.
+   - Name: anything, e.g. "Exclusive Mentorship Web".
+   - **Authorized JavaScript origins** — add both:
+     - `https://exclusivementorship.xyz`
+     - `http://localhost:5173` (for local dev, if you use the Vite dev server)
+   - Leave **Authorized redirect URIs** empty — this flow doesn't use redirects.
+
+**STEP 3.** Copy the **Client ID** (looks like
+`123456789-abc123.apps.googleusercontent.com`). This is **not a secret** —
+it's meant to be visible in the browser, so it's a plain `var`, not a
+`wrangler secret`.
+
+**STEP 4.** Open `wrangler.jsonc`, find `"GOOGLE_CLIENT_ID"` under `"vars"`,
+and paste it in.
+
+**STEP 5.** Run `npm run db:migrate:remote` so migration
+`0007_add_google_sub.sql` runs against your production D1 database — it just
+adds one nullable column, no data is touched. (Use `db:migrate:local` first
+if you want to try it locally.)
+
+**STEP 6.** Run `npm run deploy`.
+
+That's it — the "Continue with Google" button appears on the login page
+automatically once `GOOGLE_CLIENT_ID` is set, and stays hidden if it's left
+empty. If someone already has an account from email-OTP login, signing in
+with Google using the *same* email links to that same account automatically
+— no duplicate accounts, no lost progress.
+
+---
+
+## Optional — Changing the support Telegram links
+
+The floating support button (bottom-right corner of the site) opens
+Telegram — this is the only Telegram integration left on the site, used
+purely for support conversations, not for delivering course content. It
+already points at working defaults set in `wrangler.jsonc` `"vars"`
+(`SUPPORT_TELEGRAM_FREE_URL` and `SUPPORT_TELEGRAM_PREMIUM_URL`). To point
+it at your own Telegram chats instead, replace those two URLs with links to
+your own support chat/channel, then run `npm run deploy`. Paid students see
+`SUPPORT_TELEGRAM_PREMIUM_URL`; everyone else sees
+`SUPPORT_TELEGRAM_FREE_URL`.
 
 ---
 
@@ -296,8 +352,8 @@ links and payment redirect URLs).
 
 Visit `https://exclusivementorship.xyz`, click "Start Learning", log in with
 your own email, and walk the whole flow yourself once end-to-end (5 free
-lessons → premium gate → PDF → payment → Telegram access) before announcing
-it publicly.
+lessons → premium gate → PDF → payment → unlocked mentorship lessons) before
+announcing it publicly.
 
 If anything doesn't behave as expected, check **TROUBLESHOOTING.md** first —
 most first-time issues are DNS propagation delays or a secret that wasn't

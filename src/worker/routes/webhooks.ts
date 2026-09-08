@@ -82,8 +82,7 @@ webhookRoutes.post("/nowpayments", async (c) => {
 
   // --- Idempotency guard ----------------------------------------------------
   // If we've already recorded this order as confirmed/finished, acknowledge
-  // the (likely duplicate) webhook without doing any further work — this is
-  // what prevents duplicate Telegram invite generation on webhook replay.
+  // the (likely duplicate) webhook without doing any further work.
   if (order.confirmed_at && PAID_STATUSES.has(mappedStatus)) {
     return c.json({ ok: true, alreadyProcessed: true });
   }
@@ -125,17 +124,6 @@ webhookRoutes.post("/nowpayments", async (c) => {
     // Mark the user paid (idempotent — repeated UPDATEs are harmless).
     await c.env.DB.prepare(
       `UPDATE users SET course_status = 'paid', paid_at = COALESCE(paid_at, datetime('now')), updated_at = datetime('now') WHERE id = ?`
-    )
-      .bind(order.user_id)
-      .run();
-
-    // Ensure a telegram_access row exists in 'pending' state so the access
-    // page knows to (re)try generation — but never overwrite an already
-    // 'generated' row (that would be the duplicate-invite bug this guards
-    // against).
-    await c.env.DB.prepare(
-      `INSERT INTO telegram_access (user_id, status) VALUES (?, 'pending')
-       ON CONFLICT(user_id) DO NOTHING`
     )
       .bind(order.user_id)
       .run();

@@ -30,7 +30,7 @@ paymentRoutes.post("/create-order", requireAuth, async (c) => {
   const user = c.get("user")!;
 
   if (user.course_status === "paid") {
-    return c.json({ error: "already_paid", message: "আপনি ইতিমধ্যে ভর্তি হয়ে গেছেন।" }, 400);
+    return c.json({ error: "already_paid", message: "You're already enrolled." }, 400);
   }
 
   // Reuse an existing non-terminal order if one already exists, so we don't
@@ -81,11 +81,11 @@ paymentRoutes.post("/create-order", requireAuth, async (c) => {
     3600
   );
   if (!rate.allowed) {
-    return c.json({ error: "rate_limited", message: "আরেকটি পেমেন্ট চেষ্টা করার আগে একটু অপেক্ষা করুন।" }, 429);
+    return c.json({ error: "rate_limited", message: "Please wait a moment before trying another payment." }, 429);
   }
 
   const orderId = randomUuid();
-  const amount = getEnrollmentAmount(c.env);
+  const amount = await getEnrollmentAmount(c.env);
 
   await c.env.DB.prepare(
     `INSERT INTO payment_orders (id, user_id, amount, currency, status) VALUES (?, ?, ?, ?, 'created')`
@@ -124,7 +124,7 @@ paymentRoutes.post("/create-order", requireAuth, async (c) => {
     // eslint-disable-next-line no-console
     console.error("createNowPaymentsPayment failed", err);
     await c.env.DB.prepare("UPDATE payment_orders SET status = 'failed' WHERE id = ?").bind(orderId).run();
-    return c.json({ error: "payment_creation_failed", message: "পেমেন্ট শুরু করা যায়নি। আবার চেষ্টা করুন।" }, 502);
+    return c.json({ error: "payment_creation_failed", message: "Couldn't start the payment. Please try again." }, 502);
   }
 });
 
