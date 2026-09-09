@@ -42,6 +42,13 @@ export function VideoStage({ lessonNumber, rawEmbedUrl, title, onEnded, requires
   const needsToken = requiresToken && isBunnyHost(rawEmbedUrl);
   const [signedUrl, setSignedUrl] = useState<string | null>(needsToken ? null : rawEmbedUrl);
   const [tokenError, setTokenError] = useState(false);
+  // Drives the watermark's animation (see WatermarkOverlay.tsx): starts
+  // false so it's motionless before playback begins, flips true/false in
+  // lockstep with the player's own real play/pause events (VideoPlayer's
+  // onPlayingChange — never a timer or a guess), and is reset to false
+  // below whenever the lesson changes, since VideoPlayer is remounted per
+  // lesson (`key={lessonNumber}`) and its play state doesn't carry over.
+  const [isPlaying, setIsPlaying] = useState(false);
 
   const fetchToken = useCallback(() => {
     setTokenError(false);
@@ -58,6 +65,7 @@ export function VideoStage({ lessonNumber, rawEmbedUrl, title, onEnded, requires
   }, [lessonNumber]);
 
   useEffect(() => {
+    setIsPlaying(false);
     if (!needsToken) {
       setSignedUrl(rawEmbedUrl);
       return;
@@ -105,8 +113,14 @@ export function VideoStage({ lessonNumber, rawEmbedUrl, title, onEnded, requires
 
   return (
     <FullscreenStage>
-      <VideoPlayer key={lessonNumber} embedUrl={signedUrl} title={title} onEnded={onEnded} />
-      {watermarkLabel && <WatermarkOverlay label={watermarkLabel} />}
+      <VideoPlayer
+        key={lessonNumber}
+        embedUrl={signedUrl}
+        title={title}
+        onEnded={onEnded}
+        onPlayingChange={setIsPlaying}
+      />
+      {watermarkLabel && <WatermarkOverlay label={watermarkLabel} playing={isPlaying} />}
     </FullscreenStage>
   );
 }

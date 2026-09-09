@@ -18,6 +18,14 @@ import { useEffect, useRef, useState } from "react";
  * 25–40% range) so it stays legible on a recording without being
  * distracting during normal viewing.
  *
+ * The `playing` prop (driven by VideoStage.tsx from the actual player's own
+ * play/pause events, never a timer) pauses/resumes the drift animation in
+ * lockstep with real playback — motionless before the viewer presses play,
+ * frozen the instant they pause, moving again on resume. This is purely for
+ * the visual impression that the mark is part of the video rather than a
+ * separate layer; it changes nothing about the deterrent-only nature above.
+ *
+
  * The MutationObserver below and the per-mount randomized class/id name
  * raise the bar against a *casual* "select element, hide it" attempt or a
  * shared ad-blocker-style filter list keyed on a fixed selector — they are
@@ -27,11 +35,13 @@ import { useEffect, useRef, useState } from "react";
  * "deterrent, not prevention" framing as the rest of this file.
  */
 
-const DRIFT_DURATION_SECONDS = 5;
+const DRIFT_DURATION_SECONDS = 12;
 
 interface WatermarkOverlayProps {
   /** e.g. the viewer's email or a short user ID — never more than that. */
   label: string;
+  /** True while the underlying video is actually playing — see the file-level comment above. */
+  playing: boolean;
 }
 
 function randomSuffix(): string {
@@ -47,7 +57,7 @@ function randomSuffix(): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-export function WatermarkOverlay({ label }: WatermarkOverlayProps) {
+export function WatermarkOverlay({ label, playing }: WatermarkOverlayProps) {
   const [suffix] = useState(randomSuffix);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
@@ -166,7 +176,17 @@ export function WatermarkOverlay({ label }: WatermarkOverlayProps) {
 
   return (
     <div ref={wrapperRef} aria-hidden="true" className={wrapperClass}>
-      <span>{label}</span>
+      {/*
+        animation-play-state is set inline on the SPAN, not the wrapper DIV —
+        the tamper-resistance MutationObserver above only watches the
+        wrapper's own style/class attributes (see its `.observe(node, ...)`
+        call), so toggling this on the span every time `playing` changes can
+        never trip, race with, or get reverted by that observer. CSS
+        preserves the animation's current position while paused, so pausing
+        the video freezes the mark exactly where it was instead of resetting
+        it — same as pausing a real burned-in overlay would look.
+      */}
+      <span style={{ animationPlayState: playing ? "running" : "paused" }}>{label}</span>
     </div>
   );
 }

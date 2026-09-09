@@ -4,6 +4,17 @@ interface VideoPlayerProps {
   embedUrl: string;
   title: string;
   onEnded: () => void;
+  /**
+   * Fires with the player's real play/pause state whenever it changes
+   * (true = actively playing). Only ever reflects a genuine player event —
+   * never a guess — so the watermark overlay (see VideoStage.tsx) can be
+   * driven by it and look like it's baked into the video itself: still
+   * before playback starts, moving while playing, frozen the instant the
+   * viewer pauses. Optional — callers that don't care about this can omit
+   * it, and hosts we can't introspect (see "Any other embed host" below)
+   * simply never call it.
+   */
+  onPlayingChange?: (playing: boolean) => void;
 }
 
 /**
@@ -14,22 +25,26 @@ interface VideoPlayerProps {
  *
  *  - YouTube (youtube.com / youtube-nocookie.com): uses the official
  *    IFrame Player API (`enablejsapi=1` + the youtube.com/iframe_api
- *    script) and listens for the "ended" player state.
+ *    script) and listens for the "ended" player state, plus PLAYING/PAUSED
+ *    for onPlayingChange.
  *  - Bunny.net (mediadelivery.net / b-cdn.net iframe embeds): loads Bunny's
  *    official player.js library (assets.mediadelivery.net) and uses it to
- *    listen for the "ended" event — a raw postMessage listener without this
- *    library never receives anything, since Bunny's player only starts
- *    emitting events after player.js completes its handshake with the
- *    iframe (https://github.com/embedly/player.js).
+ *    listen for the "ended", "play", and "pause" events — a raw postMessage
+ *    listener without this library never receives anything, since Bunny's
+ *    player only starts emitting events after player.js completes its
+ *    handshake with the iframe (https://github.com/embedly/player.js).
  *
  * Any other embed host still plays fine but can't be auto-detected as
- * "finished" — the fallback "I've finished this video" button covers that
- * case (see Lesson.tsx).
+ * "finished" or introspected for play/pause — the fallback "I've finished
+ * this video" button covers completion (see Lesson.tsx), and
+ * onPlayingChange is simply never called for these.
  */
-export function VideoPlayer({ embedUrl, title, onEnded }: VideoPlayerProps) {
+export function VideoPlayer({ embedUrl, title, onEnded, onPlayingChange }: VideoPlayerProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const onEndedRef = useRef(onEnded);
   onEndedRef.current = onEnded;
+  const onPlayingChangeRef = useRef(onPlayingChange);
+  onPlayingChangeRef.current = onPlayingChange;
 
   const isYouTube = /(^|\.)youtube(-nocookie)?\.com$/.test(safeHost(embedUrl));
   const isBunny = /(^|\.)(mediadelivery\.net|b-cdn\.net)$/.test(safeHost(embedUrl));
@@ -47,8 +62,16 @@ export function VideoPlayer({ embedUrl, title, onEnded }: VideoPlayerProps) {
       player = new YT.Player(iframeRef.current, {
         events: {
           onStateChange: (event: { data: number }) => {
-            // YT.PlayerState.ENDED === 0
-            if (event.data === 0) onEndedRef.current();
+            // YT.PlayerState: ENDED=0, PLAYING=1, PAUSED=2, BUFFERING=3,
+            // CUED=5, and -1 (UNSTARTED). Only PLAYING counts as "playing"
+            // for the watermark — buffering/cued/unstarted should all read
+            // as "not moving yet", same as paused.
+            if (event.data === 0) {
+              onEndedRef.current();
+              onPlayingChangeRef.current?.(false);
+            } else {
+              onPlayingChangeRef.current?.(event.data === 1);
+            }
           }
         }
       });
@@ -104,7 +127,12 @@ export function VideoPlayer({ embedUrl, title, onEnded }: VideoPlayerProps) {
       player = new playerjs.Player(iframeRef.current);
       player.on("ready", () => {
         if (destroyed) return;
-        player?.on("ended", () => onEndedRef.current());
+        player?.on("play", () => onPlayingChangeRef.current?.(true));
+        player?.on("pause", () => onPlayingChangeRef.current?.(false));
+        player?.on("ended", () => {
+          onEndedRef.current();
+          onPlayingChangeRef.current?.(false);
+        });
       });
     }
 
