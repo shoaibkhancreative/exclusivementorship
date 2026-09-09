@@ -43,10 +43,14 @@ describe("Lesson access rules (HTTP)", () => {
     expect(body.lessonNumber).toBe(1);
   });
 
-  it("lesson 2 is locked until lesson 1's video is finished", async () => {
+  it("lesson 2's page still loads (locked) until lesson 1's video is finished", async () => {
     const { cookie } = await loginNewUser(env, "bob@example.com");
     const res = await call(env, "/api/lessons/2", { cookie });
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { isLocked: boolean; lockReason: string | null; videoEmbedUrl: string | null };
+    expect(body.isLocked).toBe(true);
+    expect(body.lockReason).toBe("sequence");
+    expect(body.videoEmbedUrl).toBeNull();
   });
 
   it("finishing lesson 1's video unlocks lesson 2", async () => {
@@ -89,15 +93,20 @@ describe("Lesson access rules (HTTP)", () => {
 
     const res = await call(env, "/api/lessons/6", { cookie });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { isLocked: boolean; videoEmbedUrl: string | null };
+    const body = (await res.json()) as { isLocked: boolean; lockReason: string | null; videoEmbedUrl: string | null };
     expect(body.isLocked).toBe(true);
+    expect(body.lockReason).toBe("payment");
     expect(body.videoEmbedUrl).toBeNull();
   });
 
-  it("lesson 6 is still a real 403 if a free user hasn't sequentially reached it yet", async () => {
+  it("lesson 6's page loads with a 'sequence' lock (not 'payment') if a free user hasn't reached it yet", async () => {
     const { cookie } = await loginNewUser(env, "heidi@example.com");
     const res = await call(env, "/api/lessons/6", { cookie });
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { isLocked: boolean; lockReason: string | null; videoEmbedUrl: string | null };
+    expect(body.isLocked).toBe(true);
+    expect(body.lockReason).toBe("sequence");
+    expect(body.videoEmbedUrl).toBeNull();
   });
 
   it("lesson 6 becomes accessible once the user is marked paid", async () => {
@@ -114,6 +123,25 @@ describe("Lesson access rules (HTTP)", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { isLocked: boolean };
     expect(body.isLocked).toBe(false);
+  });
+
+  it("lesson 8 stays a 'sequence' lock (not 'payment') even after paying, if not sequentially reached yet", async () => {
+    const { user, cookie } = await loginNewUser(env, "frank@example.com");
+    for (let n = 1; n <= 5; n++) {
+      await call(env, `/api/lessons/${n}/complete-video`, { method: "POST", cookie, body: "{}" });
+    }
+    await env.DB.prepare("UPDATE users SET course_status = 'paid' WHERE id = ?").bind(user.id).run();
+    // Lesson 8 is seeded as inactive placeholder content — activate it for
+    // this test so the sequence-lock check is exercised against a real row.
+    await env.DB.prepare("UPDATE lessons SET is_active = 1 WHERE lesson_number = 8").run();
+
+    // Still on lesson 6 (current_lesson) — lesson 8 hasn't been reached yet
+    // even though the account is paid.
+    const res = await call(env, "/api/lessons/8", { cookie });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { isLocked: boolean; lockReason: string | null };
+    expect(body.isLocked).toBe(true);
+    expect(body.lockReason).toBe("sequence");
   });
 
   it("a locked class can't be completed early to skip ahead", async () => {
@@ -146,8 +174,9 @@ describe("Admin-editable free-lesson-count changes access immediately (HTTP)", (
 
     const res = await call(env, "/api/lessons/3", { cookie });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { isLocked: boolean };
+    const body = (await res.json()) as { isLocked: boolean; lockReason: string | null };
     expect(body.isLocked).toBe(true);
+    expect(body.lockReason).toBe("payment");
   });
 });
 
@@ -179,6 +208,35 @@ describe("Session lifecycle (HTTP)", () => {
 
     const protectedRes = await call(env, "/api/lessons/1/complete-video", { method: "POST", cookie });
     expect(protectedRes.status).toBe(401);
+  });
+
+  it("enforces a single active session per account over HTTP: a second login logs the first device out", async () => {
+    // Same account logging in from a "first device" and then a "second
+    // device" (createSession is called for the same user twice, exactly
+    // what happens on two independent OTP/Google logins).
+    const { user, cookie: firstDeviceCookie } = await loginNewUser(env, "ivan@example.com");
+    expect((await call(env, "/api/auth/me", { cookie: firstDeviceCookie }).then((r) => r.json())) as {
+      authenticated: boolean;
+    }).toMatchObject({ authenticated: true });
+
+    const secondToken = await createSession(env, user.id);
+    const secondDeviceCookie = `em_session=${secondToken}`;
+
+    // The first device's cookie no longer authenticates anything...
+    const firstAfter = await call(env, "/api/auth/me", { cookie: firstDeviceCookie });
+    const firstAfterBody = (await firstAfter.json()) as { authenticated: boolean };
+    expect(firstAfterBody.authenticated).toBe(false);
+
+    const firstProtected = await call(env, "/api/lessons/1/complete-video", {
+      method: "POST",
+      cookie: firstDeviceCookie
+    });
+    expect(firstProtected.status).toBe(401);
+
+    // ...while the second device is still fully authenticated.
+    const secondAfter = await call(env, "/api/auth/me", { cookie: secondDeviceCookie });
+    const secondAfterBody = (await secondAfter.json()) as { authenticated: boolean };
+    expect(secondAfterBody.authenticated).toBe(true);
   });
 });
 

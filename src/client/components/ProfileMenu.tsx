@@ -75,7 +75,7 @@ export function ProfileMenu() {
       {open && (
         <div
           role="menu"
-          className="absolute right-0 top-full z-50 mt-2 w-64 max-w-[90vw] rounded-xl border border-base-800 bg-base-900 p-4 shadow-xl shadow-black/40"
+          className="animate-scale-in absolute right-0 top-full z-50 mt-2 w-64 max-w-[90vw] origin-top-right rounded-xl border border-base-800 bg-base-900 p-4"
         >
           <div className="mb-4 flex items-center gap-3">
             <Avatar label={label} premium={isPremium} size={44} />
@@ -120,3 +120,4 @@ export function ProfileMenu() {
     </div>
   );
 }
+

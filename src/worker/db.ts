@@ -103,10 +103,23 @@ export async function secondsSinceLastOtpRequest(env: Env, email: string): Promi
 }
 
 /**
- * Fixed-window rate limiter backed by D1. Not perfectly precise under high
- * concurrency (see TROUBLESHOOTING.md), but sufficient for OTP/login/payment
- * endpoints on the Cloudflare Free plan without adding a KV/Durable Object
- * dependency.
+ * Fixed-window rate limiter backed by D1.
+ *
+ * A single atomic UPSERT (INSERT ... ON CONFLICT DO UPDATE ... RETURNING)
+ * rather than a separate SELECT-then-INSERT/UPDATE — the previous version
+ * read the row, decided in JS whether to reset/increment, then wrote it
+ * back in a second statement, leaving a window where two concurrent
+ * requests for the same bucket could both read the same `count` and both
+ * proceed, letting a burst slip a couple of requests past the limit. SQLite
+ * (and D1) executes one statement as a single atomic step even with
+ * concurrent callers, so folding the read-decide-write into one statement
+ * closes that race. `bucket_key` is the table's PRIMARY KEY, which is what
+ * makes ON CONFLICT well-defined here.
+ *
+ * window_start is stored as the same ISO-8601 string format as before
+ * (readable, matches every other timestamp column in this schema);
+ * strftime('%s', ...) converts both it and 'now' to Unix seconds for the
+ * comparison, which SQLite parses correctly including the trailing 'Z'.
  */
 export async function checkRateLimit(
   env: Env,
@@ -114,41 +127,35 @@ export async function checkRateLimit(
   maxCount: number,
   windowSeconds: number
 ): Promise<{ allowed: boolean; remaining: number }> {
-  const now = new Date();
-  const row = await env.DB.prepare("SELECT count, window_start FROM rate_limits WHERE bucket_key = ?")
-    .bind(bucketKey)
-    .first<{ count: number; window_start: string }>();
+  const nowIso = new Date().toISOString();
 
-  if (!row) {
-    await env.DB.prepare(
-      "INSERT INTO rate_limits (bucket_key, count, window_start) VALUES (?, 1, ?)"
-    )
-      .bind(bucketKey, now.toISOString())
-      .run();
-    return { allowed: true, remaining: maxCount - 1 };
-  }
+  const row = await env.DB.prepare(
+    `INSERT INTO rate_limits (bucket_key, count, window_start) VALUES (?, 1, ?)
+     ON CONFLICT(bucket_key) DO UPDATE SET
+       count = CASE
+         WHEN (strftime('%s', ?) - strftime('%s', rate_limits.window_start)) > ?
+         THEN 1
+         ELSE rate_limits.count + 1
+       END,
+       window_start = CASE
+         WHEN (strftime('%s', ?) - strftime('%s', rate_limits.window_start)) > ?
+         THEN excluded.window_start
+         ELSE rate_limits.window_start
+       END
+     RETURNING count`
+  )
+    .bind(bucketKey, nowIso, nowIso, windowSeconds, nowIso, windowSeconds)
+    .first<{ count: number }>();
 
-  const windowStart = new Date(row.window_start + (row.window_start.endsWith("Z") ? "" : "Z"));
-  const elapsedSeconds = (now.getTime() - windowStart.getTime()) / 1000;
+  // The RETURNING row always comes back (insert or update path) — this null
+  // check is just to satisfy the type checker / fail closed on a driver
+  // that somehow doesn't support RETURNING.
+  if (!row) return { allowed: false, remaining: 0 };
 
-  if (elapsedSeconds > windowSeconds) {
-    // window expired, reset
-    await env.DB.prepare(
-      "UPDATE rate_limits SET count = 1, window_start = ? WHERE bucket_key = ?"
-    )
-      .bind(now.toISOString(), bucketKey)
-      .run();
-    return { allowed: true, remaining: maxCount - 1 };
-  }
-
-  if (row.count >= maxCount) {
+  if (row.count > maxCount) {
     return { allowed: false, remaining: 0 };
   }
-
-  await env.DB.prepare("UPDATE rate_limits SET count = count + 1 WHERE bucket_key = ?")
-    .bind(bucketKey)
-    .run();
-  return { allowed: true, remaining: maxCount - row.count - 1 };
+  return { allowed: true, remaining: maxCount - row.count };
 }
 
 // ---------------------------------------------------------------------------
@@ -279,9 +286,45 @@ export async function setUserCourseStatus(env: Env, userId: string, status: "fre
   }
 }
 
+/**
+ * Permanently deletes one student's account and every row that hangs off
+ * it. We rely on the schema's `ON DELETE CASCADE` (sessions, lesson_progress,
+ * assignments, payment_orders, notifications, support_messages all
+ * reference users(id) that way — see migrations/0001 and 0008), so a single
+ * DELETE on `users` is enough as long as foreign_keys is ON for this
+ * connection. `audit_events.user_id` is `ON DELETE SET NULL`, so the audit
+ * trail survives the deletion instead of vanishing with it.
+ *
+ * Throws "not_found" if the id doesn't match an existing user, same
+ * convention as deleteLesson/deleteChapter below.
+ */
+export async function deleteUser(env: Env, userId: string): Promise<void> {
+  await env.DB.prepare("PRAGMA foreign_keys = ON").run();
+  const existing = await env.DB.prepare("SELECT id FROM users WHERE id = ?").bind(userId).first<{ id: string }>();
+  if (!existing) throw new Error("not_found");
+  await env.DB.prepare("DELETE FROM users WHERE id = ?").bind(userId).run();
+}
+
+/**
+ * Wipes EVERY student's account and everything that cascades from it
+ * (sessions, progress, assignments, payment history, notifications,
+ * support messages) — course content (lessons/chapters), admin accounts,
+ * and site settings are untouched. Irreversible; the caller (route) is
+ * responsible for requiring an explicit typed confirmation before this is
+ * ever invoked. Returns how many accounts were removed, for the confirmation
+ * screen / audit log.
+ */
+export async function wipeAllUsers(env: Env): Promise<number> {
+  await env.DB.prepare("PRAGMA foreign_keys = ON").run();
+  const countRow = await env.DB.prepare("SELECT COUNT(*) as n FROM users").first<{ n: number }>();
+  const count = countRow?.n ?? 0;
+  await env.DB.prepare("DELETE FROM users").run();
+  return count;
+}
+
 // ---------------------------------------------------------------------------
-// Chapters — admin-manageable groupings (replaces the old static
-// src/worker/lib/semesters.ts array). `name` is the join key against
+// Chapters — admin-manageable groupings (replaces the old static, hardcoded
+// semester array this project used to ship). `name` is the join key against
 // lessons.chapter_name.
 // ---------------------------------------------------------------------------
 export interface ChapterRow {
@@ -398,6 +441,7 @@ export interface AdminLessonRow {
   is_free: number;
   is_active: number;
   sort_order: number;
+  watermark_enabled: number;
 }
 
 export async function listAdminLessons(env: Env): Promise<AdminLessonRow[]> {
@@ -415,7 +459,14 @@ export async function listAdminLessons(env: Env): Promise<AdminLessonRow[]> {
  */
 export async function createLesson(
   env: Env,
-  fields: { title: string; chapterName: string; tagline: string | null; description: string | null; videoEmbedUrl: string | null }
+  fields: {
+    title: string;
+    chapterName: string;
+    tagline: string | null;
+    description: string | null;
+    videoEmbedUrl: string | null;
+    watermarkEnabled?: boolean;
+  }
 ): Promise<AdminLessonRow> {
   const maxRow = await env.DB.prepare(
     `SELECT COALESCE(MAX(lesson_number), 0) as maxNumber, COALESCE(MAX(sort_order), 0) as maxSort FROM lessons`
@@ -424,10 +475,19 @@ export async function createLesson(
   const nextSort = (maxRow?.maxSort ?? 0) + 1;
 
   const insert = await env.DB.prepare(
-    `INSERT INTO lessons (lesson_number, title, chapter_name, thumbnail_url, youtube_video_id, description, tagline, video_embed_url, is_free, is_active, sort_order)
-     VALUES (?, ?, ?, NULL, 'N/A', ?, ?, ?, 0, 1, ?)`
+    `INSERT INTO lessons (lesson_number, title, chapter_name, thumbnail_url, youtube_video_id, description, tagline, video_embed_url, is_free, is_active, sort_order, watermark_enabled)
+     VALUES (?, ?, ?, NULL, 'N/A', ?, ?, ?, 0, 1, ?, ?)`
   )
-    .bind(nextNumber, fields.title, fields.chapterName, fields.description, fields.tagline, fields.videoEmbedUrl, nextSort)
+    .bind(
+      nextNumber,
+      fields.title,
+      fields.chapterName,
+      fields.description,
+      fields.tagline,
+      fields.videoEmbedUrl,
+      nextSort,
+      fields.watermarkEnabled ? 1 : 0
+    )
     .run();
   const id = insert.meta.last_row_id as number;
 
@@ -455,6 +515,7 @@ export async function updateLesson(
     videoEmbedUrl?: string | null;
     thumbnailUrl?: string | null;
     isActive?: boolean;
+    watermarkEnabled?: boolean;
   }
 ): Promise<void> {
   const existing = await env.DB.prepare(`SELECT * FROM lessons WHERE id = ?`).bind(id).first<AdminLessonRow>();
@@ -464,7 +525,7 @@ export async function updateLesson(
 
   await env.DB.prepare(
     `UPDATE lessons SET
-       title = ?, chapter_name = ?, tagline = ?, description = ?, video_embed_url = ?, thumbnail_url = ?, is_active = ?
+       title = ?, chapter_name = ?, tagline = ?, description = ?, video_embed_url = ?, thumbnail_url = ?, is_active = ?, watermark_enabled = ?
      WHERE id = ?`
   )
     .bind(
@@ -475,6 +536,7 @@ export async function updateLesson(
       fields.videoEmbedUrl !== undefined ? fields.videoEmbedUrl : existing.video_embed_url,
       fields.thumbnailUrl !== undefined ? fields.thumbnailUrl : existing.thumbnail_url,
       fields.isActive !== undefined ? (fields.isActive ? 1 : 0) : existing.is_active,
+      fields.watermarkEnabled !== undefined ? (fields.watermarkEnabled ? 1 : 0) : existing.watermark_enabled,
       id
     )
     .run();

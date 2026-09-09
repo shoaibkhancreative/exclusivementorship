@@ -168,13 +168,13 @@ export function UnlockModal({ onClose }: { onClose: () => void }) {
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-end justify-center bg-black/70 backdrop-blur-sm sm:items-center"
+      className="animate-fade-in fixed inset-0 z-[100] flex items-end justify-center bg-black/70 backdrop-blur-sm sm:items-center"
       onClick={handleOverlayClick}
       role="dialog"
       aria-modal="true"
       aria-label="Unlock Exclusive Mentorship"
     >
-      <div className="max-h-[92vh] w-full overflow-y-auto rounded-t-xl border border-base-800 bg-base-900 p-6 sm:max-w-sm sm:rounded-xl">
+      <div className="animate-slide-up max-h-[92vh] w-full overflow-y-auto rounded-t-xl border border-base-800 bg-base-900 p-6 sm:max-w-sm sm:rounded-xl">
         <div className="mb-5 flex items-start justify-between gap-3">
           <div>
             <div className="text-sm text-zinc-500">Unlock Mentorship</div>

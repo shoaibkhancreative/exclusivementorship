@@ -21,13 +21,13 @@ export default function AdminLayout() {
   return (
     <div className="min-h-screen bg-base-950">
       <header className="border-b border-base-700/60">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-5 py-4 sm:px-6">
+        <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3 px-5 py-4 sm:px-6">
           <div>
             <div className="text-[10px] uppercase tracking-wide text-accent-500">Exclusive Mentorship</div>
             <div className="text-[15px] leading-tight text-zinc-100">Admin Panel</div>
           </div>
           <div className="flex items-center gap-4 text-sm">
-            <span className="text-zinc-500">{admin?.email}</span>
+            <span className="hidden max-w-[40vw] truncate text-zinc-500 sm:inline">{admin?.email}</span>
             <button
               type="button"
               onClick={handleLogout}

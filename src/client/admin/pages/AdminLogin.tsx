@@ -28,7 +28,7 @@ export default function AdminLogin() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-base-950 px-5">
+    <div className="page-enter flex min-h-screen items-center justify-center bg-base-950 px-5">
       <Card className="w-full max-w-sm">
         <div className="mb-6 text-center">
           <div className="text-[10px] uppercase tracking-wide text-accent-500">Exclusive Mentorship</div>

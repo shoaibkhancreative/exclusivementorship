@@ -48,6 +48,11 @@ export interface Env {
   NOWPAYMENTS_IPN_SECRET?: string;
   SESSION_SECRET?: string;
   TURNSTILE_SECRET_KEY?: string;
+  // Bunny Stream → Security → General → "Token authentication key". Signs
+  // Bunny embed URLs (see lib/bunny.ts). Never sent to the client, never
+  // logged. Left unset locally unless added to .dev.vars — video-token
+  // requests fail closed (500) rather than falling back to an unsigned URL.
+  BUNNY_TOKEN_AUTH_KEY?: string;
 }
 
 /** Hardcoded fallback used only until an admin ever saves a value from the panel. */
@@ -72,7 +77,12 @@ export const RATE_LIMITS = {
   otpRequestPerIpPerHour: 20,
   otpVerifyPerEmailPer10Min: 10,
   googleAuthPerIpPer10Min: 20,
-  paymentCreatePerUserPerHour: 5
+  paymentCreatePerUserPerHour: 5,
+  // A normal viewer requests a handful of these per lesson at most (page
+  // load, maybe a manual retry). Generous enough to never bother a real
+  // student, tight enough to blunt a script trying to mint many signed
+  // links quickly.
+  videoTokenPerUserPerHour: 60
 };
 
 // site_settings keys used for admin-editable price/discount, course

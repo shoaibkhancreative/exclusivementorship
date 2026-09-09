@@ -18,7 +18,7 @@ export default function Unlock() {
   if (!config) return <LoadingScreen />;
 
   return (
-    <div className="mx-auto max-w-lg px-6 py-16 sm:px-8">
+    <div className="page-enter mx-auto max-w-lg px-6 py-16 sm:px-8">
       <div className="mb-10 text-center">
         <h1 className="text-[26px] font-semibold leading-snug text-zinc-50 sm:text-[28px]">
           You've completed the free foundation.

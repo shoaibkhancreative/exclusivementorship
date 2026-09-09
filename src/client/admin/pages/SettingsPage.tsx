@@ -77,7 +77,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="page-enter flex flex-col gap-6">
       <div>
         <h1 className="mb-4 text-xl text-zinc-100">Price &amp; Discount</h1>
         <Card className="max-w-md">

@@ -7,10 +7,15 @@
 const crypto = require("crypto");
 
 // ====================== CONFIG ======================
-const IPN_SECRET = "B/SPwU2DYy+ZXWYk4OyWlFHUqbzgZM55"; // <-- only this one you must fill in yourself
-const ORDER_ID = "cad3a452-cb1f-4c2d-9de6-efd5ac13ba7e";
-const WEBHOOK_URL = "https://exclusivementorship.xyz/api/webhooks/nowpayments";
-const PAYMENT_STATUS = "finished";
+// SECURITY: never hardcode the real IPN secret here. This file is committed
+// to git, so anything typed in directly ends up in the repo (and its
+// history) permanently. Pass the secret via an environment variable at run
+// time instead, e.g.:
+//   IPN_SECRET="..." ORDER_ID="..." node simulate-payment.cjs
+const IPN_SECRET = process.env.IPN_SECRET || "PASTE_YOUR_NOWPAYMENTS_IPN_SECRET_HERE";
+const ORDER_ID = process.env.ORDER_ID || "PASTE_A_REAL_ORDER_ID_HERE";
+const WEBHOOK_URL = process.env.WEBHOOK_URL || "http://localhost:8787/api/webhooks/nowpayments";
+const PAYMENT_STATUS = process.env.PAYMENT_STATUS || "finished";
 // ======================================================================
 
 function sortObjectKeys(value) {
@@ -26,8 +31,9 @@ function sortObjectKeys(value) {
 }
 
 async function main() {
-  if (IPN_SECRET.startsWith("PASTE_")) {
-    console.error("Fill in IPN_SECRET at the top of this file first.");
+  if (IPN_SECRET.startsWith("PASTE_") || ORDER_ID.startsWith("PASTE_")) {
+    console.error("Set IPN_SECRET and ORDER_ID (as env vars, not hardcoded) before running this.");
+    console.error('Example: IPN_SECRET="..." ORDER_ID="..." node simulate-payment.cjs');
     process.exit(1);
   }
 

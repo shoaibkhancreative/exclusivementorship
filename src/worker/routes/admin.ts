@@ -28,6 +28,7 @@ import {
   createLesson,
   deleteChapter,
   deleteLesson,
+  deleteUser,
   findAdminByEmail,
   listAdminLessons,
   listChapters,
@@ -40,7 +41,8 @@ import {
   setUserCourseStatus,
   touchAdminLastLogin,
   updateChapter,
-  updateLesson
+  updateLesson,
+  wipeAllUsers
 } from "../db";
 import { sha256Hex } from "../lib/crypto";
 
@@ -155,6 +157,81 @@ adminRoutes.post("/students/:id/access", async (c) => {
   return c.json({ ok: true });
 });
 
+/**
+ * Permanently deletes ONE student's account (and everything that cascades
+ * from it — sessions, progress, assignments, payment history,
+ * notifications, support messages; see db.ts deleteUser). Irreversible.
+ *
+ * As a guard against a stray click wiping the wrong row, the request body
+ * must echo the student's exact email back — the admin UI's confirm dialog
+ * makes the admin type it, it isn't just a canned confirm().
+ */
+adminRoutes.delete("/students/:id", async (c) => {
+  const admin = c.get("admin")!;
+  const id = c.req.param("id");
+  const body = await c.req.json<{ confirmEmail?: string }>().catch(() => ({}) as { confirmEmail?: string });
+
+  const students = await listStudents(c.env);
+  const student = students.find((s) => s.id === id);
+  if (!student) return c.json({ error: "not_found" }, 404);
+
+  if ((body.confirmEmail ?? "").trim().toLowerCase() !== student.email.toLowerCase()) {
+    return c.json(
+      { error: "confirmation_mismatch", message: "Typed email doesn't match this student's account." },
+      400
+    );
+  }
+
+  await deleteUser(c.env, id);
+  // Logged with userId omitted (the user row is gone — audit_events.user_id
+  // is ON DELETE SET NULL) so the deleted account's email is preserved in
+  // metadata instead, for the audit trail.
+  await logAuditEvent(c.env, "admin_user_deleted", {
+    metadata: { adminId: admin.id, deletedUserId: id, deletedEmail: student.email }
+  });
+
+  return c.json({ ok: true });
+});
+
+/**
+ * Wipes EVERY student account and everything that cascades from it. Course
+ * content, admin accounts, and site settings are untouched (see db.ts
+ * wipeAllUsers). Irreversible and extremely destructive, so this requires:
+ *   - the fixed phrase "DELETE ALL STUDENT DATA" typed back in the body
+ *     (the admin UI makes the admin type this manually, not a canned
+ *     confirm() dialog)
+ *   - a tight rate limit, same shape as the login rate limit above, so a
+ *     compromised or automated session can't hammer this endpoint
+ */
+const WIPE_ALL_CONFIRMATION_PHRASE = "DELETE ALL STUDENT DATA";
+
+adminRoutes.post("/students/wipe-all", async (c) => {
+  const admin = c.get("admin")!;
+  const body = await c.req.json<{ confirm?: string }>().catch(() => ({}) as { confirm?: string });
+
+  const perAdmin = await checkRateLimit(c.env, `admin_wipe_all:${admin.id}`, 3, 3600);
+  if (!perAdmin.allowed) {
+    return c.json({ error: "rate_limited", message: "Too many attempts. Please try again later." }, 429);
+  }
+
+  if ((body.confirm ?? "") !== WIPE_ALL_CONFIRMATION_PHRASE) {
+    return c.json(
+      {
+        error: "confirmation_mismatch",
+        message: `Type "${WIPE_ALL_CONFIRMATION_PHRASE}" exactly to confirm.`
+      },
+      400
+    );
+  }
+
+  const deletedCount = await wipeAllUsers(c.env);
+  await logAuditEvent(c.env, "admin_wipe_all_users", {
+    metadata: { adminId: admin.id, deletedCount }
+  });
+
+  return c.json({ ok: true, deletedCount });
+});
+
 // ---------------------------------------------------------------------------
 // Chapters — add/edit/reorder
 // ---------------------------------------------------------------------------
@@ -254,7 +331,8 @@ adminRoutes.get("/lessons", async (c) => {
       thumbnailUrl: l.thumbnail_url,
       videoEmbedUrl: l.video_embed_url,
       isFree: l.lesson_number <= freeLessonCount,
-      isActive: Boolean(l.is_active)
+      isActive: Boolean(l.is_active),
+      watermarkEnabled: Boolean(l.watermark_enabled)
     }))
   });
 });
@@ -262,7 +340,14 @@ adminRoutes.get("/lessons", async (c) => {
 adminRoutes.post("/lessons", async (c) => {
   const admin = c.get("admin")!;
   const body = await c.req
-    .json<{ title?: string; chapterName?: string; tagline?: string; description?: string; videoEmbedUrl?: string }>()
+    .json<{
+      title?: string;
+      chapterName?: string;
+      tagline?: string;
+      description?: string;
+      videoEmbedUrl?: string;
+      watermarkEnabled?: boolean;
+    }>()
     .catch(
       () =>
         ({}) as {
@@ -271,6 +356,7 @@ adminRoutes.post("/lessons", async (c) => {
           tagline?: string;
           description?: string;
           videoEmbedUrl?: string;
+          watermarkEnabled?: boolean;
         }
     );
 
@@ -285,7 +371,8 @@ adminRoutes.post("/lessons", async (c) => {
     chapterName,
     tagline: body.tagline?.trim() || null,
     description: body.description?.trim() || null,
-    videoEmbedUrl: body.videoEmbedUrl?.trim() || null
+    videoEmbedUrl: body.videoEmbedUrl?.trim() || null,
+    watermarkEnabled: Boolean(body.watermarkEnabled)
   });
 
   await logAuditEvent(c.env, "admin_lesson_created", { metadata: { adminId: admin.id, lessonId: lesson.id } });
@@ -300,7 +387,8 @@ adminRoutes.post("/lessons", async (c) => {
       tagline: lesson.tagline,
       description: lesson.description,
       videoEmbedUrl: lesson.video_embed_url,
-      isActive: Boolean(lesson.is_active)
+      isActive: Boolean(lesson.is_active),
+      watermarkEnabled: Boolean(lesson.watermark_enabled)
     }
   });
 });
@@ -317,6 +405,7 @@ adminRoutes.patch("/lessons/:id", async (c) => {
       videoEmbedUrl?: string | null;
       thumbnailUrl?: string | null;
       isActive?: boolean;
+      watermarkEnabled?: boolean;
     }>()
     .catch(() => ({}) as Record<string, never>);
 

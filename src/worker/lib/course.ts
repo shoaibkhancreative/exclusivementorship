@@ -60,6 +60,27 @@ export function shouldShowPremiumGate(
   return completedLessonNumber === freeLessonCount && courseStatus !== "paid";
 }
 
+/**
+ * Why a not-yet-accessible lesson is locked, for display purposes only —
+ * never used for the actual access decision (that's canAccessLesson).
+ *
+ *  - "sequence": the learner hasn't finished everything before it yet,
+ *    regardless of whether the lesson itself is free or premium. Shown as
+ *    "finish the previous class to unlock this one".
+ *  - "payment": the learner HAS reached it in sequence (finished every
+ *    class before it) but it's a premium class and they haven't paid.
+ *    Shown as "unlock Exclusive Mentorship".
+ *
+ * Returns null when the lesson is actually accessible.
+ */
+export type LockReason = "sequence" | "payment";
+
+export function lockReasonForLesson(input: AccessInput): LockReason | null {
+  if (canAccessLesson(input)) return null;
+  const sequentiallyUnlocked = input.lessonNumber <= input.currentLesson;
+  return sequentiallyUnlocked ? "payment" : "sequence";
+}
+
 export function lessonState(lessonNumber: number, completed: boolean, input: AccessInput): LessonState {
   if (completed) return "completed";
 

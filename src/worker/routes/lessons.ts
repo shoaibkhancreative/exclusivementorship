@@ -3,8 +3,10 @@ import type { Env } from "../lib/config";
 import { getFreeLessonCount } from "../lib/config";
 import type { AppVariables } from "../middleware/session";
 import { requireAuth } from "../middleware/session";
-import { canAccessLesson, computeNextCurrentLesson, lessonState, shouldShowPremiumGate } from "../lib/course";
-import { listChapters, logAuditEvent } from "../db";
+import { canAccessLesson, computeNextCurrentLesson, lessonState, lockReasonForLesson, shouldShowPremiumGate } from "../lib/course";
+import { listChapters, logAuditEvent, checkRateLimit } from "../db";
+import { RATE_LIMITS } from "../lib/config";
+import { isBunnyEmbedUrl, signBunnyEmbedUrl, VIDEO_TOKEN_TTL_SECONDS } from "../lib/bunny";
 
 export const lessonRoutes = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
@@ -20,6 +22,7 @@ interface LessonRow {
   is_free: number;
   is_active: number;
   sort_order: number;
+  watermark_enabled: number;
 }
 
 interface ProgressRow {
@@ -98,33 +101,31 @@ lessonRoutes.get("/:number", async (c) => {
   const courseStatus = user?.course_status ?? "free";
   const freeLessonCount = await getFreeLessonCount(c.env);
 
-  const allowed = canAccessLesson({ lessonNumber, currentLesson, courseStatus, freeLessonCount });
+  const lockReason = lockReasonForLesson({ lessonNumber, currentLesson, courseStatus, freeLessonCount });
 
-  // A premium class the learner has sequentially reached (finished
-  // everything before it) but hasn't paid for yet is still openable — just
-  // as a locked preview (thumbnail + unlock prompt, no real video sent to
-  // the client) rather than a dead-end 403. This is what lets "Next" stay
-  // clickable right after the last free class, for every premium class,
-  // not just one hardcoded lesson.
-  const sequentiallyReached = lessonNumber <= currentLesson;
-  const isPreviewGate = !allowed && sequentiallyReached && courseStatus !== "paid";
-
-  if (!allowed && !isPreviewGate) {
-    const reason = lessonNumber > freeLessonCount && courseStatus !== "paid" ? "payment_required" : "locked";
-    return c.json({ error: reason, message: "This lesson isn't unlocked yet." }, 403);
-  }
-
-  if (isPreviewGate) {
+  // Every lesson's page is openable — including ones the learner can't
+  // watch yet — so the outline can link straight to it, with the class's
+  // thumbnail and title visible and a locked overlay explaining why (finish
+  // the previous class, or unlock the mentorship). No real video content
+  // (embedUrl, signed token) or lesson description is ever included here
+  // when locked — those still require canAccessLesson to pass, re-checked
+  // independently by /video-token and /complete-video below. Nothing here
+  // is more than what the public outline (GET /) already exposes for every
+  // lesson regardless of lock state.
+  if (lockReason) {
     return c.json({
       lessonNumber: lesson.lesson_number,
       title: lesson.title,
       chapterName: lesson.chapter_name,
       tagline: lesson.tagline,
-      description: lesson.description,
+      description: null,
+      thumbnailUrl: lesson.thumbnail_url,
       videoEmbedUrl: null,
       videoCompleted: false,
       isLastFreeLesson: false,
-      isLocked: true
+      isLocked: true,
+      lockReason,
+      watermarkEnabled: Boolean(lesson.watermark_enabled)
     });
   }
 
@@ -143,11 +144,82 @@ lessonRoutes.get("/:number", async (c) => {
     chapterName: lesson.chapter_name,
     tagline: lesson.tagline,
     description: lesson.description,
+    thumbnailUrl: lesson.thumbnail_url,
     videoEmbedUrl: lesson.video_embed_url,
     videoCompleted: Boolean(progress?.video_completed),
     isLastFreeLesson: lessonNumber === freeLessonCount,
-    isLocked: false
+    isLocked: false,
+    lockReason: null,
+    watermarkEnabled: Boolean(lesson.watermark_enabled)
   });
+});
+
+/**
+ * Issues a short-lived, signed Bunny Stream embed URL for `lessonNumber`.
+ *
+ * The client sends a lesson number, never a raw Bunny video ID — so there
+ * is nothing here for a caller to probe for someone else's video ID. This
+ * route re-runs the exact same `canAccessLesson` check as GET /:number
+ * independently (it does not trust that the client already saw the video
+ * through that route), so a signed link can never be minted for a lesson
+ * the requesting user isn't actually allowed to watch. Rate-limited per
+ * user on top of that as defense in depth. The security key itself never
+ * enters the response, is never logged, and — on any signing failure — the
+ * client gets a generic "video_unavailable" error rather than a hint about
+ * what went wrong.
+ */
+lessonRoutes.post("/:number/video-token", requireAuth, async (c) => {
+  const lessonNumber = Number(c.req.param("number"));
+  if (!Number.isInteger(lessonNumber) || lessonNumber < 1) {
+    return c.json({ error: "not_found" }, 404);
+  }
+
+  const user = c.get("user")!;
+
+  const rate = await checkRateLimit(
+    c.env,
+    `video_token:user:${user.id}`,
+    RATE_LIMITS.videoTokenPerUserPerHour,
+    3600
+  );
+  if (!rate.allowed) {
+    return c.json({ error: "rate_limited", message: "Too many requests. Please try again shortly." }, 429);
+  }
+
+  const lesson = await c.env.DB.prepare(
+    "SELECT id, video_embed_url FROM lessons WHERE lesson_number = ? AND is_active = 1"
+  )
+    .bind(lessonNumber)
+    .first<{ id: number; video_embed_url: string | null }>();
+  if (!lesson) return c.json({ error: "not_found" }, 404);
+
+  const freeLessonCount = await getFreeLessonCount(c.env);
+  const allowed = canAccessLesson({
+    lessonNumber,
+    currentLesson: user.current_lesson,
+    courseStatus: user.course_status,
+    freeLessonCount
+  });
+  if (!allowed) return c.json({ error: "locked", message: "This lesson isn't unlocked yet." }, 403);
+
+  if (!lesson.video_embed_url || !isBunnyEmbedUrl(lesson.video_embed_url)) {
+    // Not every lesson is Bunny-hosted (some use YouTube) — the frontend
+    // should only call this endpoint for lessons whose embedUrl is a Bunny
+    // URL, so reaching this branch means something upstream is confused,
+    // not a security issue.
+    return c.json({ error: "not_bunny_video", message: "This lesson doesn't use a signed video." }, 400);
+  }
+
+  let signedEmbedUrl: string;
+  try {
+    signedEmbedUrl = await signBunnyEmbedUrl(c.env, lesson.video_embed_url);
+  } catch {
+    return c.json({ error: "video_unavailable", message: "This video can't be played right now." }, 500);
+  }
+
+  await logAuditEvent(c.env, "video_token_issued", { userId: user.id, metadata: { lessonNumber } });
+
+  return c.json({ embedUrl: signedEmbedUrl, expiresInSeconds: VIDEO_TOKEN_TTL_SECONDS });
 });
 
 /**

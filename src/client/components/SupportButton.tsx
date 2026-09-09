@@ -3,20 +3,22 @@ import { useConfig } from "../lib/useConfig";
 
 /**
  * Opens the correct Telegram support chat directly — no in-site message
- * form, no admin inbox to check. Which link is used is decided from the
- * learner's real, authenticated course_status (never a client-side guess):
- * free/logged-out visitors go to the free-support Telegram, enrolled
- * (paid) students go to the dedicated mentor Telegram. Both URLs come from
- * the server (see routes/config.ts) so they can be changed without a
- * redeploy. This is the one Telegram touchpoint intentionally kept on the
- * site — everything else Telegram-related has been removed.
+ * form, no admin inbox to check. Which link is used is fully decided
+ * server-side, never guessed on the client: a logged-in learner gets
+ * `me.supportTelegramUrl` from GET /auth/me, which the server derives from
+ * the authenticated session's real course_status (see routes/auth.ts) — the
+ * premium/free choice is baked into that URL before it ever reaches the
+ * browser. A logged-out visitor has no session to resolve that from, so
+ * they fall back to the always-public `supportTelegramFreeUrl` from
+ * /config/public (see that route's comment for why the premium link can
+ * never live there). This is the one Telegram touchpoint intentionally kept
+ * on the site — everything else Telegram-related has been removed.
  */
 export function SupportButton() {
   const { me } = useSession();
   const config = useConfig();
 
-  const isPaid = me?.authenticated && me.courseStatus === "paid";
-  const href = isPaid ? config?.supportTelegramPremiumUrl : config?.supportTelegramFreeUrl;
+  const href = me?.authenticated ? me.supportTelegramUrl : config?.supportTelegramFreeUrl;
 
   return (
     <a
@@ -25,7 +27,7 @@ export function SupportButton() {
       rel="noopener noreferrer"
       aria-label="Contact support on Telegram"
       title="Support"
-      className="focus-ring fixed bottom-5 right-5 z-40 flex items-center justify-center rounded-full bg-accent-500 text-base-950 shadow-lg shadow-black/40 transition-transform hover:scale-105 hover:bg-accent-400 sm:bottom-6 sm:right-6"
+      className="focus-ring fixed bottom-5 right-5 z-40 flex items-center justify-center rounded-full bg-accent-500 text-base-950 transition-colors hover:bg-accent-400 sm:bottom-6 sm:right-6"
       style={{ width: 52, height: 52 }}
     >
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">

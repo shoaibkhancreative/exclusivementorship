@@ -21,9 +21,7 @@ export function Avatar({ label, premium = false, size = 36 }: AvatarProps) {
         width: size,
         height: size,
         padding: premium ? 2 : 0,
-        background: premium
-          ? "linear-gradient(135deg, #e6cf94 0%, #c9a24b 55%, #8a6d2c 100%)"
-          : "transparent"
+        background: premium ? "#b8862e" : "transparent"
       }}
     >
       <div

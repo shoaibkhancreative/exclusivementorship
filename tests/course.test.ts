@@ -4,6 +4,7 @@ import {
   computeNextCurrentLesson,
   isPremiumLesson,
   lessonState,
+  lockReasonForLesson,
   shouldShowPremiumGate
 } from "../src/worker/lib/course";
 
@@ -129,5 +130,46 @@ describe("lessonState", () => {
     expect(canAccessLesson({ lessonNumber: 6, currentLesson: 6, courseStatus: "free", freeLessonCount: FREE })).toBe(
       false
     );
+  });
+});
+
+describe("lockReasonForLesson", () => {
+  const base = { currentLesson: 3, courseStatus: "free" as const, freeLessonCount: FREE };
+
+  it("returns null for an accessible lesson", () => {
+    expect(lockReasonForLesson({ lessonNumber: 2, ...base })).toBeNull();
+    expect(lockReasonForLesson({ lessonNumber: 3, ...base })).toBeNull();
+  });
+
+  it("returns 'sequence' for an unreached free lesson", () => {
+    expect(lockReasonForLesson({ lessonNumber: 4, ...base })).toBe("sequence");
+  });
+
+  it("returns 'sequence' for an unreached premium lesson too, not 'payment'", () => {
+    // Hasn't finished the free classes yet — the message should be "finish
+    // the previous class", not "unlock the mentorship" yet.
+    expect(
+      lockReasonForLesson({ lessonNumber: 7, currentLesson: 3, courseStatus: "free", freeLessonCount: FREE })
+    ).toBe("sequence");
+  });
+
+  it("returns 'payment' once a premium lesson is sequentially reached but unpaid", () => {
+    expect(
+      lockReasonForLesson({ lessonNumber: 6, currentLesson: 6, courseStatus: "free", freeLessonCount: FREE })
+    ).toBe("payment");
+  });
+
+  it("returns 'sequence' for a not-yet-reached premium lesson even after paying", () => {
+    // Paid, but hasn't finished what comes before it — still a sequence
+    // lock, not a payment lock.
+    expect(
+      lockReasonForLesson({ lessonNumber: 8, currentLesson: 6, courseStatus: "paid", freeLessonCount: FREE })
+    ).toBe("sequence");
+  });
+
+  it("returns null for a reached premium lesson once paid", () => {
+    expect(
+      lockReasonForLesson({ lessonNumber: 6, currentLesson: 6, courseStatus: "paid", freeLessonCount: FREE })
+    ).toBeNull();
   });
 });

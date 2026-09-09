@@ -1,6 +1,6 @@
 export default function Privacy() {
   return (
-    <div className="mx-auto max-w-2xl px-6 py-14 text-sm leading-relaxed text-zinc-400">
+    <div className="page-enter mx-auto max-w-2xl px-6 py-14 text-sm leading-relaxed text-zinc-400">
       <h1 className="mb-7 text-2xl text-zinc-50">Privacy Policy</h1>
       <p className="mb-4">
         Exclusive Mentorship ("we", "us") collects only what's needed to run the mentorship: your email

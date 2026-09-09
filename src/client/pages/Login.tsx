@@ -176,7 +176,7 @@ export default function Login() {
   }
 
   return (
-    <div className="mx-auto flex min-h-[70vh] max-w-md flex-col justify-center px-6">
+    <div className="page-enter mx-auto flex min-h-[70vh] max-w-md flex-col justify-center px-6">
       <Card className="border-base-800">
         {/* Always mounted (both steps) so the widget — and its single-use
             token — survives the transition into the OTP step, where

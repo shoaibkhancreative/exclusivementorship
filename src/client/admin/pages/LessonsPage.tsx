@@ -13,6 +13,7 @@ interface AdminLesson {
   videoEmbedUrl: string | null;
   isFree: boolean;
   isActive: boolean;
+  watermarkEnabled: boolean;
 }
 
 interface AdminChapter {
@@ -283,7 +284,7 @@ export default function LessonsPage() {
   const lessonGroups = groupLessonsByChapterOrder(lessons, chapters);
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="page-enter flex flex-col gap-8">
       {error && <p className="text-sm text-red-400">{error}</p>}
 
       <section>
@@ -659,13 +660,14 @@ function AddLessonForm({
   const [tagline, setTagline] = useState("");
   const [description, setDescription] = useState("");
   const [videoEmbedUrl, setVideoEmbedUrl] = useState("");
+  const [watermarkEnabled, setWatermarkEnabled] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitting(true);
     try {
-      await api.post("/admin/lessons", { title, chapterName, tagline, description, videoEmbedUrl });
+      await api.post("/admin/lessons", { title, chapterName, tagline, description, videoEmbedUrl, watermarkEnabled });
       onCreated();
     } catch (err) {
       onError(err instanceof ApiError ? err.message : "Couldn't create lesson.");
@@ -711,6 +713,15 @@ function AddLessonForm({
             New lessons are created hidden ("Publish" it once the video link is ready).
           </p>
         </div>
+        <label className="flex items-center gap-2 text-xs text-zinc-400">
+          <input
+            type="checkbox"
+            checked={watermarkEnabled}
+            onChange={(e) => setWatermarkEnabled(e.target.checked)}
+            className="h-4 w-4 rounded border-base-700 bg-base-800 accent-accent-500"
+          />
+          Show viewer&apos;s email as a watermark on this lesson&apos;s video
+        </label>
         <Button type="submit" disabled={submitting} className="self-start">
           {submitting ? "Adding…" : "Add lesson"}
         </Button>
@@ -735,13 +746,21 @@ function EditLessonForm({
   const [tagline, setTagline] = useState(lesson.tagline ?? "");
   const [description, setDescription] = useState(lesson.description ?? "");
   const [videoEmbedUrl, setVideoEmbedUrl] = useState(lesson.videoEmbedUrl ?? "");
+  const [watermarkEnabled, setWatermarkEnabled] = useState(lesson.watermarkEnabled);
   const [submitting, setSubmitting] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitting(true);
     try {
-      await api.patch(`/admin/lessons/${lesson.id}`, { title, chapterName, tagline, description, videoEmbedUrl });
+      await api.patch(`/admin/lessons/${lesson.id}`, {
+        title,
+        chapterName,
+        tagline,
+        description,
+        videoEmbedUrl,
+        watermarkEnabled
+      });
       onDone();
     } catch (err) {
       onError(err instanceof ApiError ? err.message : "Couldn't update lesson.");
@@ -783,6 +802,15 @@ function EditLessonForm({
           className={inputClass}
         />
       </div>
+      <label className="flex items-center gap-2 text-xs text-zinc-400">
+        <input
+          type="checkbox"
+          checked={watermarkEnabled}
+          onChange={(e) => setWatermarkEnabled(e.target.checked)}
+          className="h-4 w-4 rounded border-base-700 bg-base-800 accent-accent-500"
+        />
+        Show viewer&apos;s email as a watermark on this lesson&apos;s video
+      </label>
       <div className="flex gap-2">
         <Button type="submit" disabled={submitting}>
           {submitting ? "Saving…" : "Save changes"}

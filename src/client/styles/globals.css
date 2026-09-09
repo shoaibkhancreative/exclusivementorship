@@ -12,6 +12,31 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+h1,
+h2,
+h3 {
+  font-family: theme("fontFamily.serif");
+  letter-spacing: -0.01em;
+}
+
+/* Reusable "eyebrow" label — was being hand-rolled inline (text-[11px]
+   uppercase tracking-[0.14em] text-zinc-500) in more than one place.
+   Pulling it into one class keeps every label on the site in lockstep,
+   which is most of what makes a site feel considered rather than
+   assembled page-by-page. */
+.kicker {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: theme("colors.zinc.500");
+}
+
+::selection {
+  background-color: rgb(230 57 70 / 0.18);
+  color: #252525;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
@@ -25,6 +50,125 @@ body {
   outline: none;
 }
 .focus-ring:focus-visible {
-  outline: 2px solid #c9a24b;
+  outline: 2px solid #b8862e;
   outline-offset: 2px;
+}
+
+/* Thin, brand-tinted scrollbar — default OS scrollbars are the single
+   biggest "this wasn't designed" tell on an otherwise considered page. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #cdb877 transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background-color: #e4d39c;
+  border-radius: 999px;
+  border: 2px solid #f8efce;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background-color: #cdb877;
+}
+
+/* One shared, restrained entrance for page-level content — a 200ms
+   settle instead of a hard cut. Kept subtle on purpose: this should read
+   as "smooth", never as "an animation happened". */
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.page-enter {
+  animation: fade-in-up 0.28s ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .page-enter {
+    animation: none;
+  }
+}
+
+/* Small library of restrained, reusable motion — same "settle, don't
+   jump" character as .page-enter above. Used for modals, dropdowns,
+   staggered list rows, and hover lift so every bit of motion on the
+   site reads as one consistent language instead of one-off tweaks. */
+
+/* Popovers/dropdowns (ProfileMenu) — grows from its anchor corner. */
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+.animate-scale-in {
+  animation: scale-in 0.16s ease-out both;
+}
+
+/* Mobile bottom-sheet modals (UnlockModal) — rises from the bottom edge. */
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-slide-up {
+  animation: slide-up 0.22s ease-out both;
+}
+
+/* Modal backdrop — plain fade, no movement. */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.animate-fade-in {
+  animation: fade-in 0.18s ease-out both;
+}
+
+/* Staggered list rows (course outline) — each row is given its own
+   --delay via inline style from the component, so the list reads as
+   one gentle cascade instead of every row snapping in at once. */
+@keyframes list-item-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.list-item-enter {
+  animation: list-item-in 0.24s ease-out both;
+  animation-delay: var(--delay, 0ms);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-scale-in,
+  .animate-slide-up,
+  .animate-fade-in,
+  .list-item-enter {
+    animation: none;
+  }
 }

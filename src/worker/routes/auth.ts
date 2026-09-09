@@ -9,7 +9,6 @@ import { verifyTurnstile } from "../services/turnstile";
 import { verifyGoogleIdToken } from "../services/google";
 import { sha256Hex } from "../lib/crypto";
 import { SESSION_COOKIE_NAME } from "../lib/config";
-
 export const authRoutes = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
 function isValidEmail(email: string): boolean {
@@ -187,6 +186,13 @@ authRoutes.get("/me", async (c) => {
     displayName: deriveDisplayName(user.email),
     currentLesson: user.current_lesson,
     courseStatus: user.course_status,
-    freeLessonCount: await getFreeLessonCount(c.env)
+    freeLessonCount: await getFreeLessonCount(c.env),
+    // Resolved here (authenticated route, backed by the real session/DB
+    // course_status) rather than in /config/public (no auth at all) — see
+    // that route's comment. This is what the floating support button
+    // actually uses for a logged-in learner; a logged-out visitor falls
+    // back to the always-public supportTelegramFreeUrl from /config/public.
+    supportTelegramUrl:
+      user.course_status === "paid" ? c.env.SUPPORT_TELEGRAM_PREMIUM_URL : c.env.SUPPORT_TELEGRAM_FREE_URL
   });
 });

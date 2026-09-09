@@ -32,7 +32,8 @@ export const api = {
     request<T>(path, { method: "POST", body: body ? JSON.stringify(body) : undefined }),
   patch: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: "PATCH", body: body ? JSON.stringify(body) : undefined }),
-  delete: <T>(path: string) => request<T>(path, { method: "DELETE" })
+  delete: <T>(path: string, body?: unknown) =>
+    request<T>(path, { method: "DELETE", body: body ? JSON.stringify(body) : undefined })
 };
 
 export interface PublicConfig {
@@ -44,7 +45,7 @@ export interface PublicConfig {
   mentorshipPdfUrl: string;
   turnstileSiteKey: string;
   googleClientId: string | null;
-  supportTelegramPremiumUrl: string;
+  /** Always-public destination for anonymous/free visitors. The paid-mentor Telegram link is intentionally not here — see MeResponse.supportTelegramUrl. */
   supportTelegramFreeUrl: string;
 }
 
@@ -55,6 +56,8 @@ export interface MeResponse {
   currentLesson?: number;
   courseStatus?: "free" | "paid";
   freeLessonCount?: number;
+  /** Server-resolved from the real session course_status — only present when authenticated. */
+  supportTelegramUrl?: string;
 }
 
 export interface OutlineItem {
@@ -88,11 +91,27 @@ export interface LessonDetail {
   chapterName: string;
   tagline: string | null;
   description: string | null;
+  thumbnailUrl: string | null;
   videoEmbedUrl: string | null;
   videoCompleted: boolean;
   isLastFreeLesson: boolean;
-  /** Sequentially reached but payment-gated: show a locked preview, not the real video. */
+  /** Not yet watchable — see lockReason for why. Every lesson's page loads regardless. */
   isLocked: boolean;
+  /**
+   * Why isLocked is true: "sequence" means earlier classes aren't finished
+   * yet (finish those first — applies to free and premium classes alike);
+   * "payment" means it's been reached in order but is a premium class that
+   * hasn't been unlocked yet. Null when isLocked is false.
+   */
+  lockReason: "sequence" | "payment" | null;
+  /** Admin-editable per-lesson setting — only show the identity watermark when true (and the viewer is authenticated). */
+  watermarkEnabled: boolean;
+}
+
+/** Response from POST /lessons/:number/video-token — see routes/lessons.ts. */
+export interface VideoTokenResponse {
+  embedUrl: string;
+  expiresInSeconds: number;
 }
 
 export interface CreateOrderResponse {

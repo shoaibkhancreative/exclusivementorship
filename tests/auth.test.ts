@@ -130,6 +130,42 @@ describe("Sessions", () => {
     expect(resolved).toBeNull();
   });
 
+  it("enforces a single active session per account: a second login revokes the first", async () => {
+    const code = await issueOtp(env, "shared@example.com");
+    const verify = await verifyOtp(env, "shared@example.com", code);
+    if (!verify.ok) throw new Error("expected ok");
+
+    const firstToken = await createSession(env, verify.user.id);
+    // Confirm the first session is genuinely valid before the second login.
+    expect((await resolveSession(env, firstToken))?.id).toBe(verify.user.id);
+
+    const secondToken = await createSession(env, verify.user.id);
+
+    // The first device's cookie no longer authenticates anything...
+    const firstResolved = await resolveSession(env, firstToken);
+    expect(firstResolved).toBeNull();
+
+    // ...while the new session (whoever logged in most recently) still does.
+    const secondResolved = await resolveSession(env, secondToken);
+    expect(secondResolved?.id).toBe(verify.user.id);
+  });
+
+  it("does not let single-session enforcement cross accounts", async () => {
+    const codeA = await issueOtp(env, "alice@example.com");
+    const verifyA = await verifyOtp(env, "alice@example.com", codeA);
+    if (!verifyA.ok) throw new Error("expected ok");
+    const codeB = await issueOtp(env, "bob@example.com");
+    const verifyB = await verifyOtp(env, "bob@example.com", codeB);
+    if (!verifyB.ok) throw new Error("expected ok");
+
+    const tokenA = await createSession(env, verifyA.user.id);
+    const tokenB = await createSession(env, verifyB.user.id);
+
+    // Logging in as Bob must not touch Alice's independent session.
+    expect((await resolveSession(env, tokenA))?.id).toBe(verifyA.user.id);
+    expect((await resolveSession(env, tokenB))?.id).toBe(verifyB.user.id);
+  });
+
   it("builds a Set-Cookie header with HttpOnly and SameSite=Lax", () => {
     const cookie = buildSessionCookie(env, "sometoken");
     expect(cookie).toContain("HttpOnly");

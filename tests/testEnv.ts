@@ -24,6 +24,7 @@ export async function createTestEnv(overrides: Partial<Env> = {}): Promise<Env> 
     SUPPORT_TELEGRAM_PREMIUM_URL: "https://t.me/exclusivementor",
     SESSION_SECRET: "test-session-secret-not-for-production",
     NOWPAYMENTS_IPN_SECRET: "test-ipn-secret",
+    BUNNY_TOKEN_AUTH_KEY: "test-bunny-token-key",
     // RESEND_API_KEY, NOWPAYMENTS_API_KEY, and TURNSTILE_SECRET_KEY are
     // intentionally left unset: each service module has an explicit "not
     // configured" dev-mode fallback (see services/email.ts,

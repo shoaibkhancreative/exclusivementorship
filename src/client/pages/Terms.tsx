@@ -1,6 +1,6 @@
 export default function Terms() {
   return (
-    <div className="mx-auto max-w-2xl px-6 py-14 text-sm leading-relaxed text-zinc-400">
+    <div className="page-enter mx-auto max-w-2xl px-6 py-14 text-sm leading-relaxed text-zinc-400">
       <h1 className="mb-7 text-2xl text-zinc-50">Terms of Use</h1>
       <p className="mb-4">
         Exclusive Mentorship provides educational content about trading concepts, market structure, and

@@ -139,15 +139,28 @@ export function VideoPlayer({ embedUrl, title, onEnded }: VideoPlayerProps) {
 
   const src = isYouTube ? withYouTubeParams(embedUrl) : embedUrl;
 
+  // Bunny's iframe deliberately does NOT get fullscreen permission. Its own
+  // in-player fullscreen button would otherwise make the iframe itself (not
+  // our wrapping container) the native fullscreen element, which is what
+  // caused the watermark to disappear in fullscreen — see the long comment
+  // in VideoStage.tsx. Without `allow="fullscreen"`/`allowFullScreen`,
+  // browsers refuse any fullscreen request from inside the iframe, so
+  // Bunny's button becomes inert and our own fullscreen toggle in
+  // VideoStage.tsx is the only way to go fullscreen. YouTube keeps its
+  // normal fullscreen permission since that path isn't affected.
+  const allowAttr = isYouTube
+    ? "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+    : "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture";
+
   return (
-    <div className="aspect-video overflow-hidden rounded-md border border-base-800 bg-black">
+    <div className="aspect-video overflow-hidden rounded-lg border border-base-800 bg-black">
       <iframe
         ref={iframeRef}
         className="h-full w-full"
         src={src}
         title={title}
-        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-        allowFullScreen
+        allow={allowAttr}
+        allowFullScreen={isYouTube}
       />
     </div>
   );

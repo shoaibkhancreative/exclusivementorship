@@ -82,17 +82,38 @@ export async function verifyOtp(env: Env, email: string, code: string): Promise<
   return { ok: true, user };
 }
 
-/** Creates a new session for a user and returns the raw token to set as a cookie. */
+/**
+ * Creates a new session for a user and returns the raw token to set as a
+ * cookie. Enforces "single active session per account": every other
+ * non-revoked session belonging to this user is revoked as part of the same
+ * login, so logging in on a second device silently signs the first one out
+ * on its next request (resolveSession already rejects a revoked token — see
+ * below — so no separate enforcement is needed there). This is a deterrent
+ * against casual account-sharing, not a security boundary in itself: a
+ * legitimate user who logs in on a new device is expected to get signed out
+ * of an old one they forgot about, same as most subscription products.
+ */
 export async function createSession(env: Env, userId: string): Promise<string> {
   const token = randomToken(32);
   const secret = requireSecret(env);
   const tokenHash = await hmacSha256Hex(secret, `session:${token}`);
   const expiresAt = new Date(Date.now() + SESSION_DURATION_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  const id = randomUuid();
+
+  // Revoke first, then insert the new session — so there's no window (even
+  // within this single request) where both the old and new sessions are
+  // simultaneously valid. The new row's own id excludes it from the revoke
+  // by construction (it doesn't exist yet), so ordering here is safe.
+  await env.DB.prepare(
+    `UPDATE sessions SET revoked_at = datetime('now') WHERE user_id = ? AND revoked_at IS NULL`
+  )
+    .bind(userId)
+    .run();
 
   await env.DB.prepare(
     `INSERT INTO sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)`
   )
-    .bind(randomUuid(), userId, tokenHash, expiresAt)
+    .bind(id, userId, tokenHash, expiresAt)
     .run();
 
   return token;

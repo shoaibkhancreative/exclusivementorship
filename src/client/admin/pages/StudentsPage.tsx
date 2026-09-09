@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
-import { api } from "../../lib/api";
-import { Card } from "../../components/ui";
+import { api, ApiError } from "../../lib/api";
+import { Card, Button } from "../../components/ui";
+
+const WIPE_ALL_CONFIRMATION_PHRASE = "DELETE ALL STUDENT DATA";
 
 interface StudentRow {
   id: string;
@@ -45,8 +47,34 @@ export default function StudentsPage() {
     }
   }
 
+  /**
+   * Permanently deletes one student's account (progress, payment history,
+   * everything). Requires the admin to type the exact email back — a plain
+   * confirm() is too easy to click through for something this destructive.
+   */
+  async function deleteStudent(student: StudentRow) {
+    const typed = prompt(
+      `This permanently deletes ${student.email}'s account — progress, payment history, everything. This cannot be undone.\n\nType the student's email to confirm:`
+    );
+    if (typed === null) return;
+    if (typed.trim().toLowerCase() !== student.email.toLowerCase()) {
+      setError("Email didn't match — account was not deleted.");
+      return;
+    }
+
+    setBusyId(student.id);
+    try {
+      await api.delete(`/admin/students/${student.id}`, { confirmEmail: typed.trim() });
+      load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : `Couldn't delete ${student.email}.`);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   return (
-    <div>
+    <div className="page-enter">
       <h1 className="mb-4 text-xl text-zinc-100">Student Directory</h1>
       {error && <p className="text-sm text-red-400">{error}</p>}
       {!students && !error && <p className="text-sm text-zinc-500">Loading…</p>}
@@ -62,6 +90,7 @@ export default function StudentsPage() {
                 <th className="px-4 py-3">Payment</th>
                 <th className="px-4 py-3">Joined</th>
                 <th className="px-4 py-3">Access</th>
+                <th className="px-4 py-3">Danger</th>
               </tr>
             </thead>
             <tbody>
@@ -101,11 +130,20 @@ export default function StudentsPage() {
                       {busyId === s.id ? "Working…" : s.courseStatus === "paid" ? "Revoke access" : "Grant paid access"}
                     </button>
                   </td>
+                  <td className="px-4 py-3">
+                    <button
+                      onClick={() => deleteStudent(s)}
+                      disabled={busyId === s.id}
+                      className="focus-ring rounded-md border border-red-900/50 px-3 py-1.5 text-xs font-medium text-red-400 transition-colors hover:bg-red-950/40 disabled:opacity-50"
+                    >
+                      {busyId === s.id ? "Working…" : "Delete account"}
+                    </button>
+                  </td>
                 </tr>
               ))}
               {students.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-6 text-center text-zinc-500">
+                  <td colSpan={8} className="px-4 py-6 text-center text-zinc-500">
                     No students yet.
                   </td>
                 </tr>
@@ -114,6 +152,66 @@ export default function StudentsPage() {
           </table>
         </Card>
       )}
+
+      <DangerZone studentCount={students?.length ?? 0} onWiped={load} />
     </div>
+  );
+}
+
+/**
+ * Wipes every student account and everything that cascades from it
+ * (progress, payment history, notifications). Course content and admin
+ * accounts are never touched. Gated behind typing an exact phrase back —
+ * there is no "undo" for this, so a plain confirm() isn't enough.
+ */
+function DangerZone({ studentCount, onWiped }: { studentCount: number; onWiped: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<string | null>(null);
+
+  async function wipeAll() {
+    const typed = prompt(
+      `This permanently deletes ALL ${studentCount} student accounts and everything tied to them (progress, payment history, notifications). Course content and your own admin login are not affected. This cannot be undone.\n\nType "${WIPE_ALL_CONFIRMATION_PHRASE}" to confirm:`
+    );
+    if (typed === null) return;
+    if (typed !== WIPE_ALL_CONFIRMATION_PHRASE) {
+      setError(`Didn't match "${WIPE_ALL_CONFIRMATION_PHRASE}" exactly — nothing was deleted.`);
+      return;
+    }
+
+    setBusy(true);
+    setError(null);
+    setResult(null);
+    try {
+      const res = await api.post<{ ok: true; deletedCount: number }>("/admin/students/wipe-all", {
+        confirm: typed
+      });
+      setResult(`Deleted ${res.deletedCount} student account(s).`);
+      onWiped();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't wipe student data.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card className="mt-8 border-red-900/50">
+      <h2 className="mb-1 text-sm font-semibold text-red-400">Danger zone</h2>
+      <p className="mb-4 text-sm text-zinc-400">
+        Permanently delete every student account and all data tied to them. Course content and admin logins are
+        unaffected. This cannot be undone.
+      </p>
+      {error && <p className="mb-3 text-sm text-red-400">{error}</p>}
+      {result && <p className="mb-3 text-sm text-accent-300">{result}</p>}
+      <Button
+        variant="secondary"
+        onClick={wipeAll}
+        disabled={busy || studentCount === 0}
+        className="border-red-900/50 text-red-400 hover:bg-red-950/40"
+      >
+        {busy ? "Working…" : "Delete all student data"}
+      </Button>
+    </Card>
   );
 }
