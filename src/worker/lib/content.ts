@@ -156,6 +156,14 @@ export const CONTENT_FIELDS: ContentFieldDef[] = [
   { key: "profile.logout_button", group: "Account menu", label: "Log out button", type: "text", defaultValue: "Log out" },
 
   // ---------------------------------------------------------------------
+  // Footer — site-wide, rendered on every StudentApp page (see
+  // components/Footer.tsx). The only place /privacy and /terms are
+  // linked from anywhere in the app.
+  // ---------------------------------------------------------------------
+  { key: "footer.privacy_link", group: "Footer", label: "Privacy Policy link label", type: "text", defaultValue: "Privacy Policy" },
+  { key: "footer.terms_link", group: "Footer", label: "Terms of Use link label", type: "text", defaultValue: "Terms of Use" },
+
+  // ---------------------------------------------------------------------
   // Privacy page (legal copy — still kept as plain paragraphs for now,
   // per the ground rule against re-translating/rewriting wording)
   // ---------------------------------------------------------------------

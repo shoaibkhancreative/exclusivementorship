@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { api, type OutlineResponse } from "../lib/api";
 import { Button, LoadingScreen } from "../components/ui";
 import { OutlineList } from "../components/OutlineList";
+import { Footer } from "../components/Footer";
 import { useContent } from "../lib/useContent";
 import { useUnlockModal } from "../lib/UnlockModalContext";
 
@@ -99,6 +100,7 @@ export default function Learn() {
     // Fixed the same way: `page-enter` moved onto the sticky element
     // itself (harmless — only ancestors break sticky) and onto the
     // non-ancestor content beside it, preserving the same fade-in look.
+    <>
     <div className="mx-auto max-w-6xl px-5 py-6 sm:px-6 sm:py-10 lg:py-12 xl:max-w-7xl 2xl:max-w-[90rem]">
       <div className="lg:grid lg:grid-cols-[320px_1fr] lg:items-start lg:gap-8 xl:grid-cols-[360px_1fr] xl:gap-10">
         {/* Cover card — sticks in place while the class list scrolls past it,
@@ -163,5 +165,7 @@ export default function Learn() {
         </div>
       </div>
     </div>
+    <Footer />
+    </>
   );
 }

@@ -325,6 +325,8 @@ INSERT INTO site_content (key, value, default_value) VALUES
 ('profile.access_button', NULL, 'Access'),
 ('profile.unlock_button', NULL, 'Unlock Full Mentorship'),
 ('profile.logout_button', NULL, 'Log out'),
+('footer.privacy_link', NULL, 'Privacy Policy'),
+('footer.terms_link', NULL, 'Terms of Use'),
 ('privacy.title', NULL, 'Privacy Policy'),
 ('privacy.p1', NULL, 'Exclusive Mentorship ("we", "us", "our") collects only what''s needed to run the mentorship: the email address you sign in with (by one-time code or Google Sign-In), your course progress (which classes you''ve completed), and payment/order metadata for enrollment (order ID, amount, status, and confirmation time). We never see or store your card or crypto wallet contents — crypto payments are processed entirely by our payment provider, NOWPayments. If you contact support, we also keep the content of your messages and any images you attach, so we can help with your question.'),
 ('privacy.p2', NULL, 'Watching a class''s video to the end is what unlocks the next class in the sequence — we record only that a video was completed, not detailed viewing analytics (we don''t track how much of a video you watched, pausing/rewinding, or playback speed). This completion data is used solely to run the course structure and is visible to you in your own dashboard.'),

@@ -68,6 +68,8 @@ const BUNDLED_DEFAULTS: Record<string, string> = {
   "profile.access_button": "Access",
   "profile.unlock_button": "Unlock Full Mentorship",
   "profile.logout_button": "Log out",
+  "footer.privacy_link": "Privacy Policy",
+  "footer.terms_link": "Terms of Use",
   "privacy.title": "Privacy Policy",
   "privacy.p1":
     "Exclusive Mentorship (\"we\", \"us\", \"our\") collects only what's needed to run the mentorship: the email address you sign in with (by one-time code or Google Sign-In), your course progress (which classes you've completed), and payment/order metadata for enrollment (order ID, amount, status, and confirmation time). We never see or store your card or crypto wallet contents — crypto payments are processed entirely by our payment provider, NOWPayments. If you contact support, we also keep the content of your messages and any images you attach, so we can help with your question.",
