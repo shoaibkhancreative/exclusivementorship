@@ -481,6 +481,270 @@ describe("Admin lessons & chapters management (HTTP)", () => {
     });
     expect(emptyChapter.status).toBe(400);
   });
+
+  it("duplicates a lesson into the same chapter, hidden, with a '(copy)' title", async () => {
+    const lessons = (await (await call(env, "/api/admin/lessons", { cookie: adminCookie })).json()) as {
+      lessons: Array<{ id: number; title: string; chapterName: string; isActive: boolean }>;
+    };
+    const source = lessons.lessons[0];
+
+    const dup = await call(env, `/api/admin/lessons/${source.id}/duplicate`, {
+      method: "POST",
+      cookie: adminCookie
+    });
+    expect(dup.status).toBe(200);
+    const body = (await dup.json()) as { lesson: { id: number; title: string; chapterName: string; isActive: boolean } };
+    expect(body.lesson.id).not.toBe(source.id);
+    expect(body.lesson.title).toBe(`${source.title} (copy)`);
+    expect(body.lesson.chapterName).toBe(source.chapterName);
+    expect(body.lesson.isActive).toBe(false);
+
+    const afterList = (await (await call(env, "/api/admin/lessons", { cookie: adminCookie })).json()) as {
+      lessons: Array<{ id: number }>;
+    };
+    expect(afterList.lessons.length).toBe(lessons.lessons.length + 1);
+  });
+
+  it("404s duplicating a lesson that doesn't exist", async () => {
+    const res = await call(env, "/api/admin/lessons/999999/duplicate", { method: "POST", cookie: adminCookie });
+    expect(res.status).toBe(404);
+  });
+
+  it("bulk-publishes, bulk-unpublishes, and bulk-deletes several lessons at once", async () => {
+    const lessons = (await (await call(env, "/api/admin/lessons", { cookie: adminCookie })).json()) as {
+      lessons: Array<{ id: number; isActive: boolean }>;
+    };
+    const ids = lessons.lessons.slice(0, 2).map((l) => l.id);
+
+    const unpublish = await call(env, "/api/admin/lessons/bulk", {
+      method: "POST",
+      cookie: adminCookie,
+      body: JSON.stringify({ ids, action: "unpublish" })
+    });
+    expect(unpublish.status).toBe(200);
+    expect(((await unpublish.json()) as { affected: number }).affected).toBe(2);
+
+    const afterUnpublish = (await (await call(env, "/api/admin/lessons", { cookie: adminCookie })).json()) as {
+      lessons: Array<{ id: number; isActive: boolean }>;
+    };
+    for (const id of ids) {
+      expect(afterUnpublish.lessons.find((l) => l.id === id)?.isActive).toBe(false);
+    }
+
+    const publish = await call(env, "/api/admin/lessons/bulk", {
+      method: "POST",
+      cookie: adminCookie,
+      body: JSON.stringify({ ids, action: "publish" })
+    });
+    expect(publish.status).toBe(200);
+    const afterPublish = (await (await call(env, "/api/admin/lessons", { cookie: adminCookie })).json()) as {
+      lessons: Array<{ id: number; isActive: boolean }>;
+    };
+    for (const id of ids) {
+      expect(afterPublish.lessons.find((l) => l.id === id)?.isActive).toBe(true);
+    }
+
+    const del = await call(env, "/api/admin/lessons/bulk", {
+      method: "POST",
+      cookie: adminCookie,
+      body: JSON.stringify({ ids, action: "delete" })
+    });
+    expect(del.status).toBe(200);
+    expect(((await del.json()) as { affected: number }).affected).toBe(2);
+
+    const afterDelete = (await (await call(env, "/api/admin/lessons", { cookie: adminCookie })).json()) as {
+      lessons: Array<{ id: number }>;
+    };
+    for (const id of ids) {
+      expect(afterDelete.lessons.some((l) => l.id === id)).toBe(false);
+    }
+  });
+
+  it("rejects a bulk action with an empty ids array or an unknown action", async () => {
+    const emptyIds = await call(env, "/api/admin/lessons/bulk", {
+      method: "POST",
+      cookie: adminCookie,
+      body: JSON.stringify({ ids: [], action: "publish" })
+    });
+    expect(emptyIds.status).toBe(400);
+
+    const lessons = (await (await call(env, "/api/admin/lessons", { cookie: adminCookie })).json()) as {
+      lessons: Array<{ id: number }>;
+    };
+    const badAction = await call(env, "/api/admin/lessons/bulk", {
+      method: "POST",
+      cookie: adminCookie,
+      body: JSON.stringify({ ids: [lessons.lessons[0].id], action: "explode" })
+    });
+    expect(badAction.status).toBe(400);
+  });
+
+  // Regression coverage for the id-param/array validation hardening: a
+  // non-numeric or malformed :id route param used to reach a D1 `.bind()`
+  // call as NaN and blow up as an opaque 500; it must now be a clean 404
+  // (unknown resource) rather than an internal error. Likewise, array
+  // payloads (bulk ids, reorder ids) must reject non-integer/non-positive
+  // entries instead of silently passing them through to the query.
+  it("returns 404 (not a 500) for a non-numeric lesson/chapter id in any :id route", async () => {
+    const patchLesson = await call(env, "/api/admin/lessons/not-a-number", {
+      method: "PATCH",
+      cookie: adminCookie,
+      body: JSON.stringify({ title: "x" })
+    });
+    expect(patchLesson.status).toBe(404);
+
+    const archiveLesson = await call(env, "/api/admin/lessons/abc/archive", {
+      method: "POST",
+      cookie: adminCookie
+    });
+    expect(archiveLesson.status).toBe(404);
+
+    const deleteLesson = await call(env, "/api/admin/lessons/abc", {
+      method: "DELETE",
+      cookie: adminCookie
+    });
+    expect(deleteLesson.status).toBe(404);
+
+    const duplicateLesson = await call(env, "/api/admin/lessons/1.5/duplicate", {
+      method: "POST",
+      cookie: adminCookie
+    });
+    expect(duplicateLesson.status).toBe(404);
+
+    const patchChapter = await call(env, "/api/admin/chapters/-1", {
+      method: "PATCH",
+      cookie: adminCookie,
+      body: JSON.stringify({ name: "x" })
+    });
+    expect(patchChapter.status).toBe(404);
+
+    const deleteChapter = await call(env, "/api/admin/chapters/0", {
+      method: "DELETE",
+      cookie: adminCookie
+    });
+    expect(deleteChapter.status).toBe(404);
+  });
+
+  it("rejects bulk/reorder id arrays containing non-integer, zero, negative, or oversized entries", async () => {
+    const lessons = (await (await call(env, "/api/admin/lessons", { cookie: adminCookie })).json()) as {
+      lessons: Array<{ id: number }>;
+    };
+    const realId = lessons.lessons[0].id;
+
+    const bulkWithBadId = await call(env, "/api/admin/lessons/bulk", {
+      method: "POST",
+      cookie: adminCookie,
+      body: JSON.stringify({ ids: [realId, "1 OR 1=1"], action: "unpublish" })
+    });
+    expect(bulkWithBadId.status).toBe(400);
+
+    const bulkWithZero = await call(env, "/api/admin/lessons/bulk", {
+      method: "POST",
+      cookie: adminCookie,
+      body: JSON.stringify({ ids: [0], action: "unpublish" })
+    });
+    expect(bulkWithZero.status).toBe(400);
+
+    const bulkWithNegative = await call(env, "/api/admin/lessons/bulk", {
+      method: "POST",
+      cookie: adminCookie,
+      body: JSON.stringify({ ids: [-5], action: "unpublish" })
+    });
+    expect(bulkWithNegative.status).toBe(400);
+
+    const reorderWithBadId = await call(env, "/api/admin/lessons/reorder", {
+      method: "POST",
+      cookie: adminCookie,
+      body: JSON.stringify({ orderedIds: [realId, 3.5] })
+    });
+    expect(reorderWithBadId.status).toBe(400);
+
+    const chapterReorderWithBadId = await call(env, "/api/admin/chapters/reorder", {
+      method: "POST",
+      cookie: adminCookie,
+      body: JSON.stringify({ orderedIds: [null] })
+    });
+    expect(chapterReorderWithBadId.status).toBe(400);
+
+    // Confirm the earlier bad requests never mutated anything (fail closed,
+    // not partially-applied).
+    const afterList = (await (await call(env, "/api/admin/lessons", { cookie: adminCookie })).json()) as {
+      lessons: Array<{ id: number; isActive: boolean }>;
+    };
+    expect(afterList.lessons.find((l) => l.id === realId)?.isActive).toBe(true);
+
+    // A well-formed, oversized array (over the 500-entry cap) is rejected too.
+    const tooMany = await call(env, "/api/admin/lessons/bulk", {
+      method: "POST",
+      cookie: adminCookie,
+      body: JSON.stringify({ ids: Array.from({ length: 501 }, (_, i) => i + 1), action: "unpublish" })
+    });
+    expect(tooMany.status).toBe(400);
+  });
+});
+
+describe("Admin revenue/signup analytics (HTTP)", () => {
+  let env: Env;
+  let adminCookie: string;
+
+  beforeEach(async () => {
+    env = await createTestEnv();
+    await seedAdmin(env, "admin@example.com", "correct-horse-battery");
+    adminCookie = await loginAdmin(env, "admin@example.com", "correct-horse-battery");
+  });
+
+  async function seedPaidOrder(env: Env, email: string, amount: number) {
+    const { user } = await loginNewUser(env, email);
+    await env.DB.prepare(
+      `INSERT INTO payment_orders (id, user_id, amount, currency, status, confirmed_at)
+       VALUES (?, ?, ?, 'usdtbsc', 'finished', datetime('now'))`
+    )
+      .bind(randomUuid(), user.id, amount)
+      .run();
+    return user;
+  }
+
+  it("requires an admin session", async () => {
+    const res = await call(env, "/api/admin/analytics");
+    expect(res.status).toBe(401);
+  });
+
+  it("only counts confirmed/finished orders toward revenue, ignores pending/failed ones", async () => {
+    await seedPaidOrder(env, "buyer1@example.com", 49);
+    await seedPaidOrder(env, "buyer2@example.com", 49);
+
+    const { user: pendingUser } = await loginNewUser(env, "pending@example.com");
+    await env.DB.prepare(`INSERT INTO payment_orders (id, user_id, amount, currency, status) VALUES (?, ?, ?, 'usdtbsc', 'waiting')`)
+      .bind(randomUuid(), pendingUser.id, 49)
+      .run();
+
+    const res = await call(env, "/api/admin/analytics", { cookie: adminCookie });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      totalRevenue: number;
+      totalPaidOrders: number;
+      avgOrderValue: number;
+      dailyRevenue: Array<{ date: string; amount: number; count: number }>;
+      statusBreakdown: Array<{ status: string; count: number }>;
+    };
+    expect(body.totalRevenue).toBe(98);
+    expect(body.totalPaidOrders).toBe(2);
+    expect(body.avgOrderValue).toBe(49);
+    expect(body.dailyRevenue.length).toBe(30);
+    // Today's bucket should carry both confirmed orders.
+    expect(body.dailyRevenue[29].amount).toBe(98);
+    expect(body.statusBreakdown.find((s) => s.status === "waiting")?.count).toBe(1);
+    expect(body.statusBreakdown.find((s) => s.status === "finished")?.count).toBe(2);
+  });
+
+  it("returns zeroed-out analytics when there are no orders yet", async () => {
+    const res = await call(env, "/api/admin/analytics", { cookie: adminCookie });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { totalRevenue: number; totalPaidOrders: number; dailyRevenue: unknown[] };
+    expect(body.totalRevenue).toBe(0);
+    expect(body.totalPaidOrders).toBe(0);
+    expect(body.dailyRevenue.length).toBe(30);
+  });
 });
 
 describe("Admin-editable price/discount settings (HTTP)", () => {

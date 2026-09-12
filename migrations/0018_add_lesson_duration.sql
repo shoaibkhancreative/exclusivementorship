@@ -1,0 +1,11 @@
+-- Adds an admin-entered video duration label per lesson (e.g. "12:45" or
+-- "1:04:30"), shown as a badge on the class's thumbnail (Learn page grid,
+-- Lesson page playlist sidebar, and the Lesson page's own cover thumbnail).
+--
+-- Deliberately a free-form label the admin types in, NOT something derived
+-- from the video file itself — there is no video-duration auto-detection
+-- anywhere in this codebase (video_embed_url can point at a YouTube embed
+-- or a Bunny Stream embed, and we never probe either for metadata), so this
+-- stays manual by design. NULL means "no duration set yet" — the badge is
+-- simply omitted for that lesson (see routes/lessons.ts / OutlineList.tsx).
+ALTER TABLE lessons ADD COLUMN duration_label TEXT;

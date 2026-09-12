@@ -23,6 +23,8 @@ interface LessonRow {
   is_active: number;
   sort_order: number;
   watermark_enabled: number;
+  /** Admin-entered display label like "12:45" — see migration 0018. Never auto-detected. */
+  duration_label: string | null;
 }
 
 interface ProgressRow {
@@ -67,6 +69,7 @@ lessonRoutes.get("/", async (c) => {
       chapterName: lesson.chapter_name,
       tagline: lesson.tagline,
       thumbnailUrl: lesson.thumbnail_url,
+      durationLabel: lesson.duration_label,
       isFree: lesson.lesson_number <= freeLessonCount,
       state
     };
@@ -120,6 +123,7 @@ lessonRoutes.get("/:number", async (c) => {
       tagline: lesson.tagline,
       description: null,
       thumbnailUrl: lesson.thumbnail_url,
+      durationLabel: lesson.duration_label,
       videoEmbedUrl: null,
       videoCompleted: false,
       isLastFreeLesson: false,
@@ -145,6 +149,7 @@ lessonRoutes.get("/:number", async (c) => {
     tagline: lesson.tagline,
     description: lesson.description,
     thumbnailUrl: lesson.thumbnail_url,
+    durationLabel: lesson.duration_label,
     videoEmbedUrl: lesson.video_embed_url,
     videoCompleted: Boolean(progress?.video_completed),
     isLastFreeLesson: lessonNumber === freeLessonCount,

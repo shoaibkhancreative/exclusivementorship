@@ -20,8 +20,6 @@ export async function createTestEnv(overrides: Partial<Env> = {}): Promise<Env> 
     GOOGLE_CLIENT_ID: "test-google-client-id.apps.googleusercontent.com",
     ENROLLMENT_PRICE_USDT: "39",
     REFERENCE_PRICE_USDT: "100",
-    SUPPORT_TELEGRAM_FREE_URL: "https://t.me/AskNLT",
-    SUPPORT_TELEGRAM_PREMIUM_URL: "https://t.me/exclusivementor",
     SESSION_SECRET: "test-session-secret-not-for-production",
     NOWPAYMENTS_IPN_SECRET: "test-ipn-secret",
     BUNNY_TOKEN_AUTH_KEY: "test-bunny-token-key",

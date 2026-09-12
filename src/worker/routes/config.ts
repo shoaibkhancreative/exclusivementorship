@@ -1,18 +1,64 @@
 import { Hono } from "hono";
 import type { Env } from "../lib/config";
-import { getEnrollmentAmount, getReferenceAmount, getFreeLessonCount, getIntroVideoEmbedUrl } from "../lib/config";
+import { getEnrollmentAmount, getReferenceAmount, getFreeLessonCount, getIntroVideoEmbedUrl, getSiteLogoUrl, getSiteFaviconUrl } from "../lib/config";
 import { isBunnyEmbedUrl, signBunnyEmbedUrl } from "../lib/bunny";
+import { getContentMap, getAllLayouts } from "../db";
+import { CONTENT_DEFAULTS } from "../lib/content";
+import { PAGE_BLOCKS } from "../lib/layout";
 
 export const configRoutes = new Hono<{ Bindings: Env }>();
 
+/**
+ * Every admin-editable page-copy string, fetched once client-side by
+ * useContent() (see lib/content.ts on the client) and cached for the
+ * session. Deliberately a separate endpoint from /config/public rather than
+ * merged into it: this map can grow to dozens of keys as more pages adopt
+ * `t()`, and callers that only need price/video config (Login, SupportButton)
+ * shouldn't have to wait on or re-fetch it.
+ */
+configRoutes.get("/content", async (c) => {
+  const content = await getContentMap(c.env, CONTENT_DEFAULTS);
+  return c.json({ content });
+});
+
+/**
+ * Per-page block order + visibility (Phase 3), for the small set of pages
+ * built from independent, reorderable blocks (see PAGE_BLOCKS). Returns
+ * every known page's *full* reconciled list (hidden blocks included, with
+ * `visible: false`) rather than pre-filtering — the page component decides
+ * how to render "hidden" (usually: just don't render it), and having the
+ * full list makes debugging a layout in the admin UI/devtools easier.
+ */
+configRoutes.get("/layout", async (c) => {
+  const pageKeys = Object.keys(PAGE_BLOCKS);
+  try {
+    const layouts = await getAllLayouts(c.env, pageKeys);
+    return c.json({ layouts });
+  } catch {
+    // Never break the public site over a layout-table hiccup — fall back to
+    // the full default (all blocks, all visible, registry order) for every
+    // page, same as an individual getLayout() failure would.
+    const layouts: Record<string, ReturnType<typeof defaultLayoutFallback>> = {};
+    for (const key of pageKeys) layouts[key] = defaultLayoutFallback(key);
+    return c.json({ layouts });
+  }
+});
+
+function defaultLayoutFallback(pageKey: string) {
+  return (PAGE_BLOCKS[pageKey] ?? []).map((b) => ({ id: b.id, visible: true }));
+}
+
 /** Only non-secret, display-safe values. Never put API keys/tokens here. */
 configRoutes.get("/public", async (c) => {
-  const [enrollmentPrice, referencePrice, freeLessonCount, rawIntroVideoEmbedUrl] = await Promise.all([
-    getEnrollmentAmount(c.env),
-    getReferenceAmount(c.env),
-    getFreeLessonCount(c.env),
-    getIntroVideoEmbedUrl(c.env)
-  ]);
+  const [enrollmentPrice, referencePrice, freeLessonCount, rawIntroVideoEmbedUrl, siteLogoUrl, siteFaviconUrl] =
+    await Promise.all([
+      getEnrollmentAmount(c.env),
+      getReferenceAmount(c.env),
+      getFreeLessonCount(c.env),
+      getIntroVideoEmbedUrl(c.env),
+      getSiteLogoUrl(c.env),
+      getSiteFaviconUrl(c.env)
+    ]);
 
   // The intro video lives on the same Bunny Stream library as every gated
   // lesson, and that library has Embed View Token Authentication enabled —
@@ -39,16 +85,7 @@ configRoutes.get("/public", async (c) => {
     mentorshipPdfUrl: c.env.MENTORSHIP_PDF_URL,
     turnstileSiteKey: c.env.TURNSTILE_SITE_KEY,
     googleClientId: c.env.GOOGLE_CLIENT_ID || null,
-    // Only the FREE-tier Telegram destination is public — it's fine for any
-    // anonymous visitor to have. The premium (paid-mentor) Telegram link is
-    // deliberately NOT included here: this endpoint has no auth requirement
-    // at all (anyone can call GET /api/config/public without logging in), so
-    // putting the premium URL here and trusting the client to only show it
-    // to paid users would leak the exclusive contact to every visitor via
-    // plain devtools/curl. That decision now happens in GET /auth/me
-    // instead (see routes/auth.ts's `supportTelegramUrl`), which is
-    // authenticated and derives the destination from the real, session-
-    // backed course_status — never from anything the client asserts.
-    supportTelegramFreeUrl: c.env.SUPPORT_TELEGRAM_FREE_URL
+    siteLogoUrl,
+    siteFaviconUrl
   });
 });

@@ -45,8 +45,9 @@ export interface PublicConfig {
   mentorshipPdfUrl: string;
   turnstileSiteKey: string;
   googleClientId: string | null;
-  /** Always-public destination for anonymous/free visitors. The paid-mentor Telegram link is intentionally not here — see MeResponse.supportTelegramUrl. */
-  supportTelegramFreeUrl: string;
+  /** Phase 4 — optional admin-set logo/favicon URLs. Null until an admin sets one; the client keeps its current default appearance when null. */
+  siteLogoUrl: string | null;
+  siteFaviconUrl: string | null;
 }
 
 export interface MeResponse {
@@ -56,8 +57,6 @@ export interface MeResponse {
   currentLesson?: number;
   courseStatus?: "free" | "paid";
   freeLessonCount?: number;
-  /** Server-resolved from the real session course_status — only present when authenticated. */
-  supportTelegramUrl?: string;
 }
 
 export interface OutlineItem {
@@ -66,6 +65,8 @@ export interface OutlineItem {
   chapterName: string;
   tagline: string | null;
   thumbnailUrl: string | null;
+  /** Admin-entered display label like "12:45" — shown as a badge on the thumbnail. Null if not set. */
+  durationLabel: string | null;
   isFree: boolean;
   state: "locked" | "available" | "current" | "completed" | "preview";
 }
@@ -92,6 +93,8 @@ export interface LessonDetail {
   tagline: string | null;
   description: string | null;
   thumbnailUrl: string | null;
+  /** Admin-entered display label like "12:45" — shown as a badge on the thumbnail. Null if not set. */
+  durationLabel: string | null;
   videoEmbedUrl: string | null;
   videoCompleted: boolean;
   isLastFreeLesson: boolean;
@@ -133,4 +136,81 @@ export interface PaymentStatusResponse {
   payCurrency: string | null;
   expiresAt: string | null;
   priceUsd: number;
+}
+
+// ---------------------------------------------------------------------------
+// Support inbox (in-site chat that replaced the Telegram button) — see
+// routes/support.ts / routes/admin-support.ts.
+// ---------------------------------------------------------------------------
+
+export type SupportAgentProfileId = "nlt" | "void" | "venom" | "shadow";
+
+export interface SupportTicket {
+  id: string;
+  subject: string | null;
+  status: "open" | "closed";
+  agentProfile: SupportAgentProfileId;
+  agentDisplayName: string;
+  lastMessageAt: string;
+  createdAt: string;
+  /** The page the learner was on when they opened this ticket (e.g. "/lesson/12"), captured client-side at creation. */
+  originPath: string | null;
+  unreadCount: number;
+}
+
+/** Same shape as SupportTicket, plus what only the admin inbox needs — including enough about the ticket's owner to show "who is this" without a second round trip (see SupportPage.tsx's Users column). */
+export interface AdminSupportTicket extends SupportTicket {
+  userId: string | null;
+  guestId: string | null;
+  isGuest: boolean;
+  userEmail: string | null;
+  userName: string | null;
+  guestEmail: string | null;
+  courseStatus: "free" | "paid" | null;
+  currentLesson: number | null;
+  completedLessons: number | null;
+  totalLessons: number | null;
+  /** True if the learner used "Close conversation" on their side — the ticket's still fully visible/actionable here, just gone from their own list until an admin unhides it. */
+  hiddenByUser: boolean;
+  lastMessagePreview: string | null;
+}
+
+export interface SupportMessage {
+  id: string;
+  senderType: "user" | "admin";
+  body: string | null;
+  hasAttachment: boolean;
+  attachmentFilename: string | null;
+  attachmentMime: string | null;
+  createdAt: string;
+  /** Fetch this (browser sends the session/guest cookie automatically) to render the actual image — attachment bytes are never inlined in this response. */
+  attachmentUrl: string | null;
+}
+
+export interface SupportAttachmentInput {
+  /** A `data:<mime>;base64,...` URL — produced client-side by resizing/compressing the picked image on a <canvas> before sending. */
+  dataUrl: string;
+  filename: string;
+}
+
+// ---------------------------------------------------------------------------
+// In-site notifications (see routes/notifications.ts) — currently only
+// 'support_reply' is ever created (an admin reply, or an admin-started new
+// conversation); 'assignment_approved'/'assignment_rejected' are reserved
+// for the future assignment-review UI (migrations/0008_admin_panel.sql).
+// ---------------------------------------------------------------------------
+
+export type NotificationType = "assignment_approved" | "assignment_rejected" | "support_reply";
+
+export interface Notification {
+  id: string;
+  type: NotificationType;
+  message: string;
+  readAt: string | null;
+  createdAt: string;
+}
+
+export interface NotificationListResponse {
+  notifications: Notification[];
+  unreadCount: number;
 }

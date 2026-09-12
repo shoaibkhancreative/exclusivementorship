@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { api, ApiError } from "../../lib/api";
 import { Button, Card } from "../../components/ui";
+import { ImageUrlPreview } from "../../components/ImageUrlPreview";
+import { CoinIcon, BookIcon, GearIcon } from "../components/icons";
 
 interface SettingsResponse {
   enrollmentPrice: number;
@@ -8,6 +10,17 @@ interface SettingsResponse {
   discountPercent: number;
   freeLessonCount: number;
   introVideoEmbedUrl: string | null;
+  siteLogoUrl: string | null;
+  siteFaviconUrl: string | null;
+}
+
+function SectionHeading({ icon, title }: { icon: React.ReactNode; title: string }) {
+  return (
+    <div className="mb-4 flex items-center gap-2">
+      <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-base-800 text-zinc-400">{icon}</span>
+      <h1 className="text-lg text-zinc-100">{title}</h1>
+    </div>
+  );
 }
 
 export default function SettingsPage() {
@@ -25,6 +38,12 @@ export default function SettingsPage() {
   const [courseSuccess, setCourseSuccess] = useState<string | null>(null);
   const [savingCourse, setSavingCourse] = useState(false);
 
+  const [siteLogoUrl, setSiteLogoUrl] = useState("");
+  const [siteFaviconUrl, setSiteFaviconUrl] = useState("");
+  const [siteError, setSiteError] = useState<string | null>(null);
+  const [siteSuccess, setSiteSuccess] = useState<string | null>(null);
+  const [savingSite, setSavingSite] = useState(false);
+
   async function load() {
     const res = await api.get<SettingsResponse>("/admin/settings");
     setData(res);
@@ -32,6 +51,8 @@ export default function SettingsPage() {
     setReferencePrice(String(res.referencePrice));
     setFreeLessonCount(String(res.freeLessonCount));
     setIntroVideoEmbedUrl(res.introVideoEmbedUrl ?? "");
+    setSiteLogoUrl(res.siteLogoUrl ?? "");
+    setSiteFaviconUrl(res.siteFaviconUrl ?? "");
   }
 
   useEffect(() => {
@@ -76,16 +97,38 @@ export default function SettingsPage() {
     }
   }
 
+  async function handleSiteSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setSiteError(null);
+    setSiteSuccess(null);
+    setSavingSite(true);
+    try {
+      const res = await api.post<SettingsResponse & { ok: true }>("/admin/settings", {
+        siteLogoUrl,
+        siteFaviconUrl
+      });
+      setData(res);
+      setSiteSuccess("Saved.");
+    } catch (err) {
+      setSiteError(err instanceof ApiError ? err.message : "Couldn't save settings.");
+    } finally {
+      setSavingSite(false);
+    }
+  }
+
   return (
-    <div className="page-enter flex flex-col gap-6">
+    <div className="page-enter grid grid-cols-1 gap-6 lg:grid-cols-2">
       <div>
-        <h1 className="mb-4 text-xl text-zinc-100">Price &amp; Discount</h1>
-        <Card className="max-w-md">
+        <SectionHeading icon={<CoinIcon />} title="Price & Discount" />
+        <Card>
           {data && (
-            <p className="mb-4 text-sm text-zinc-400">
-              Live: ${data.enrollmentPrice} enrollment vs ${data.referencePrice} reference —{" "}
-              <span className="text-accent-300">{data.discountPercent}% off</span>.
-            </p>
+            <div className="mb-4 flex items-baseline gap-2 rounded-lg border border-base-700/60 bg-base-800/50 px-3 py-2.5">
+              <span className="text-lg font-semibold text-zinc-100">${data.enrollmentPrice}</span>
+              <span className="text-sm text-zinc-500 line-through">${data.referencePrice}</span>
+              <span className="ml-auto rounded-full bg-accent-500/15 px-2 py-0.5 text-xs font-medium text-accent-300">
+                {data.discountPercent}% off
+              </span>
+            </div>
           )}
           <form onSubmit={handlePriceSubmit} className="flex flex-col gap-4">
             <div>
@@ -128,8 +171,8 @@ export default function SettingsPage() {
       </div>
 
       <div>
-        <h1 className="mb-4 text-xl text-zinc-100">Course</h1>
-        <Card className="max-w-md">
+        <SectionHeading icon={<BookIcon />} title="Course" />
+        <Card>
           <p className="mb-4 text-sm text-zinc-400">
             How many classes (from Class 1, in order) anyone can watch for free before enrollment is required, and
             the homepage intro video. Both take effect immediately, site-wide — no code changes or redeploy needed.
@@ -171,6 +214,51 @@ export default function SettingsPage() {
             {courseSuccess && <p className="text-sm text-accent-300">{courseSuccess}</p>}
             <Button type="submit" disabled={savingCourse} className="self-start">
               {savingCourse ? "Saving…" : "Save course settings"}
+            </Button>
+          </form>
+        </Card>
+      </div>
+
+      <div>
+        <SectionHeading icon={<GearIcon />} title="Site" />
+        <Card>
+          <p className="mb-4 text-sm text-zinc-400">
+            Logo/favicon (optional — paste a URL, no upload needed). Brand name and other page text are edited on the
+            Content page; the support chat's copy is in Content → Support chat.
+          </p>
+          <form onSubmit={handleSiteSubmit} className="flex flex-col gap-4">
+            <div>
+              <label htmlFor="site-logo-url" className="mb-1 block text-xs text-zinc-400">
+                Logo URL (optional — replaces the text brand name in the nav)
+              </label>
+              <input
+                id="site-logo-url"
+                type="url"
+                placeholder="https://…/logo.svg"
+                value={siteLogoUrl}
+                onChange={(e) => setSiteLogoUrl(e.target.value)}
+                className="focus-ring w-full rounded-lg border border-base-700 bg-base-800 px-3 py-2 text-sm text-zinc-100 outline-none"
+              />
+              <ImageUrlPreview url={siteLogoUrl} className="h-10 w-32" />
+            </div>
+            <div>
+              <label htmlFor="site-favicon-url" className="mb-1 block text-xs text-zinc-400">
+                Favicon URL (optional)
+              </label>
+              <input
+                id="site-favicon-url"
+                type="url"
+                placeholder="https://…/favicon.svg"
+                value={siteFaviconUrl}
+                onChange={(e) => setSiteFaviconUrl(e.target.value)}
+                className="focus-ring w-full rounded-lg border border-base-700 bg-base-800 px-3 py-2 text-sm text-zinc-100 outline-none"
+              />
+              <ImageUrlPreview url={siteFaviconUrl} className="h-10 w-10" />
+            </div>
+            {siteError && <p className="text-sm text-red-400">{siteError}</p>}
+            {siteSuccess && <p className="text-sm text-accent-300">{siteSuccess}</p>}
+            <Button type="submit" disabled={savingSite} className="self-start">
+              {savingSite ? "Saving…" : "Save site settings"}
             </Button>
           </form>
         </Card>

@@ -11,6 +11,7 @@
 // summary logged at the end for visibility in `wrangler tail`.
 
 import type { Env } from "./lib/config";
+import { sendAbandonedCheckoutEmail } from "./services/email";
 
 /** Default retention window for audit_events, in days, if AUDIT_RETENTION_DAYS is unset/invalid. */
 const DEFAULT_AUDIT_RETENTION_DAYS = 90;
@@ -19,7 +20,7 @@ const DEFAULT_AUDIT_RETENTION_DAYS = 90;
  * Event types that must NEVER be deleted by this job, regardless of
  * retention period — kept indefinitely for financial audit purposes.
  */
-const AUDIT_EVENTS_NEVER_DELETE = ["payment_confirmed", "payment_underpaid_tolerated"] as const;
+const AUDIT_EVENTS_NEVER_DELETE = ["payment_confirmed", "payment_underpaid_within_tolerance"] as const;
 
 function getAuditRetentionDays(env: Env): number {
   const n = Number(env.AUDIT_RETENTION_DAYS);
@@ -73,7 +74,7 @@ async function cleanupRateLimits(env: Env): Promise<CleanupResult> {
 /**
  * Deletes audit_events rows older than the configured retention period
  * (AUDIT_RETENTION_DAYS, default 90), EXCEPT rows whose event_type is
- * 'payment_confirmed' or 'payment_underpaid_tolerated' — those are kept
+ * 'payment_confirmed' or 'payment_underpaid_within_tolerance' — those are kept
  * indefinitely for financial audit purposes regardless of age.
  */
 async function cleanupAuditEvents(env: Env): Promise<CleanupResult> {
@@ -99,6 +100,77 @@ async function cleanupAuditEvents(env: Env): Promise<CleanupResult> {
  * one table's cleanup is logged but does not prevent the others from
  * running or crash the scheduled invocation.
  */
+interface AbandonedOrderRow {
+  order_id: string;
+  user_email: string;
+}
+
+/** Cap per run — the job runs every 15 minutes (see wrangler.jsonc), so a
+ * backlog still clears within an hour or two even under this limit; it just
+ * keeps any single invocation cheap and bounded. */
+const ABANDONED_REMINDER_BATCH_SIZE = 50;
+
+/**
+ * Emails one reminder for each payment order that was created, never paid,
+ * and has sat past its `expires_at` — the case where a learner opened
+ * checkout, didn't finish, and never came back. Purely backend/data logic:
+ * no new frontend surface, no change to the checkout flow itself.
+ *
+ * Guarded three ways against duplicate or wrong-target sends:
+ *  - `reminder_sent_at IS NULL` — set the moment a send succeeds, so a
+ *    later run (even one that overlaps this one) never re-sends for the
+ *    same order.
+ *  - `status = 'waiting'` — the only "still genuinely unpaid, still has an
+ *    address that was shown to the user" state; anything already
+ *    'confirmed'/'finished'/'failed'/'cancelled' is excluded.
+ *  - `course_status != 'paid'` — belt-and-suspenders in case the user
+ *    completed a *different*, later order in the meantime.
+ */
+export async function sendAbandonedCheckoutReminders(env: Env): Promise<CleanupResult> {
+  try {
+    const rows = await env.DB.prepare(
+      `SELECT po.id AS order_id, u.email AS user_email
+         FROM payment_orders po
+         JOIN users u ON u.id = po.user_id
+        WHERE po.status = 'waiting'
+          AND po.reminder_sent_at IS NULL
+          AND po.expires_at IS NOT NULL
+          AND po.expires_at < datetime('now')
+          AND u.course_status != 'paid'
+        ORDER BY po.created_at ASC
+        LIMIT ?`
+    )
+      .bind(ABANDONED_REMINDER_BATCH_SIZE)
+      .all<AbandonedOrderRow>();
+
+    let sent = 0;
+    for (const row of rows.results) {
+      try {
+        await sendAbandonedCheckoutEmail(env, row.user_email);
+        await env.DB.prepare("UPDATE payment_orders SET reminder_sent_at = datetime('now') WHERE id = ?")
+          .bind(row.order_id)
+          .run();
+        sent += 1;
+      } catch (err) {
+        // One bad email/address should never block the rest of the batch —
+        // it's simply retried on the next run since reminder_sent_at was
+        // never set for it.
+        // eslint-disable-next-line no-console
+        console.error(`[abandoned-checkout-reminder] failed for order ${row.order_id}:`, err);
+      }
+    }
+
+    // eslint-disable-next-line no-console
+    console.log(`[abandoned-checkout-reminder] sent ${sent} reminder(s)`);
+    return { table: "payment_orders (reminders)", deleted: sent };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    // eslint-disable-next-line no-console
+    console.error("[abandoned-checkout-reminder] run failed:", message);
+    return { table: "payment_orders (reminders)", deleted: 0, error: message };
+  }
+}
+
 export async function runScheduledCleanup(env: Env): Promise<CleanupResult[]> {
   const results = await Promise.all([cleanupOtpCodes(env), cleanupRateLimits(env), cleanupAuditEvents(env)]);
 

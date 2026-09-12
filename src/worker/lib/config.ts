@@ -26,18 +26,17 @@ export interface Env {
   // didn't realize the network fee is deducted separately and send a
   // dollar or two short. Defaults to 2 if unset. See getUnderpaymentToleranceUsdt.
   UNDERPAYMENT_TOLERANCE_USDT?: string;
-  // Telegram destinations for the floating support button — the one
-  // Telegram touchpoint intentionally kept. Which one is used is decided
-  // server-side (via /config/public) but the routing choice on the client
-  // is always based on the real, authenticated course_status — never a
-  // visual/UI assumption.
-  SUPPORT_TELEGRAM_PREMIUM_URL: string;
-  SUPPORT_TELEGRAM_FREE_URL: string;
+  // In-site support inbox (replaces the old Telegram support button — see
+  // routes/support.ts, routes/admin-support.ts). Where "new ticket" /
+  // "new message" notifications are emailed. Optional: if unset, those
+  // admin-notification emails are skipped (learner-facing reply emails
+  // still send normally, since those go to the learner, not this address).
+  SUPPORT_NOTIFY_EMAIL?: string;
 
   // Optional — retention window (in days) for the scheduled audit_events
   // cleanup job. Defaults to 90 if unset. Never applies to event_type
-  // 'payment_confirmed' or 'payment_underpaid_tolerated', which are kept
-  // indefinitely regardless of this setting. See scheduled.ts. The cron
+  // 'payment_confirmed' or 'payment_underpaid_within_tolerance', which are
+  // kept indefinitely regardless of this setting. See scheduled.ts. The cron
   // trigger that runs this job is NOT enabled by default — see
   // wrangler.jsonc.
   AUDIT_RETENTION_DAYS?: string;
@@ -92,6 +91,8 @@ export const SETTING_ENROLLMENT_PRICE_USDT = "enrollment_price_usdt";
 export const SETTING_REFERENCE_PRICE_USDT = "reference_price_usdt";
 export const SETTING_FREE_LESSON_COUNT = "free_lesson_count";
 export const SETTING_INTRO_VIDEO_EMBED_URL = "intro_video_embed_url";
+export const SETTING_SITE_LOGO_URL = "site_logo_url";
+export const SETTING_SITE_FAVICON_URL = "site_favicon_url";
 
 /**
  * The server is always the source of truth for price — never trust the
@@ -131,6 +132,23 @@ export async function getIntroVideoEmbedUrl(env: Env): Promise<string | null> {
 }
 
 /**
+ * Site logo/favicon (Phase 4) — URL fields, same "paste a link, see a
+ * preview" pattern as the intro video and lesson thumbnails; no upload
+ * storage. Both are optional: when unset, the client keeps its current
+ * default appearance (text brand name in the nav; the bundled
+ * /favicon.svg) rather than showing anything broken.
+ */
+export async function getSiteLogoUrl(env: Env): Promise<string | null> {
+  const raw = await getSetting(env, SETTING_SITE_LOGO_URL, null);
+  return raw && raw.trim() ? raw.trim() : null;
+}
+
+export async function getSiteFaviconUrl(env: Env): Promise<string | null> {
+  const raw = await getSetting(env, SETTING_SITE_FAVICON_URL, null);
+  return raw && raw.trim() ? raw.trim() : null;
+}
+
+/**
  * The only crypto currency we accept, and the only one shown to buyers:
  * USDT on BNB Smart Chain (BEP20). Chosen deliberately over TRC20/ERC20
  * because it has the lowest network fee of NOWPayments' supported USDT
@@ -153,5 +171,55 @@ export function getUnderpaymentToleranceUsdt(env: Env): number {
   const n = Number(env.UNDERPAYMENT_TOLERANCE_USDT);
   return Number.isFinite(n) && n >= 0 ? n : 2;
 }
+
+// ---------------------------------------------------------------------------
+// In-site support inbox (migrations/0016, 0017) — replaces the old Telegram
+// support button. See routes/support.ts (learner) and
+// routes/admin-support.ts (admin).
+// ---------------------------------------------------------------------------
+
+export type SupportAgentProfile = "nlt" | "void" | "venom" | "shadow";
+
+/** Every agent profile's display label, in one place so copy can change without touching route/UI logic. */
+export const SUPPORT_AGENT_LABELS: Record<SupportAgentProfile, string> = {
+  nlt: "NLT",
+  void: "Void",
+  venom: "Venom",
+  shadow: "Shadow"
+};
+
+/** New tickets are randomly assigned to one of these — never 'nlt' at creation time (only an admin can shift a ticket to 'nlt'). */
+export const SUPPORT_AUTO_ASSIGN_PROFILES: SupportAgentProfile[] = ["void", "venom", "shadow"];
+
+export function randomSupportAgentProfile(): SupportAgentProfile {
+  const i = Math.floor(Math.random() * SUPPORT_AUTO_ASSIGN_PROFILES.length);
+  return SUPPORT_AUTO_ASSIGN_PROFILES[i];
+}
+
+export const SUPPORT_GUEST_COOKIE_NAME = "support_guest_id";
+/** How long a guest's support-ticket identity cookie lasts. Not a security-sensitive token (just a correlation id), so a long-lived plain cookie is fine — mirrors buildSessionCookie's attribute shape, not its HMAC. */
+export const SUPPORT_GUEST_COOKIE_DAYS = 365;
+
+/** Hard server-side cap on a single attachment's raw (decoded) byte size — D1's own BLOB/row ceiling is 2,000,000 bytes, so this leaves comfortable headroom. */
+export const SUPPORT_MAX_ATTACHMENT_BYTES = 1.5 * 1024 * 1024;
+export const SUPPORT_ALLOWED_ATTACHMENT_MIME_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif"
+]);
+
+/**
+ * Lesson thumbnails uploaded from the admin panel (see LessonsPage.tsx /
+ * fileToCompressedDataUrl) are stored inline in `lessons.thumbnail_url` as a
+ * `data:image/...;base64,...` string — this project has no R2/object
+ * storage bucket configured (see wrangler.jsonc), so a plain TEXT column is
+ * the pragmatic option rather than standing up new infra for what's a small
+ * (client-resized) image. Kept well under D1's 2,000,000-byte BLOB/row
+ * ceiling: 1MB of raw image bytes inflates to ~1.37MB as base64 text, which
+ * still leaves headroom alongside the row's other columns.
+ */
+export const LESSON_THUMBNAIL_MAX_BYTES = 1 * 1024 * 1024;
+export const LESSON_THUMBNAIL_ALLOWED_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 
 

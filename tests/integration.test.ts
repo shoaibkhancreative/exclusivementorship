@@ -257,7 +257,7 @@ describe("OTP request/verify over HTTP (dev-mode email fallback)", () => {
     const res1 = await call(env, "/api/auth/request-otp", { method: "POST", body: JSON.stringify({ email }) });
     expect(res1.status).toBe(200);
 
-    const logged = logSpy.mock.calls.map((c) => String(c[0])).find((l) => l.includes(email));
+    const logged = logSpy.mock.calls.map((c: unknown[]) => String(c[0])).find((l: string) => l.includes(email));
     expect(logged).toBeDefined();
     const code = logged!.match(/(\d{6})/)?.[1];
     expect(code).toBeDefined();

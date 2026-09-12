@@ -3,7 +3,9 @@ import {
   OTP_EXPIRY_MINUTES,
   OTP_MAX_ATTEMPTS,
   SESSION_COOKIE_NAME,
-  SESSION_DURATION_DAYS
+  SESSION_DURATION_DAYS,
+  SUPPORT_GUEST_COOKIE_NAME,
+  SUPPORT_GUEST_COOKIE_DAYS
 } from "./lib/config";
 import { generateOtp, hmacSha256Hex, randomToken, randomUuid, timingSafeEqual } from "./lib/crypto";
 import { getOrCreateUser, type UserRow } from "./db";
@@ -165,6 +167,24 @@ export function buildSessionCookie(env: Env, token: string): string {
 export function buildLogoutCookie(env: Env): string {
   const isLocal = env.APP_URL.startsWith("http://localhost") || env.APP_URL.startsWith("http://127.0.0.1");
   const attrs = [`${SESSION_COOKIE_NAME}=`, "Path=/", "HttpOnly", "SameSite=Lax", "Max-Age=0"];
+  if (!isLocal) attrs.push("Secure");
+  return attrs.join("; ");
+}
+
+/**
+ * The support-ticket guest identity cookie (SUPPORT_GUEST_COOKIE_NAME) —
+ * unlike the session cookie above, this holds a plain uuid rather than a
+ * hashed/HMAC'd token: it's only ever used as a correlation id for "which
+ * guest's tickets are these", never as an authentication credential (see
+ * routes/support.ts, which always re-checks ticket ownership server-side
+ * regardless). Still httpOnly so it can't be read/tampered with from page
+ * JS, and long-lived since a guest may come back days later to check a
+ * reply.
+ */
+export function buildGuestIdCookie(env: Env, guestId: string): string {
+  const isLocal = env.APP_URL.startsWith("http://localhost") || env.APP_URL.startsWith("http://127.0.0.1");
+  const maxAge = SUPPORT_GUEST_COOKIE_DAYS * 24 * 60 * 60;
+  const attrs = [`${SUPPORT_GUEST_COOKIE_NAME}=${guestId}`, "Path=/", "HttpOnly", "SameSite=Lax", `Max-Age=${maxAge}`];
   if (!isLocal) attrs.push("Secure");
   return attrs.join("; ");
 }

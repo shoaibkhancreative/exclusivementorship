@@ -12,22 +12,27 @@ function isBunnyHost(url: string): boolean {
   }
 }
 
+/** Forces (or clears) the `autoplay` query param on a Bunny embed URL. */
+function withAutoplayParam(url: string, autoplay: boolean): string {
+  try {
+    const parsed = new URL(url);
+    parsed.searchParams.set("autoplay", autoplay ? "true" : "false");
+    return parsed.toString();
+  } catch {
+    return url;
+  }
+}
+
 interface VideoStageProps {
   lessonNumber: number;
   /** The lesson's raw embedUrl as returned by GET /lessons/:number — unsigned for Bunny videos. */
   rawEmbedUrl: string;
   title: string;
   onEnded: () => void;
-  /**
-   * Whether this lesson is payment-gated (beyond the free-lesson count).
-   * Free lessons — including free lessons now hosted on Bunny — skip the
-   * signed-token round-trip entirely and render the plain embed URL, same
-   * as the YouTube path always has. Only payment-gated Bunny lessons ever
-   * call POST /lessons/:number/video-token.
-   */
-  requiresToken: boolean;
   /** The logged-in viewer's email — shown as a deterrent watermark. Null skips the overlay entirely (e.g. logged-out preview, or watermark disabled for this lesson). */
   watermarkLabel: string | null;
+  /** Shown behind the click-to-play button for Bunny videos before playback starts. */
+  thumbnailUrl: string | null;
 }
 
 /**
@@ -35,11 +40,48 @@ interface VideoStageProps {
  * lessons, fetches a short-lived signed embed URL from
  * POST /lessons/:number/video-token before ever rendering the iframe — the
  * raw, unsigned mediadelivery.net link is never rendered directly for those.
- * Free lessons (YouTube always, and now Bunny too) render their raw embed
- * URL immediately with no token fetch and no auth requirement.
+ * Free lessons hosted on YouTube still render their raw embed URL
+ * immediately, no token fetch involved. Free lessons hosted on Bunny go
+ * through the exact same signed-token round-trip as paid ones — see the
+ * `needsToken` comment below for why an unsigned free-lesson Bunny embed
+ * 403s once the library's Token Authentication setting is on.
+ *
+ * Every Bunny-hosted lesson (free or paid, freshly unlocked or not, on
+ * first load or a reload) starts as a plain thumbnail with a large, centered
+ * play button — never the live iframe. Nothing is fetched or mounted for a
+ * Bunny lesson until the learner actually taps play, so there is no autoplay
+ * of any kind, ever, on any page load. YouTube lessons are unaffected —
+ * their existing behavior (no facade) is unchanged.
  */
-export function VideoStage({ lessonNumber, rawEmbedUrl, title, onEnded, requiresToken, watermarkLabel }: VideoStageProps) {
-  const needsToken = requiresToken && isBunnyHost(rawEmbedUrl);
+export function VideoStage({
+  lessonNumber,
+  rawEmbedUrl,
+  title,
+  onEnded,
+  watermarkLabel,
+  thumbnailUrl
+}: VideoStageProps) {
+  const isBunny = isBunnyHost(rawEmbedUrl);
+  // Every Bunny-hosted video needs a signed token — this is NOT tied to
+  // payment gating (there used to be a `requiresToken` prop here that only
+  // signed premium lessons; that's what caused free Bunny lessons to 403).
+  // Bunny Stream's "Token Authentication" security setting lives on the
+  // video LIBRARY, not on individual videos: once it's on, the whole
+  // library requires a valid token/expires pair on every embed request, so
+  // an unsigned "free" embed 403s exactly the same as an unsigned paid one
+  // would — Bunny has no per-video exemption for this. Access control for
+  // who is *allowed* to request a token at all is still fully enforced
+  // server-side (see canAccessLesson inside POST /lessons/:number/video-token);
+  // this just makes sure free lessons actually go through that endpoint
+  // instead of trying to render an embed Bunny will reject outright.
+  const needsToken = isBunny;
+
+  // Whether the learner has tapped the play button yet. Only meaningful
+  // for Bunny — YouTube keeps its previous "always live" behavior. Reset
+  // to false any time the lesson changes so a freshly-opened class always
+  // starts on the facade, never mid-playback state left over from before.
+  const [started, setStarted] = useState(false);
+
   const [signedUrl, setSignedUrl] = useState<string | null>(needsToken ? null : rawEmbedUrl);
   const [tokenError, setTokenError] = useState(false);
   // Drives the watermark's animation (see WatermarkOverlay.tsx): starts
@@ -64,17 +106,30 @@ export function VideoStage({ lessonNumber, rawEmbedUrl, title, onEnded, requires
       });
   }, [lessonNumber]);
 
+  // Reset per-lesson state: always back to the facade (for Bunny), never
+  // "playing" yet.
   useEffect(() => {
     setIsPlaying(false);
+    setStarted(false);
     if (!needsToken) {
       setSignedUrl(rawEmbedUrl);
-      return;
+    } else {
+      setSignedUrl(null);
+      setTokenError(false);
     }
-    fetchToken();
     // Intentionally re-runs only when the lesson, its raw URL, or whether it
     // needs a token changes — not on every fetchToken identity change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lessonNumber, rawEmbedUrl, needsToken]);
+
+  // For Bunny lessons, only fetch the signed token once the learner has
+  // actually tapped play — nothing is requested or mounted for a video the
+  // learner never opens, and this keeps the click itself as the one and
+  // only thing that can ever start playback.
+  useEffect(() => {
+    if (!needsToken || !started) return;
+    fetchToken();
+  }, [needsToken, started, fetchToken]);
 
   // --- Fullscreen -------------------------------------------------------
   //
@@ -87,6 +142,30 @@ export function VideoStage({ lessonNumber, rawEmbedUrl, title, onEnded, requires
   // *wrapping* container instead — see FullscreenStage.tsx for the full
   // rationale (native Fullscreen API + CSS-only fallback for browsers like
   // iOS Safari that lack it).
+
+  // Bunny, not yet started: thumbnail + a small, subtle centered play
+  // button (not a large one — the thumbnail itself should read clearly, the
+  // button is just an obvious affordance sitting on top of it). No iframe
+  // exists yet at all, so nothing can autoplay.
+  if (isBunny && !started) {
+    return (
+      <button
+        type="button"
+        onClick={() => setStarted(true)}
+        aria-label={`Play ${title}`}
+        className="focus-ring group relative flex aspect-video w-full items-center justify-center overflow-hidden rounded-lg border border-base-800 bg-black bg-cover bg-center"
+        style={thumbnailUrl ? { backgroundImage: `url(${thumbnailUrl})` } : undefined}
+      >
+        <div className="absolute inset-0 bg-black/20 transition-colors duration-150 group-hover:bg-black/30" aria-hidden="true" />
+        <span className="relative flex h-10 w-10 flex-none items-center justify-center rounded-full bg-black/55 text-white shadow-md backdrop-blur-[1px] transition-transform duration-150 group-hover:scale-105 group-active:scale-95 sm:h-11 sm:w-11">
+          <svg width="14" height="15" viewBox="0 0 20 22" fill="currentColor" aria-hidden="true" className="ml-0.5">
+            <path d="M1 1.5v19l18-9.5-18-9.5Z" />
+          </svg>
+        </span>
+      </button>
+    );
+  }
+
   if (needsToken && tokenError) {
     return (
       <div className="flex aspect-video flex-col items-center justify-center gap-3 rounded-lg border border-base-800 bg-base-900 text-sm text-zinc-400">
@@ -111,11 +190,17 @@ export function VideoStage({ lessonNumber, rawEmbedUrl, title, onEnded, requires
     );
   }
 
+  // Once started (a real click just happened, for Bunny), the video should
+  // play immediately rather than loading paused again behind its own
+  // in-player button — hence forcing autoplay=true here, only ever as a
+  // direct result of that click. YouTube's src is untouched.
+  const playableUrl = isBunny ? withAutoplayParam(signedUrl, started) : signedUrl;
+
   return (
     <FullscreenStage>
       <VideoPlayer
         key={lessonNumber}
-        embedUrl={signedUrl}
+        embedUrl={playableUrl}
         title={title}
         onEnded={onEnded}
         onPlayingChange={setIsPlaying}

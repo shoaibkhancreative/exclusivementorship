@@ -149,14 +149,17 @@ describe("POST /api/lessons/:number/video-token", () => {
   });
 });
 
-// --- Free lessons hosted on Bunny skip signed-token auth entirely ----------
+// --- GET /lessons endpoints stay open for free lessons ---------------------
 //
-// Free lessons (lesson_number <= freeLessonCount) are never routed through
-// POST /video-token from the client (see VideoStage.tsx's `requiresToken`
-// prop), so a logged-out visitor never needs to authenticate to load one —
-// GET /api/lessons/:number and the outline route must both keep working for
-// them, returning the plain, unsigned embed URL, with no 401/403 anywhere
-// in that path.
+// These two GET routes are metadata reads (title, thumbnail, embed URL,
+// outline state) and were never gated by auth for free lessons, independent
+// of how the video itself gets played. That's still true: a logged-out
+// visitor can read a free lesson's plain, unsigned embed URL here with no
+// 401/403. Whether that raw URL is actually playable against Bunny is a
+// separate concern handled client-side by VideoStage, which now signs every
+// Bunny-hosted embed (free or paid) via POST /video-token before rendering
+// it — see VideoStage.tsx's `needsToken` comment for why an unsigned
+// "free" Bunny embed 403s just like an unsigned paid one would.
 describe("Free Bunny-hosted lessons are accessible to logged-out visitors", () => {
   let env: Env;
   beforeEach(async () => {

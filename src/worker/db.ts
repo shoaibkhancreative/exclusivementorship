@@ -1,5 +1,7 @@
-import type { Env } from "./lib/config";
+import type { Env, SupportAgentProfile } from "./lib/config";
+import { getFreeLessonCount } from "./lib/config";
 import { randomUuid } from "./lib/crypto";
+import { defaultLayout, reconcileLayout, type LayoutBlockState } from "./lib/layout";
 
 export interface UserRow {
   id: string;
@@ -187,6 +189,136 @@ export async function setSetting(
      ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now'), updated_by = excluded.updated_by`
   )
     .bind(key, value, updatedByAdminId)
+    .run();
+}
+
+// ---------------------------------------------------------------------------
+// site_content — admin-editable page copy (migrations/0013). Every key's
+// default lives in worker/lib/content.ts (CONTENT_DEFAULTS) — that's the
+// single source of truth for "what keys exist" and "what do they say until
+// an admin changes them". A row only exists here once an admin has actually
+// looked at (via listContentAdmin/upsert) or overridden a key; getContentMap
+// falls back to CONTENT_DEFAULTS for anything with no row, or a NULL value.
+// ---------------------------------------------------------------------------
+export interface ContentRow {
+  key: string;
+  value: string | null;
+  default_value: string;
+  updated_at: string;
+  updated_by: string | null;
+}
+
+/** Public/runtime read path: key -> effective value (override, or the built-in default). Never 500s on a missing table row. */
+export async function getContentMap(env: Env, defaults: Record<string, string>): Promise<Record<string, string>> {
+  const result = await env.DB.prepare(`SELECT key, value FROM site_content`).all<{ key: string; value: string | null }>();
+  const overrides = new Map(result.results.map((r) => [r.key, r.value]));
+  const map: Record<string, string> = {};
+  for (const [key, fallback] of Object.entries(defaults)) {
+    const override = overrides.get(key);
+    map[key] = override !== undefined && override !== null && override !== "" ? override : fallback;
+  }
+  return map;
+}
+
+/** Admin read path: every known key, its current override (if any) and its default, so the Content page can show both and offer "reset to default". */
+export async function listContentAdmin(env: Env, defs: { key: string; defaultValue: string }[]): Promise<ContentRow[]> {
+  const result = await env.DB.prepare(`SELECT key, value, updated_at, updated_by FROM site_content`).all<{
+    key: string;
+    value: string | null;
+    updated_at: string;
+    updated_by: string | null;
+  }>();
+  const rows = new Map(result.results.map((r) => [r.key, r]));
+  return defs.map((def) => {
+    const row = rows.get(def.key);
+    return {
+      key: def.key,
+      value: row?.value ?? null,
+      default_value: def.defaultValue,
+      updated_at: row?.updated_at ?? "",
+      updated_by: row?.updated_by ?? null
+    };
+  });
+}
+
+/** Sets (or clears, when value is null/empty) one content override. Mirrors setSetting's upsert shape. */
+export async function setContentValue(
+  env: Env,
+  key: string,
+  value: string | null,
+  defaultValue: string,
+  updatedByAdminId: string | null
+): Promise<void> {
+  await env.DB.prepare(
+    `INSERT INTO site_content (key, value, default_value, updated_at, updated_by) VALUES (?, ?, ?, datetime('now'), ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now'), updated_by = excluded.updated_by`
+  )
+    .bind(key, value, defaultValue, updatedByAdminId)
+    .run();
+}
+
+/** "Reset to default" — clears the override (value = NULL) rather than deleting the row, so updated_at/updated_by still reflect the reset. */
+export async function resetContentValue(env: Env, key: string, defaultValue: string, updatedByAdminId: string | null): Promise<void> {
+  await setContentValue(env, key, null, defaultValue, updatedByAdminId);
+}
+
+// ---------------------------------------------------------------------------
+// site_layout — per-page block order/visibility (migrations/0014, Phase 3).
+// PAGE_BLOCKS (worker/lib/layout.ts) is the source of truth for which block
+// ids exist per page; this table only ever stores an order/visibility over
+// that fixed set — see reconcileLayout for how a stored row is protected
+// against drifting out of sync with the registry.
+// ---------------------------------------------------------------------------
+interface LayoutRow {
+  page_key: string;
+  blocks: string;
+  updated_at: string;
+  updated_by: string | null;
+}
+
+/** Public/runtime read path for one page: reconciled, ordered block list. Falls back to the full default order on any DB error or missing row. */
+export async function getLayout(env: Env, pageKey: string): Promise<LayoutBlockState[]> {
+  try {
+    const row = await env.DB.prepare(`SELECT blocks FROM site_layout WHERE page_key = ?`).bind(pageKey).first<{ blocks: string }>();
+    if (!row) return defaultLayout(pageKey);
+    const parsed = JSON.parse(row.blocks) as LayoutBlockState[];
+    return reconcileLayout(pageKey, parsed);
+  } catch {
+    return defaultLayout(pageKey);
+  }
+}
+
+/** Public/runtime read path for every registered page at once (used by the single /config/layout fetch). */
+export async function getAllLayouts(env: Env, pageKeys: string[]): Promise<Record<string, LayoutBlockState[]>> {
+  const result = await env.DB.prepare(`SELECT page_key, blocks FROM site_layout`).all<LayoutRow>();
+  const rows = new Map(result.results.map((r) => [r.page_key, r.blocks]));
+  const layouts: Record<string, LayoutBlockState[]> = {};
+  for (const pageKey of pageKeys) {
+    const raw = rows.get(pageKey);
+    if (!raw) {
+      layouts[pageKey] = defaultLayout(pageKey);
+      continue;
+    }
+    try {
+      layouts[pageKey] = reconcileLayout(pageKey, JSON.parse(raw) as LayoutBlockState[]);
+    } catch {
+      layouts[pageKey] = defaultLayout(pageKey);
+    }
+  }
+  return layouts;
+}
+
+/** Admin read path: every registered page's current (reconciled) block order. */
+export async function listLayoutsAdmin(env: Env, pageKeys: string[]): Promise<Record<string, LayoutBlockState[]>> {
+  return getAllLayouts(env, pageKeys);
+}
+
+export async function setLayout(env: Env, pageKey: string, blocks: LayoutBlockState[], updatedByAdminId: string | null): Promise<void> {
+  await env.DB.prepare(
+    `INSERT INTO site_layout (page_key, blocks, updated_at, updated_by) VALUES (?, ?, datetime('now'), ?)
+     ON CONFLICT(page_key) DO UPDATE SET blocks = excluded.blocks, updated_at = datetime('now'), updated_by = excluded.updated_by`
+  )
+    .bind(pageKey, JSON.stringify(blocks), updatedByAdminId)
     .run();
 }
 
@@ -442,6 +574,8 @@ export interface AdminLessonRow {
   is_active: number;
   sort_order: number;
   watermark_enabled: number;
+  /** Admin-entered display label like "12:45" — see migration 0018. Never auto-detected. */
+  duration_label: string | null;
 }
 
 export async function listAdminLessons(env: Env): Promise<AdminLessonRow[]> {
@@ -465,7 +599,9 @@ export async function createLesson(
     tagline: string | null;
     description: string | null;
     videoEmbedUrl: string | null;
+    thumbnailUrl?: string | null;
     watermarkEnabled?: boolean;
+    durationLabel?: string | null;
   }
 ): Promise<AdminLessonRow> {
   const maxRow = await env.DB.prepare(
@@ -475,18 +611,20 @@ export async function createLesson(
   const nextSort = (maxRow?.maxSort ?? 0) + 1;
 
   const insert = await env.DB.prepare(
-    `INSERT INTO lessons (lesson_number, title, chapter_name, thumbnail_url, youtube_video_id, description, tagline, video_embed_url, is_free, is_active, sort_order, watermark_enabled)
-     VALUES (?, ?, ?, NULL, 'N/A', ?, ?, ?, 0, 1, ?, ?)`
+    `INSERT INTO lessons (lesson_number, title, chapter_name, thumbnail_url, youtube_video_id, description, tagline, video_embed_url, is_free, is_active, sort_order, watermark_enabled, duration_label)
+     VALUES (?, ?, ?, ?, 'N/A', ?, ?, ?, 0, 1, ?, ?, ?)`
   )
     .bind(
       nextNumber,
       fields.title,
       fields.chapterName,
+      fields.thumbnailUrl ?? null,
       fields.description,
       fields.tagline,
       fields.videoEmbedUrl,
       nextSort,
-      fields.watermarkEnabled ? 1 : 0
+      fields.watermarkEnabled ? 1 : 0,
+      fields.durationLabel ?? null
     )
     .run();
   const id = insert.meta.last_row_id as number;
@@ -516,6 +654,7 @@ export async function updateLesson(
     thumbnailUrl?: string | null;
     isActive?: boolean;
     watermarkEnabled?: boolean;
+    durationLabel?: string | null;
   }
 ): Promise<void> {
   const existing = await env.DB.prepare(`SELECT * FROM lessons WHERE id = ?`).bind(id).first<AdminLessonRow>();
@@ -525,7 +664,7 @@ export async function updateLesson(
 
   await env.DB.prepare(
     `UPDATE lessons SET
-       title = ?, chapter_name = ?, tagline = ?, description = ?, video_embed_url = ?, thumbnail_url = ?, is_active = ?, watermark_enabled = ?
+       title = ?, chapter_name = ?, tagline = ?, description = ?, video_embed_url = ?, thumbnail_url = ?, is_active = ?, watermark_enabled = ?, duration_label = ?
      WHERE id = ?`
   )
     .bind(
@@ -537,6 +676,7 @@ export async function updateLesson(
       fields.thumbnailUrl !== undefined ? fields.thumbnailUrl : existing.thumbnail_url,
       fields.isActive !== undefined ? (fields.isActive ? 1 : 0) : existing.is_active,
       fields.watermarkEnabled !== undefined ? (fields.watermarkEnabled ? 1 : 0) : existing.watermark_enabled,
+      fields.durationLabel !== undefined ? fields.durationLabel : existing.duration_label,
       id
     )
     .run();
@@ -662,6 +802,605 @@ export async function archiveLesson(env: Env, id: number): Promise<void> {
   await env.DB.prepare(`UPDATE lessons SET is_active = 0 WHERE id = ?`).bind(id).run();
 }
 
+/**
+ * Clones a lesson (title gets a " (copy)" suffix) into the SAME chapter. The
+ * clone is always created hidden (is_active = 0) regardless of the source's
+ * state — same "review before publishing" rule as a brand-new lesson (see
+ * createLesson) — and never copies watch progress, since it's a distinct
+ * lesson row. Lands at the end of its chapter, exactly like createLesson,
+ * via the same resequence helper. Throws "not_found" if the source lesson
+ * doesn't exist.
+ */
+export async function duplicateLesson(env: Env, id: number): Promise<AdminLessonRow> {
+  const source = await env.DB.prepare(`SELECT * FROM lessons WHERE id = ?`).bind(id).first<AdminLessonRow>();
+  if (!source) throw new Error("not_found");
+
+  const maxRow = await env.DB.prepare(
+    `SELECT COALESCE(MAX(lesson_number), 0) as maxNumber, COALESCE(MAX(sort_order), 0) as maxSort FROM lessons`
+  ).first<{ maxNumber: number; maxSort: number }>();
+  const nextNumber = (maxRow?.maxNumber ?? 0) + 1;
+  const nextSort = (maxRow?.maxSort ?? 0) + 1;
+
+  const insert = await env.DB.prepare(
+    `INSERT INTO lessons (lesson_number, title, chapter_name, thumbnail_url, youtube_video_id, description, tagline, video_embed_url, is_free, is_active, sort_order, watermark_enabled, duration_label)
+     VALUES (?, ?, ?, ?, 'N/A', ?, ?, ?, 0, 0, ?, ?, ?)`
+  )
+    .bind(
+      nextNumber,
+      `${source.title} (copy)`,
+      source.chapter_name,
+      source.thumbnail_url,
+      source.description,
+      source.tagline,
+      source.video_embed_url,
+      nextSort,
+      source.watermark_enabled,
+      source.duration_label
+    )
+    .run();
+  const newId = insert.meta.last_row_id as number;
+
+  await resequenceLessonsByChapterOrder(env);
+
+  const row = await env.DB.prepare(`SELECT * FROM lessons WHERE id = ?`).bind(newId).first<AdminLessonRow>();
+  if (!row) throw new Error("Failed to duplicate lesson");
+  return row;
+}
+
+/**
+ * Applies one action to many lessons at once (the Lessons page's bulk
+ * toolbar). "delete" reuses deleteLesson's resequence-after so the numbering
+ * stays clean even when several lessons vanish in one go. Returns how many
+ * rows were actually affected (skips ids that don't exist rather than
+ * throwing, since a bulk action should apply to what's still there).
+ */
+export async function bulkUpdateLessons(
+  env: Env,
+  ids: number[],
+  action: "publish" | "unpublish" | "delete"
+): Promise<number> {
+  if (ids.length === 0) return 0;
+  const placeholders = ids.map(() => "?").join(",");
+
+  if (action === "delete") {
+    const existing = await env.DB.prepare(`SELECT id FROM lessons WHERE id IN (${placeholders})`)
+      .bind(...ids)
+      .all<{ id: number }>();
+    if (existing.results.length === 0) return 0;
+    await env.DB.prepare(`DELETE FROM lessons WHERE id IN (${placeholders})`)
+      .bind(...ids)
+      .run();
+    await resequenceLessonsByChapterOrder(env);
+    return existing.results.length;
+  }
+
+  const isActive = action === "publish" ? 1 : 0;
+  const result = await env.DB.prepare(`UPDATE lessons SET is_active = ? WHERE id IN (${placeholders})`)
+    .bind(isActive, ...ids)
+    .run();
+  return result.meta.changes ?? 0;
+}
+
+// ---------------------------------------------------------------------------
+// Revenue / signup analytics (Dashboard). Read-only aggregation queries over
+// payment_orders and users — no new tables. "Revenue" only ever counts
+// orders in a PAID_STATUSES-equivalent terminal state ('confirmed' or
+// 'finished' — see services/nowpayments.ts PAID_STATUSES), so pending/failed
+// checkouts never inflate the numbers.
+// ---------------------------------------------------------------------------
+const REVENUE_PAID_STATUSES = ["confirmed", "finished"] as const;
+
+export interface DailyPoint {
+  date: string; // YYYY-MM-DD
+  amount: number;
+  count: number;
+}
+
+export interface SignupPoint {
+  date: string; // YYYY-MM-DD
+  count: number;
+}
+
+export interface StatusBreakdownRow {
+  status: string;
+  count: number;
+}
+
+export interface RevenueAnalytics {
+  totalRevenue: number;
+  totalPaidOrders: number;
+  avgOrderValue: number;
+  revenueLast30Days: number;
+  revenueThisMonth: number;
+  revenuePrevMonth: number;
+  dailyRevenue: DailyPoint[]; // last 30 days, always 30 entries (0-filled)
+  dailySignups: SignupPoint[]; // last 30 days, always 30 entries (0-filled)
+  statusBreakdown: StatusBreakdownRow[];
+}
+
+function last30DayKeys(): string[] {
+  const days: string[] = [];
+  for (let i = 29; i >= 0; i--) {
+    const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
+    days.push(d.toISOString().slice(0, 10));
+  }
+  return days;
+}
+
+export async function getRevenueAnalytics(env: Env): Promise<RevenueAnalytics> {
+  const paidPlaceholders = REVENUE_PAID_STATUSES.map(() => "?").join(",");
+
+  const totalsRow = await env.DB.prepare(
+    `SELECT COALESCE(SUM(amount), 0) as total, COUNT(*) as cnt
+     FROM payment_orders WHERE status IN (${paidPlaceholders})`
+  )
+    .bind(...REVENUE_PAID_STATUSES)
+    .first<{ total: number; cnt: number }>();
+
+  const last30Row = await env.DB.prepare(
+    `SELECT COALESCE(SUM(amount), 0) as total
+     FROM payment_orders
+     WHERE status IN (${paidPlaceholders}) AND confirmed_at >= datetime('now', '-30 days')`
+  )
+    .bind(...REVENUE_PAID_STATUSES)
+    .first<{ total: number }>();
+
+  const thisMonthRow = await env.DB.prepare(
+    `SELECT COALESCE(SUM(amount), 0) as total
+     FROM payment_orders
+     WHERE status IN (${paidPlaceholders}) AND strftime('%Y-%m', confirmed_at) = strftime('%Y-%m', 'now')`
+  )
+    .bind(...REVENUE_PAID_STATUSES)
+    .first<{ total: number }>();
+
+  const prevMonthRow = await env.DB.prepare(
+    `SELECT COALESCE(SUM(amount), 0) as total
+     FROM payment_orders
+     WHERE status IN (${paidPlaceholders}) AND strftime('%Y-%m', confirmed_at) = strftime('%Y-%m', 'now', '-1 month')`
+  )
+    .bind(...REVENUE_PAID_STATUSES)
+    .first<{ total: number }>();
+
+  const dailyRows = await env.DB.prepare(
+    `SELECT date(confirmed_at) as day, COALESCE(SUM(amount), 0) as total, COUNT(*) as cnt
+     FROM payment_orders
+     WHERE status IN (${paidPlaceholders}) AND confirmed_at >= datetime('now', '-30 days')
+     GROUP BY day`
+  )
+    .bind(...REVENUE_PAID_STATUSES)
+    .all<{ day: string; total: number; cnt: number }>();
+
+  const signupRows = await env.DB.prepare(
+    `SELECT date(created_at) as day, COUNT(*) as cnt
+     FROM users
+     WHERE created_at >= datetime('now', '-30 days')
+     GROUP BY day`
+  ).all<{ day: string; cnt: number }>();
+
+  const statusRows = await env.DB.prepare(
+    `SELECT status, COUNT(*) as cnt FROM payment_orders GROUP BY status ORDER BY cnt DESC`
+  ).all<{ status: string; cnt: number }>();
+
+  const revenueByDay = new Map(dailyRows.results.map((r) => [r.day, r]));
+  const signupsByDay = new Map(signupRows.results.map((r) => [r.day, r.cnt]));
+
+  const days = last30DayKeys();
+  const dailyRevenue: DailyPoint[] = days.map((day) => ({
+    date: day,
+    amount: revenueByDay.get(day)?.total ?? 0,
+    count: revenueByDay.get(day)?.cnt ?? 0
+  }));
+  const dailySignups: SignupPoint[] = days.map((day) => ({ date: day, count: signupsByDay.get(day) ?? 0 }));
+
+  const total = totalsRow?.total ?? 0;
+  const cnt = totalsRow?.cnt ?? 0;
+
+  return {
+    totalRevenue: total,
+    totalPaidOrders: cnt,
+    avgOrderValue: cnt > 0 ? total / cnt : 0,
+    revenueLast30Days: last30Row?.total ?? 0,
+    revenueThisMonth: thisMonthRow?.total ?? 0,
+    revenuePrevMonth: prevMonthRow?.total ?? 0,
+    dailyRevenue,
+    dailySignups,
+    statusBreakdown: statusRows.results.map((r) => ({ status: r.status, count: r.cnt }))
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Advanced analytics (admin panel's Analytics page — GET
+// /admin/analytics/advanced). A deeper, filterable sibling to
+// getRevenueAnalytics above: same read-only aggregation style and the same
+// REVENUE_PAID_STATUSES convention for what counts as "revenue", but
+// filterable by date range / granularity / cohort (course_status) /
+// currency / order status, and covering signups, funnel, lesson &
+// chapter completion, and support on top of revenue.
+// ---------------------------------------------------------------------------
+
+/** Mirrors payment_orders' CHECK(status IN (...)) constraint — see migrations/0005. Hardcoded rather than a DISTINCT query so every possible status always shows up as a filter option, even ones with zero rows yet. */
+export const ORDER_STATUSES = [
+  "created",
+  "waiting",
+  "confirming",
+  "confirmed",
+  "finished",
+  "failed",
+  "expired",
+  "cancelled"
+] as const;
+
+export interface AdvancedAnalyticsFilters {
+  dateFrom: string; // YYYY-MM-DD, inclusive
+  dateTo: string; // YYYY-MM-DD, inclusive
+  granularity: "day" | "week" | "month";
+  courseStatus: "all" | "free" | "paid";
+  currency: string; // "all" or an exact payment_orders.currency value
+  paymentStatuses: string[]; // empty = every status
+}
+
+export interface AdvancedTrendPoint {
+  period: string;
+  amount: number;
+  count: number;
+}
+
+export interface AdvancedStatusBreakdownRow {
+  status: string;
+  count: number;
+  amount: number;
+}
+
+export interface AdvancedCurrencyBreakdownRow {
+  currency: string;
+  count: number;
+  amount: number;
+}
+
+export interface FunnelStage {
+  stage: string;
+  count: number;
+}
+
+export interface ChapterCompletionRow {
+  chapterName: string;
+  totalLessons: number;
+  avgCompletionRate: number;
+}
+
+export interface LessonCompletionRow {
+  lessonNumber: number;
+  title: string;
+  chapterName: string;
+  completedCount: number;
+  totalEligible: number;
+  completionRate: number;
+}
+
+export interface AdvancedAnalytics {
+  range: { from: string; to: string };
+  kpis: {
+    totalStudents: number;
+    newStudentsInRange: number;
+    paidStudents: number;
+    freeStudents: number;
+    conversionRate: number;
+    totalRevenue: number;
+    totalOrders: number;
+    avgOrderValue: number;
+    avgDaysToConvert: number | null;
+    avgLessonCompletionRate: number;
+  };
+  revenueTrend: AdvancedTrendPoint[];
+  signupTrend: AdvancedTrendPoint[];
+  statusBreakdown: AdvancedStatusBreakdownRow[];
+  currencyBreakdown: AdvancedCurrencyBreakdownRow[];
+  funnel: FunnelStage[];
+  chapterCompletion: ChapterCompletionRow[];
+  lessonCompletion: LessonCompletionRow[];
+  supportStats: { open: number; resolved: number; total: number };
+  underpaidOrderCount: number;
+  filterOptions: { currencies: string[]; chapters: string[]; statuses: string[] };
+}
+
+/**
+ * Builds the `date(...)` SQL fragment used to bucket a timestamp column
+ * into a trend period. `granularity` is always one of the three literal
+ * values the route handler validates before this is ever called — never
+ * raw request input — so splicing it into the SQL string here (SQLite has
+ * no way to bind a function's date-modifier argument as a parameter) can't
+ * be used for injection. Week buckets start on Sunday (`strftime('%w', …)`
+ * is 0 for Sunday); month buckets use SQLite's built-in 'start of month'.
+ */
+function periodExprFor(column: string, granularity: AdvancedAnalyticsFilters["granularity"]): string {
+  switch (granularity) {
+    case "week":
+      return `date(${column}, '-' || strftime('%w', ${column}) || ' days')`;
+    case "month":
+      return `date(${column}, 'start of month')`;
+    case "day":
+    default:
+      return `date(${column})`;
+  }
+}
+
+export async function getAdvancedAnalytics(env: Env, filters: AdvancedAnalyticsFilters): Promise<AdvancedAnalytics> {
+  const { dateFrom, dateTo, granularity, courseStatus, currency, paymentStatuses } = filters;
+
+  // Cohort (course_status) filter — two variants, since some queries below
+  // hit `users` bare and others join it in as `u`.
+  const cohortClause = courseStatus !== "all" ? "AND course_status = ?" : "";
+  const cohortClauseU = courseStatus !== "all" ? "AND u.course_status = ?" : "";
+  const cohortParam = courseStatus !== "all" ? [courseStatus] : [];
+
+  const currencyClause = currency !== "all" ? "AND currency = ?" : "";
+  const currencyParam = currency !== "all" ? [currency] : [];
+
+  // Which statuses count as "revenue" for the breakdown/trend queries that
+  // respect the order-status filter — the admin's selection if they made
+  // one, otherwise the same paid/finished pair getRevenueAnalytics uses.
+  const filterableRevenueStatuses = paymentStatuses.length > 0 ? paymentStatuses : [...REVENUE_PAID_STATUSES];
+
+  const revenuePeriod = periodExprFor("confirmed_at", granularity);
+  const signupPeriod = periodExprFor("created_at", granularity);
+
+  // ---- Student KPIs ---------------------------------------------------------
+  const totalStudentsRow = await env.DB.prepare(`SELECT COUNT(*) as cnt FROM users WHERE 1=1 ${cohortClause}`)
+    .bind(...cohortParam)
+    .first<{ cnt: number }>();
+
+  const newStudentsRow = await env.DB.prepare(
+    `SELECT COUNT(*) as cnt FROM users WHERE date(created_at) BETWEEN ? AND ? ${cohortClause}`
+  )
+    .bind(dateFrom, dateTo, ...cohortParam)
+    .first<{ cnt: number }>();
+
+  // Intersected with the cohort filter (not just "paid") so that, e.g.,
+  // filtering to the "free" cohort correctly shows 0 paid students in
+  // range rather than every paid student site-wide.
+  const paidInRangeRow = await env.DB.prepare(
+    `SELECT COUNT(*) as cnt FROM users WHERE date(created_at) BETWEEN ? AND ? AND course_status = 'paid' ${cohortClause}`
+  )
+    .bind(dateFrom, dateTo, ...cohortParam)
+    .first<{ cnt: number }>();
+
+  const newStudentsInRange = newStudentsRow?.cnt ?? 0;
+  const paidStudents = paidInRangeRow?.cnt ?? 0;
+  const freeStudents = Math.max(0, newStudentsInRange - paidStudents);
+  const conversionRate = newStudentsInRange > 0 ? Math.round((paidStudents / newStudentsInRange) * 100) : 0;
+
+  // ---- Revenue KPIs — always the paid/finished statuses, regardless of
+  // the order-status filter (a "Revenue in range" number that changes
+  // meaning when someone ticks "failed" would be actively misleading). ----
+  const revenuePaidPlaceholders = REVENUE_PAID_STATUSES.map(() => "?").join(",");
+  const revenueKpiRow = await env.DB.prepare(
+    `SELECT COALESCE(SUM(amount), 0) as total, COUNT(*) as cnt
+     FROM payment_orders
+     WHERE date(confirmed_at) BETWEEN ? AND ? AND status IN (${revenuePaidPlaceholders}) ${currencyClause}`
+  )
+    .bind(dateFrom, dateTo, ...REVENUE_PAID_STATUSES, ...currencyParam)
+    .first<{ total: number; cnt: number }>();
+
+  const totalRevenue = revenueKpiRow?.total ?? 0;
+  const totalOrders = revenueKpiRow?.cnt ?? 0;
+  const avgOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
+
+  const convertRow = await env.DB.prepare(
+    `SELECT AVG(julianday(paid_at) - julianday(created_at)) as avg_days
+     FROM users WHERE paid_at IS NOT NULL AND date(paid_at) BETWEEN ? AND ?`
+  )
+    .bind(dateFrom, dateTo)
+    .first<{ avg_days: number | null }>();
+  const avgDaysToConvert = convertRow?.avg_days != null ? Math.round(convertRow.avg_days * 10) / 10 : null;
+
+  // ---- Trends -----------------------------------------------------------
+  const revenueTrendRows = await env.DB.prepare(
+    `SELECT ${revenuePeriod} as period, COALESCE(SUM(amount), 0) as total, COUNT(*) as cnt
+     FROM payment_orders
+     WHERE date(confirmed_at) BETWEEN ? AND ? AND status IN (${revenuePaidPlaceholders}) ${currencyClause}
+     GROUP BY period ORDER BY period ASC`
+  )
+    .bind(dateFrom, dateTo, ...REVENUE_PAID_STATUSES, ...currencyParam)
+    .all<{ period: string; total: number; cnt: number }>();
+
+  const signupTrendRows = await env.DB.prepare(
+    `SELECT ${signupPeriod} as period, COUNT(*) as cnt
+     FROM users
+     WHERE date(created_at) BETWEEN ? AND ? ${cohortClause}
+     GROUP BY period ORDER BY period ASC`
+  )
+    .bind(dateFrom, dateTo, ...cohortParam)
+    .all<{ period: string; cnt: number }>();
+
+  const revenueTrend: AdvancedTrendPoint[] = revenueTrendRows.results.map((r) => ({
+    period: r.period,
+    amount: r.total,
+    count: r.cnt
+  }));
+  const signupTrend: AdvancedTrendPoint[] = signupTrendRows.results.map((r) => ({
+    period: r.period,
+    amount: 0,
+    count: r.cnt
+  }));
+
+  // ---- Breakdowns ---------------------------------------------------------
+  // Status breakdown deliberately ignores the order-status filter — showing
+  // the distribution ACROSS statuses is the whole point of this panel.
+  const statusBreakdownRows = await env.DB.prepare(
+    `SELECT status, COUNT(*) as cnt, COALESCE(SUM(amount), 0) as total
+     FROM payment_orders
+     WHERE date(created_at) BETWEEN ? AND ? ${currencyClause}
+     GROUP BY status ORDER BY cnt DESC`
+  )
+    .bind(dateFrom, dateTo, ...currencyParam)
+    .all<{ status: string; cnt: number; total: number }>();
+
+  // Currency breakdown, conversely, respects the order-status filter (it's
+  // not the axis being broken down) but ignores the currency filter itself.
+  const filterableStatusPlaceholders = filterableRevenueStatuses.map(() => "?").join(",");
+  const currencyBreakdownRows = await env.DB.prepare(
+    `SELECT currency, COUNT(*) as cnt, COALESCE(SUM(amount), 0) as total
+     FROM payment_orders
+     WHERE date(created_at) BETWEEN ? AND ? AND status IN (${filterableStatusPlaceholders})
+     GROUP BY currency ORDER BY total DESC`
+  )
+    .bind(dateFrom, dateTo, ...filterableRevenueStatuses)
+    .all<{ currency: string; cnt: number; total: number }>();
+
+  const statusBreakdown: AdvancedStatusBreakdownRow[] = statusBreakdownRows.results.map((r) => ({
+    status: r.status,
+    count: r.cnt,
+    amount: r.total
+  }));
+  const currencyBreakdown: AdvancedCurrencyBreakdownRow[] = currencyBreakdownRows.results.map((r) => ({
+    currency: r.currency,
+    count: r.cnt,
+    amount: r.total
+  }));
+
+  const underpaidRow = await env.DB.prepare(
+    `SELECT COUNT(*) as cnt FROM payment_orders
+     WHERE date(created_at) BETWEEN ? AND ? AND underpaid_tolerated = 1 ${currencyClause}`
+  )
+    .bind(dateFrom, dateTo, ...currencyParam)
+    .first<{ cnt: number }>();
+
+  // ---- Funnel -------------------------------------------------------------
+  const startedRow = await env.DB.prepare(
+    `SELECT COUNT(*) as cnt FROM users u
+     WHERE date(u.created_at) BETWEEN ? AND ? ${cohortClauseU}
+       AND EXISTS (SELECT 1 FROM lesson_progress lp WHERE lp.user_id = u.id)`
+  )
+    .bind(dateFrom, dateTo, ...cohortParam)
+    .first<{ cnt: number }>();
+
+  const completedAnyRow = await env.DB.prepare(
+    `SELECT COUNT(*) as cnt FROM users u
+     WHERE date(u.created_at) BETWEEN ? AND ? ${cohortClauseU}
+       AND EXISTS (SELECT 1 FROM lesson_progress lp WHERE lp.user_id = u.id AND lp.video_completed = 1)`
+  )
+    .bind(dateFrom, dateTo, ...cohortParam)
+    .first<{ cnt: number }>();
+
+  const funnel: FunnelStage[] = [
+    { stage: "Signed up", count: newStudentsInRange },
+    { stage: "Started a lesson", count: startedRow?.cnt ?? 0 },
+    { stage: "Completed a lesson", count: completedAnyRow?.cnt ?? 0 },
+    { stage: "Paid", count: paidStudents }
+  ];
+
+  // ---- Lesson / chapter completion — cohort-filtered but NOT date-range
+  // limited (progress isn't naturally bound to a signup window). ----------
+  const freeLessonCount = await getFreeLessonCount(env);
+
+  const lessonsResult = await env.DB.prepare(
+    `SELECT id, lesson_number, title, chapter_name FROM lessons WHERE is_active = 1 ORDER BY sort_order ASC, lesson_number ASC`
+  ).all<{ id: number; lesson_number: number; title: string; chapter_name: string }>();
+
+  const paidTotalRow = await env.DB.prepare(`SELECT COUNT(*) as cnt FROM users WHERE course_status = 'paid' ${cohortClause}`)
+    .bind(...cohortParam)
+    .first<{ cnt: number }>();
+
+  const completedByLessonRows = await env.DB.prepare(
+    `SELECT lp.lesson_id as lesson_id, COUNT(*) as cnt
+     FROM lesson_progress lp
+     JOIN users u ON u.id = lp.user_id
+     WHERE lp.video_completed = 1 ${cohortClauseU}
+     GROUP BY lp.lesson_id`
+  )
+    .bind(...cohortParam)
+    .all<{ lesson_id: number; cnt: number }>();
+
+  const completedByLesson = new Map(completedByLessonRows.results.map((r) => [r.lesson_id, r.cnt]));
+  const allStudentsTotal = totalStudentsRow?.cnt ?? 0;
+  const paidStudentsTotal = paidTotalRow?.cnt ?? 0;
+
+  const lessonCompletion: LessonCompletionRow[] = lessonsResult.results.map((l) => {
+    const isFree = l.lesson_number <= freeLessonCount;
+    const totalEligible = isFree ? allStudentsTotal : paidStudentsTotal;
+    const completedCount = completedByLesson.get(l.id) ?? 0;
+    const completionRate = totalEligible > 0 ? Math.round((completedCount / totalEligible) * 100) : 0;
+    return {
+      lessonNumber: l.lesson_number,
+      title: l.title,
+      chapterName: l.chapter_name,
+      completedCount,
+      totalEligible,
+      completionRate
+    };
+  });
+
+  const chapterOrder: string[] = [];
+  const chapterTotals = new Map<string, { total: number; sumRate: number }>();
+  for (const l of lessonCompletion) {
+    if (!chapterTotals.has(l.chapterName)) chapterOrder.push(l.chapterName);
+    const entry = chapterTotals.get(l.chapterName) ?? { total: 0, sumRate: 0 };
+    entry.total += 1;
+    entry.sumRate += l.completionRate;
+    chapterTotals.set(l.chapterName, entry);
+  }
+  const chapterCompletion: ChapterCompletionRow[] = chapterOrder.map((chapterName) => {
+    const entry = chapterTotals.get(chapterName)!;
+    return { chapterName, totalLessons: entry.total, avgCompletionRate: Math.round(entry.sumRate / entry.total) };
+  });
+
+  const avgLessonCompletionRate =
+    lessonCompletion.length > 0
+      ? Math.round(lessonCompletion.reduce((sum, l) => sum + l.completionRate, 0) / lessonCompletion.length)
+      : 0;
+
+  // ---- Support ------------------------------------------------------------
+  const supportRow = await env.DB.prepare(
+    `SELECT
+       SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END) as open_cnt,
+       SUM(CASE WHEN status = 'closed' THEN 1 ELSE 0 END) as closed_cnt,
+       COUNT(*) as total
+     FROM support_tickets WHERE date(created_at) BETWEEN ? AND ?`
+  )
+    .bind(dateFrom, dateTo)
+    .first<{ open_cnt: number | null; closed_cnt: number | null; total: number }>();
+
+  // ---- Filter options -------------------------------------------------------
+  const currenciesResult = await env.DB.prepare(`SELECT DISTINCT currency FROM payment_orders ORDER BY currency ASC`).all<{
+    currency: string;
+  }>();
+  const chaptersResult = await env.DB.prepare(`SELECT name FROM chapters ORDER BY sort_order ASC`).all<{ name: string }>();
+
+  return {
+    range: { from: dateFrom, to: dateTo },
+    kpis: {
+      totalStudents: allStudentsTotal,
+      newStudentsInRange,
+      paidStudents,
+      freeStudents,
+      conversionRate,
+      totalRevenue,
+      totalOrders,
+      avgOrderValue,
+      avgDaysToConvert,
+      avgLessonCompletionRate
+    },
+    revenueTrend,
+    signupTrend,
+    statusBreakdown,
+    currencyBreakdown,
+    funnel,
+    chapterCompletion,
+    lessonCompletion,
+    supportStats: {
+      open: supportRow?.open_cnt ?? 0,
+      resolved: supportRow?.closed_cnt ?? 0,
+      total: supportRow?.total ?? 0
+    },
+    underpaidOrderCount: underpaidRow?.cnt ?? 0,
+    filterOptions: {
+      currencies: currenciesResult.results.map((r) => r.currency),
+      chapters: chaptersResult.results.map((r) => r.name),
+      statuses: [...ORDER_STATUSES]
+    }
+  };
+}
+
 export async function logAuditEvent(
   env: Env,
   eventType: string,
@@ -677,5 +1416,428 @@ export async function logAuditEvent(
       opts.metadata ? JSON.stringify(opts.metadata) : null,
       opts.ipHash ?? null
     )
+    .run();
+}
+
+// ---------------------------------------------------------------------------
+// Support inbox (migrations/0016, 0017) — in-site ticket/thread system that
+// replaces the Telegram support button. See routes/support.ts (learner) and
+// routes/admin-support.ts (admin). "Identity" for a ticket is either a
+// logged-in user_id or a guest_id from the support_guest_id cookie — never
+// both, and every helper below that takes an identity expects exactly one
+// of the two to be set.
+// ---------------------------------------------------------------------------
+
+export interface SupportIdentity {
+  userId: string | null;
+  guestId: string | null;
+}
+
+export interface SupportTicketRow {
+  id: string;
+  user_id: string | null;
+  guest_id: string | null;
+  guest_email: string | null;
+  agent_profile: SupportAgentProfile;
+  status: "open" | "closed";
+  subject: string | null;
+  created_at: string;
+  last_message_at: string;
+  hidden_by_user_at: string | null;
+  origin_path: string | null;
+}
+
+export interface SupportTicketListItem extends SupportTicketRow {
+  unread_count: number;
+}
+
+export interface SupportMessageRow {
+  id: string;
+  ticket_id: string;
+  sender_type: "user" | "admin";
+  body: string | null;
+  has_attachment: number; // 0/1 — derived, blob bytes are never selected here
+  attachment_mime: string | null;
+  attachment_filename: string | null;
+  attachment_size: number | null;
+  created_at: string;
+  read_at: string | null;
+}
+
+export interface SupportAttachment {
+  bytes: Uint8Array;
+  mime: string;
+  filename: string;
+  ticket_id: string;
+}
+
+/** True if this ticket belongs to the given identity (user OR guest, never both). Used by every learner-facing route to gate access before returning/mutating anything. */
+export function supportTicketBelongsTo(ticket: SupportTicketRow, identity: SupportIdentity): boolean {
+  if (identity.userId) return ticket.user_id === identity.userId;
+  if (identity.guestId) return ticket.guest_id === identity.guestId;
+  return false;
+}
+
+/**
+ * True if this identity already has a ticket that's still visible to them
+ * (hidden_by_user_at IS NULL). A learner may only have ONE ticket open at a
+ * time — see routes/support.ts' create-ticket handler — closing
+ * ("Close conversation", which sets hidden_by_user_at) is what frees them up
+ * to start a new one. This intentionally ignores admin open/closed
+ * `status`: an admin-closed-but-not-hidden ticket still counts as "theirs"
+ * until the learner themselves closes it, since they can still see and
+ * reply into it.
+ */
+export async function hasVisibleSupportTicket(env: Env, identity: SupportIdentity): Promise<boolean> {
+  const column = identity.userId ? "user_id" : "guest_id";
+  const value = identity.userId ?? identity.guestId;
+  if (!value) return false;
+  const row = await env.DB.prepare(
+    `SELECT 1 as found FROM support_tickets WHERE ${column} = ? AND hidden_by_user_at IS NULL LIMIT 1`
+  )
+    .bind(value)
+    .first<{ found: number }>();
+  return Boolean(row);
+}
+
+export async function createSupportTicket(
+  env: Env,
+  fields: {
+    userId: string | null;
+    guestId: string | null;
+    guestEmail: string | null;
+    agentProfile: SupportAgentProfile;
+    subject: string | null;
+    originPath: string | null;
+  }
+): Promise<SupportTicketRow> {
+  const id = randomUuid();
+  await env.DB.prepare(
+    `INSERT INTO support_tickets (id, user_id, guest_id, guest_email, agent_profile, status, subject, created_at, last_message_at, origin_path)
+     VALUES (?, ?, ?, ?, ?, 'open', ?, datetime('now'), datetime('now'), ?)`
+  )
+    .bind(id, fields.userId, fields.guestId, fields.guestEmail, fields.agentProfile, fields.subject, fields.originPath)
+    .run();
+  const row = await env.DB.prepare(`SELECT * FROM support_tickets WHERE id = ?`).bind(id).first<SupportTicketRow>();
+  if (!row) throw new Error("Failed to create support ticket");
+  return row;
+}
+
+export async function getSupportTicket(env: Env, id: string): Promise<SupportTicketRow | null> {
+  const row = await env.DB.prepare(`SELECT * FROM support_tickets WHERE id = ?`).bind(id).first<SupportTicketRow>();
+  return row ?? null;
+}
+
+/** Lists one identity's VISIBLE tickets (hidden_by_user_at IS NULL — see hideSupportTicketForUser), newest activity first, with an unread count (admin messages the learner hasn't read yet) per ticket. */
+export async function listSupportTicketsForIdentity(env: Env, identity: SupportIdentity): Promise<SupportTicketListItem[]> {
+  const column = identity.userId ? "user_id" : "guest_id";
+  const value = identity.userId ?? identity.guestId;
+  if (!value) return [];
+  const result = await env.DB.prepare(
+    `SELECT t.*,
+       (SELECT COUNT(*) FROM support_messages m WHERE m.ticket_id = t.id AND m.sender_type = 'admin' AND m.read_at IS NULL) as unread_count
+     FROM support_tickets t
+     WHERE t.${column} = ? AND t.hidden_by_user_at IS NULL
+     ORDER BY t.last_message_at DESC`
+  )
+    .bind(value)
+    .all<SupportTicketListItem>();
+  return result.results;
+}
+
+/** Full thread for one ticket, oldest first. Never selects attachment_blob — see SupportAttachment / getSupportMessageAttachment for that. */
+export async function listSupportMessages(env: Env, ticketId: string): Promise<SupportMessageRow[]> {
+  const result = await env.DB.prepare(
+    `SELECT id, ticket_id, sender_type, body,
+       (attachment_blob IS NOT NULL) as has_attachment,
+       attachment_mime, attachment_filename, attachment_size,
+       created_at, read_at
+     FROM support_messages WHERE ticket_id = ? ORDER BY created_at ASC`
+  )
+    .bind(ticketId)
+    .all<SupportMessageRow>();
+  return result.results;
+}
+
+/**
+ * Sends a message into a ticket. Reopens a closed ticket (status -> 'open')
+ * and always bumps last_message_at, whichever side sent it — this is the
+ * only place either of those change outside the explicit close/reopen
+ * actions. Attachment bytes (if any) are bound as a raw Uint8Array, never
+ * base64 text.
+ */
+export async function createSupportMessage(
+  env: Env,
+  fields: {
+    ticketId: string;
+    senderType: "user" | "admin";
+    body: string | null;
+    attachment: { bytes: Uint8Array; mime: string; filename: string } | null;
+  }
+): Promise<SupportMessageRow> {
+  const id = randomUuid();
+  await env.DB.prepare(
+    `INSERT INTO support_messages (id, ticket_id, sender_type, body, attachment_blob, attachment_mime, attachment_filename, attachment_size, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`
+  )
+    .bind(
+      id,
+      fields.ticketId,
+      fields.senderType,
+      fields.body,
+      fields.attachment ? fields.attachment.bytes : null,
+      fields.attachment ? fields.attachment.mime : null,
+      fields.attachment ? fields.attachment.filename : null,
+      fields.attachment ? fields.attachment.bytes.byteLength : null
+    )
+    .run();
+
+  await env.DB.prepare(
+    `UPDATE support_tickets SET status = 'open', last_message_at = datetime('now') WHERE id = ?`
+  )
+    .bind(fields.ticketId)
+    .run();
+
+  const row = await env.DB.prepare(
+    `SELECT id, ticket_id, sender_type, body, (attachment_blob IS NOT NULL) as has_attachment, attachment_mime, attachment_filename, attachment_size, created_at, read_at
+     FROM support_messages WHERE id = ?`
+  )
+    .bind(id)
+    .first<SupportMessageRow>();
+  if (!row) throw new Error("Failed to create support message");
+  return row;
+}
+
+/** Marks every message from `unreadSenderType` in this ticket as read — called when the OTHER side opens the thread (learner reading marks admin messages read, and vice versa). */
+export async function markSupportMessagesRead(env: Env, ticketId: string, unreadSenderType: "user" | "admin"): Promise<void> {
+  await env.DB.prepare(
+    `UPDATE support_messages SET read_at = datetime('now') WHERE ticket_id = ? AND sender_type = ? AND read_at IS NULL`
+  )
+    .bind(ticketId, unreadSenderType)
+    .run();
+}
+
+/** Reads one message's attachment bytes for streaming — the caller is responsible for the ownership/auth check (join against support_tickets first). */
+export async function getSupportMessageAttachment(env: Env, messageId: string): Promise<SupportAttachment | null> {
+  const row = await env.DB.prepare(
+    `SELECT ticket_id, attachment_blob, attachment_mime, attachment_filename FROM support_messages WHERE id = ? AND attachment_blob IS NOT NULL`
+  )
+    .bind(messageId)
+    .first<{ ticket_id: string; attachment_blob: Uint8Array | ArrayBuffer; attachment_mime: string; attachment_filename: string }>();
+  if (!row) return null;
+  const bytes = row.attachment_blob instanceof Uint8Array ? row.attachment_blob : new Uint8Array(row.attachment_blob);
+  return { bytes, mime: row.attachment_mime, filename: row.attachment_filename, ticket_id: row.ticket_id };
+}
+
+export async function shiftSupportTicketProfile(env: Env, ticketId: string, agentProfile: SupportAgentProfile): Promise<void> {
+  await env.DB.prepare(`UPDATE support_tickets SET agent_profile = ? WHERE id = ?`).bind(agentProfile, ticketId).run();
+}
+
+export async function setSupportTicketStatus(env: Env, ticketId: string, status: "open" | "closed"): Promise<void> {
+  await env.DB.prepare(`UPDATE support_tickets SET status = ? WHERE id = ?`).bind(status, ticketId).run();
+}
+
+/** Learner-side "Close conversation" — hides the ticket from their own list (see listSupportTicketsForIdentity) without touching admin-controlled `status`. Also frees the identity up to start a new ticket (see hasVisibleSupportTicket). */
+export async function hideSupportTicketForUser(env: Env, ticketId: string): Promise<void> {
+  await env.DB.prepare(`UPDATE support_tickets SET hidden_by_user_at = datetime('now') WHERE id = ?`).bind(ticketId).run();
+}
+
+/** Admin action — puts a learner-hidden ticket back into their ticket list. */
+export async function unhideSupportTicket(env: Env, ticketId: string): Promise<void> {
+  await env.DB.prepare(`UPDATE support_tickets SET hidden_by_user_at = NULL WHERE id = ?`).bind(ticketId).run();
+}
+
+/** Deletes one message (either sender). No ownership check here — admin-only route, gated by requireAdmin at the router level. */
+export async function deleteSupportMessage(env: Env, messageId: string): Promise<void> {
+  await env.DB.prepare(`DELETE FROM support_messages WHERE id = ?`).bind(messageId).run();
+}
+
+/**
+ * Permanently deletes an entire ticket and everything in it. support_messages
+ * has ON DELETE CASCADE on ticket_id (migrations/0016), so deleting the
+ * support_tickets row is enough to take the messages (and any attachment
+ * blobs) with it. No ownership check here — admin-only route, gated by
+ * requireAdmin at the router level.
+ */
+export async function deleteSupportTicket(env: Env, ticketId: string): Promise<void> {
+  await env.DB.prepare(`DELETE FROM support_tickets WHERE id = ?`).bind(ticketId).run();
+}
+
+/**
+ * Deletes every ticket (and, via cascade, every message) belonging to one
+ * identity — the admin "delete profile" action in SupportPage.tsx's Users
+ * column. Unlike listSupportTicketsAdmin's list, this ignores any active
+ * admin filters and always deletes ALL of that identity's tickets, not just
+ * the ones currently shown. Returns how many tickets were deleted.
+ */
+export async function deleteSupportTicketsForIdentity(env: Env, identity: SupportIdentity): Promise<number> {
+  const column = identity.userId ? "user_id" : "guest_id";
+  const value = identity.userId ?? identity.guestId;
+  if (!value) return 0;
+  const result = await env.DB.prepare(`DELETE FROM support_tickets WHERE ${column} = ?`).bind(value).run();
+  return result.meta.changes ?? 0;
+}
+
+export interface SupportTicketAdminRow extends SupportTicketRow {
+  user_email: string | null;
+  user_name: string | null;
+  course_status: "free" | "paid" | null;
+  current_lesson: number | null;
+  completed_lessons: number | null;
+  total_lessons: number | null;
+  unread_count: number;
+  last_message_preview: string | null;
+}
+
+export interface SupportTicketAdminFilters {
+  status?: "open" | "closed";
+  agentProfile?: SupportAgentProfile;
+  dateFrom?: string; // YYYY-MM-DD
+  dateTo?: string; // YYYY-MM-DD
+  search?: string;
+  /** "paid"/"free" filter by the ticket owner's real course_status; "guest" means never-logged-in (user_id IS NULL). */
+  userStatus?: "paid" | "free" | "guest";
+}
+
+/**
+ * Admin inbox list — filterable, sorted by most recent activity. Unread
+ * here means a learner message the admin hasn't read yet. Enriched with
+ * enough about the ticket owner (login/paid-free status, lesson progress)
+ * that the admin panel can show "who is this" without a second round trip
+ * — see SupportPage.tsx's Users column, which groups this same result set
+ * by identity rather than calling a separate endpoint.
+ */
+export async function listSupportTicketsAdmin(env: Env, filters: SupportTicketAdminFilters): Promise<SupportTicketAdminRow[]> {
+  const clauses: string[] = [];
+  const params: unknown[] = [];
+
+  if (filters.status) {
+    clauses.push("t.status = ?");
+    params.push(filters.status);
+  }
+  if (filters.agentProfile) {
+    clauses.push("t.agent_profile = ?");
+    params.push(filters.agentProfile);
+  }
+  if (filters.dateFrom) {
+    clauses.push("date(t.created_at) >= date(?)");
+    params.push(filters.dateFrom);
+  }
+  if (filters.dateTo) {
+    clauses.push("date(t.created_at) <= date(?)");
+    params.push(filters.dateTo);
+  }
+  if (filters.userStatus === "guest") {
+    clauses.push("t.user_id IS NULL");
+  } else if (filters.userStatus === "paid" || filters.userStatus === "free") {
+    clauses.push("u.course_status = ?");
+    params.push(filters.userStatus);
+  }
+  if (filters.search && filters.search.trim()) {
+    const term = `%${filters.search.trim()}%`;
+    clauses.push(
+      `(u.email LIKE ? OR u.name LIKE ? OR t.guest_email LIKE ? OR EXISTS (SELECT 1 FROM support_messages m WHERE m.ticket_id = t.id AND m.body LIKE ?))`
+    );
+    params.push(term, term, term, term);
+  }
+
+  const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+
+  const result = await env.DB.prepare(
+    `SELECT t.*, u.email as user_email, u.name as user_name, u.course_status as course_status, u.current_lesson as current_lesson,
+       (SELECT COUNT(*) FROM lesson_progress lp JOIN lessons l ON l.id = lp.lesson_id WHERE lp.user_id = t.user_id AND lp.video_completed = 1 AND l.is_active = 1) as completed_lessons,
+       (SELECT COUNT(*) FROM lessons l WHERE l.is_active = 1) as total_lessons,
+       (SELECT COUNT(*) FROM support_messages m WHERE m.ticket_id = t.id AND m.sender_type = 'user' AND m.read_at IS NULL) as unread_count,
+       (SELECT COALESCE(m2.body, CASE WHEN m2.attachment_blob IS NOT NULL THEN '[attachment]' ELSE NULL END)
+          FROM support_messages m2 WHERE m2.ticket_id = t.id ORDER BY m2.created_at DESC LIMIT 1) as last_message_preview
+     FROM support_tickets t
+     LEFT JOIN users u ON u.id = t.user_id
+     ${where}
+     ORDER BY t.last_message_at DESC`
+  )
+    .bind(...params)
+    .all<SupportTicketAdminRow>();
+  return result.results;
+}
+
+// ---------------------------------------------------------------------------
+// Notifications (migrations/0008) — the single in-site notification stream
+// the schema comment describes as shared by assignment approve/reject
+// (future session's work — the review UI itself doesn't exist yet, see
+// migrations/0008's comment on the `assignments` columns) and support-inbox
+// replies (wired up here). See routes/notifications.ts (learner-facing) and
+// admin-support.ts (where 'support_reply' rows are actually created).
+// ---------------------------------------------------------------------------
+
+export interface NotificationRow {
+  id: string;
+  user_id: string;
+  type: "assignment_approved" | "assignment_rejected" | "support_reply";
+  message: string;
+  read_at: string | null;
+  created_at: string;
+}
+
+/** * Cap for notifications.message, mirroring how createSupportTicket already
+ * truncates `subject` to 80 chars. Notifications render as a one-line badge
+ * on the support chat button (see SupportButton.tsx), so this is a bit more
+ * generous than the ticket subject cap to keep a short reply readable in
+ * full via the unread count / future list view while still bounding
+ * pathological input.
+ */
+const NOTIFICATION_MESSAGE_MAX_LENGTH = 140;
+
+export async function createNotification(
+  env: Env,
+  fields: { userId: string; type: NotificationRow["type"]; message: string }
+): Promise<NotificationRow> {
+  const id = randomUuid();
+  const message = fields.message.slice(0, NOTIFICATION_MESSAGE_MAX_LENGTH);
+  await env.DB.prepare(
+    `INSERT INTO notifications (id, user_id, type, message, created_at) VALUES (?, ?, ?, ?, datetime('now'))`
+  )
+    .bind(id, fields.userId, fields.type, message)
+    .run();
+  const row = await env.DB.prepare(`SELECT * FROM notifications WHERE id = ?`).bind(id).first<NotificationRow>();
+  if (!row) throw new Error("Failed to create notification");
+  return row;
+}
+
+export async function getNotification(env: Env, id: string): Promise<NotificationRow | null> {
+  const row = await env.DB.prepare(`SELECT * FROM notifications WHERE id = ?`).bind(id).first<NotificationRow>();
+  return row ?? null;
+}
+
+export interface NotificationListResult {
+  notifications: NotificationRow[];
+  unreadCount: number;
+}
+
+/**
+ * Lists a user's notifications, newest first (capped at `limit`), alongside
+ * their TOTAL unread count — not just the unread count within this page —
+ * so the bell badge stays accurate even once someone has more than `limit`
+ * notifications.
+ */
+export async function listNotifications(env: Env, userId: string, limit = 30): Promise<NotificationListResult> {
+  const [listResult, unreadRow] = await Promise.all([
+    env.DB.prepare(`SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT ?`)
+      .bind(userId, limit)
+      .all<NotificationRow>(),
+    env.DB.prepare(`SELECT COUNT(*) as cnt FROM notifications WHERE user_id = ? AND read_at IS NULL`)
+      .bind(userId)
+      .first<{ cnt: number }>()
+  ]);
+  return { notifications: listResult.results, unreadCount: unreadRow?.cnt ?? 0 };
+}
+
+/** Marks one notification read. Caller must check ownership first (see routes/notifications.ts) — no ownership check here, same convention as markSupportMessagesRead taking a pre-validated ticketId. */
+export async function markNotificationRead(env: Env, id: string): Promise<void> {
+  await env.DB.prepare(`UPDATE notifications SET read_at = datetime('now') WHERE id = ? AND read_at IS NULL`).bind(id).run();
+}
+
+export async function markAllNotificationsRead(env: Env, userId: string): Promise<void> {
+  await env.DB.prepare(`UPDATE notifications SET read_at = datetime('now') WHERE user_id = ? AND read_at IS NULL`)
+    .bind(userId)
     .run();
 }

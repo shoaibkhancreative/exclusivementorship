@@ -49,8 +49,12 @@
     // routed to two different Telegram contacts — which one is used is
     // decided server-side from the learner's real course_status (see
     // routes/config.ts + SupportButton.tsx), never a client-side guess.
-    "SUPPORT_TELEGRAM_FREE_URL": "https://t.me/AskNLT",
-    "SUPPORT_TELEGRAM_PREMIUM_URL": "https://t.me/exclusivementor"
+    // In-site support inbox (replaces the old Telegram button — see
+    // routes/support.ts, routes/admin-support.ts, admin/pages/SupportPage.tsx).
+    // Where "new ticket" / "new learner message" alert emails are sent.
+    // Optional — leave empty/remove to skip those admin-alert emails
+    // (learner-facing reply emails aren't affected either way).
+    "SUPPORT_NOTIFY_EMAIL": "support@exclusivementorship.xyz"
   },
 
   "observability": {
@@ -73,7 +77,14 @@
   // `npm run deploy` (or `npx wrangler deploy`) to push this, then confirm
   // with `npx wrangler triggers` or the Cloudflare dashboard (Workers &
   // Pages → your Worker → Triggers).
+  // A second, much more frequent trigger for the abandoned-checkout
+  // reminder job (scheduled.ts / sendAbandonedCheckoutReminders). Unlike
+  // the daily cleanup above, this one is time-sensitive: a payment window
+  // is only ~20 minutes long, so checking once a day would mean some
+  // reminders go out nearly 24 hours late. Every 15 minutes keeps the
+  // reminder close to when the order actually went stale without adding a
+  // meaningful load (the query is a handful of indexed rows at most).
   "triggers": {
-    "crons": ["17 3 * * *"]
+    "crons": ["17 3 * * *", "*/15 * * * *"]
   }
 }

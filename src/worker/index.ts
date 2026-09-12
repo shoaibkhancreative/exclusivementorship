@@ -11,7 +11,10 @@ import { paymentRoutes } from "./routes/payments";
 import { webhookRoutes } from "./routes/webhooks";
 import { configRoutes } from "./routes/config";
 import { adminRoutes } from "./routes/admin";
-import { runScheduledCleanup } from "./scheduled";
+import { supportRoutes } from "./routes/support";
+import { adminSupportRoutes } from "./routes/admin-support";
+import { notificationRoutes } from "./routes/notifications";
+import { runScheduledCleanup, sendAbandonedCheckoutReminders } from "./scheduled";
 
 const app = new Hono<{ Bindings: Env; Variables: AppVariables & AdminVariables }>();
 
@@ -30,7 +33,10 @@ app.route("/api/lessons", lessonRoutes);
 app.route("/api/payments", paymentRoutes);
 app.route("/api/webhooks", webhookRoutes);
 app.route("/api/config", configRoutes);
+app.route("/api/support", supportRoutes);
+app.route("/api/notifications", notificationRoutes);
 app.route("/api/admin", adminRoutes);
+app.route("/api/admin/support", adminSupportRoutes);
 
 app.get("/api/health", (c) => c.json({ ok: true }));
 
@@ -53,12 +59,21 @@ export default {
   fetch: app.fetch,
 
   /**
-   * Cloudflare Worker Cron Trigger handler — runs the daily cleanup
-   * (otp_codes, rate_limits, audit_events). See scheduled.ts for exactly
-   * what it does and why. Wired up via the single daily cron trigger
-   * configured in wrangler.jsonc.
+   * Cloudflare Worker Cron Trigger handler. Two independent triggers are
+   * configured in wrangler.jsonc, distinguished here by `event.cron` so
+   * each runs only its own job:
+   *  - "17 3 * * *" (once a day) → the housekeeping cleanup (otp_codes,
+   *    rate_limits, audit_events). See scheduled.ts / runScheduledCleanup.
+   *  - "*\/15 * * * *" (every 15 min) → the abandoned-checkout reminder
+   *    email job. See scheduled.ts / sendAbandonedCheckoutReminders — it's
+   *    idempotent (guarded by `reminder_sent_at`), so this is safe even if
+   *    a run overlaps with the previous one.
    */
-  async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
+  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
+    if (event.cron === "*/15 * * * *") {
+      ctx.waitUntil(sendAbandonedCheckoutReminders(env));
+      return;
+    }
     ctx.waitUntil(runScheduledCleanup(env));
   }
 };

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, ApiError, type PublicConfig } from "../lib/api";
 import { useSession } from "../lib/SessionContext";
+import { useContent } from "../lib/useContent";
 import { Button, Card } from "../components/ui";
 
 declare global {
@@ -32,6 +33,7 @@ type Step = "email" | "otp";
 export default function Login() {
   const navigate = useNavigate();
   const { refresh } = useSession();
+  const { t } = useContent();
 
   const [step, setStep] = useState<Step>("email");
   const [email, setEmail] = useState("");
@@ -187,22 +189,22 @@ export default function Login() {
         {step === "email" ? (
           <form onSubmit={handleSendOtp} className="space-y-5">
             <div>
-              <h1 className="text-xl text-zinc-50">Log in</h1>
-              <p className="mt-1.5 text-sm text-zinc-400">We'll email you a one-time code. No password needed.</p>
+              <h1 className="text-xl text-zinc-50">{t("login.email_title")}</h1>
+              <p className="mt-1.5 text-sm text-zinc-400">{t("login.email_subtitle")}</p>
             </div>
             {config?.googleClientId && (
               <>
                 <div className="flex justify-center" ref={googleButtonRef} />
                 <div className="flex items-center gap-3 text-xs text-zinc-600">
                   <div className="h-px flex-1 bg-base-800" />
-                  <span>or</span>
+                  <span>{t("login.google_divider")}</span>
                   <div className="h-px flex-1 bg-base-800" />
                 </div>
               </>
             )}
             <div>
               <label htmlFor="email" className="mb-1.5 block text-xs text-zinc-500">
-                Email
+                {t("login.email_label")}
               </label>
               <input
                 id="email"
@@ -210,21 +212,25 @@ export default function Login() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
+                placeholder={t("login.email_placeholder")}
                 className="focus-ring w-full rounded-lg border border-base-700 bg-base-950 px-3 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600"
               />
             </div>
             {error && <p className="text-sm text-red-400">{error}</p>}
             <Button type="submit" disabled={submitting} className="w-full">
-              {submitting ? "Sending…" : "Send OTP"}
+              {submitting ? t("login.send_otp_button_loading") : t("login.send_otp_button")}
             </Button>
           </form>
         ) : (
           <form onSubmit={handleVerify} className="space-y-5">
             <div>
-              <h1 className="text-xl text-zinc-50">Enter the code</h1>
+              <h1 className="text-xl text-zinc-50">{t("login.otp_title")}</h1>
               <p className="mt-1.5 text-sm text-zinc-400">
-                Enter the 6-digit code sent to <span className="text-zinc-200">{email}</span>
+                {/* {email} in the admin-edited copy renders as JSX (not a plain string
+                    interpolation) so the address itself keeps its own styling. */}
+                {t("login.otp_subtitle").split("{email}")[0]}
+                <span className="text-zinc-200">{email}</span>
+                {t("login.otp_subtitle").split("{email}")[1]}
               </p>
             </div>
             <input
@@ -239,7 +245,7 @@ export default function Login() {
             />
             {error && <p className="text-sm text-red-400">{error}</p>}
             <Button type="submit" disabled={submitting} className="w-full">
-              {submitting ? "Verifying…" : "Verify & Continue"}
+              {submitting ? t("login.verify_button_loading") : t("login.verify_button")}
             </Button>
             <button
               type="button"
@@ -247,7 +253,7 @@ export default function Login() {
               onClick={() => handleSendOtp(new Event("submit") as unknown as React.FormEvent)}
               className="focus-ring w-full text-center text-xs text-zinc-500 hover:text-zinc-300 disabled:opacity-50"
             >
-              {cooldown > 0 ? `Resend code in ${cooldown}s` : "Resend code"}
+              {cooldown > 0 ? t("login.resend_button_cooldown", { seconds: cooldown }) : t("login.resend_button")}
             </button>
           </form>
         )}

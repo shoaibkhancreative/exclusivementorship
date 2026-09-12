@@ -1,6 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError } from "../../lib/api";
 import { Button, Card } from "../../components/ui";
+import { ImageUrlPreview } from "../../components/ImageUrlPreview";
+import { BookIcon, SearchIcon, CopyIcon } from "../components/icons";
+import { fileToCompressedDataUrl } from "../../lib/imageAttachment";
 
 interface AdminLesson {
   id: number;
@@ -14,6 +17,8 @@ interface AdminLesson {
   isFree: boolean;
   isActive: boolean;
   watermarkEnabled: boolean;
+  /** Admin-entered display label like "12:45" — shown as a badge on the thumbnail wherever it renders. Never auto-detected from the video. */
+  durationLabel: string | null;
 }
 
 interface AdminChapter {
@@ -26,6 +31,100 @@ interface AdminChapter {
 const inputClass =
   "focus-ring w-full rounded-lg border border-base-700 bg-base-800 px-3 py-2 text-sm text-zinc-100 outline-none";
 const textareaClass = `${inputClass} min-h-[70px] resize-y`;
+
+/**
+ * Replaces the old "paste a thumbnail URL" text field with a real file
+ * picker. The chosen image is resized/compressed client-side to a small
+ * `data:image/...;base64,...` URL (see fileToCompressedDataUrl — same
+ * helper the support-chat attach flow uses) and that data URL becomes the
+ * form's `thumbnailUrl` value, exactly like a pasted URL would — the server
+ * re-validates and caps it independently (see normalizeLessonThumbnail /
+ * LESSON_THUMBNAIL_MAX_BYTES in worker/lib/config.ts), never trusting this
+ * client-side resize. Existing lessons that still point at an external
+ * http(s) thumbnail keep previewing fine here too; picking a new file just
+ * replaces it.
+ */
+function ThumbnailField({ value, onChange }: { value: string; onChange: (dataUrl: string) => void }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-picking the same file later
+    if (!file) return;
+    setError(null);
+    setBusy(true);
+    try {
+      const { dataUrl } = await fileToCompressedDataUrl(file, { maxLongEdge: 800, quality: 0.75 });
+      onChange(dataUrl);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Couldn't read that image.";
+      // fileToCompressedDataUrl prefixes some errors with "unsupported_format:" for
+      // programmatic handling elsewhere — strip that prefix for display here.
+      setError(msg.includes(":") ? msg.slice(msg.indexOf(":") + 1) : msg);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div>
+      <label className="mb-1 block text-xs text-zinc-400">Thumbnail (optional)</label>
+      <div className="flex items-center gap-2">
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp,image/gif"
+          onChange={handleFile}
+          className="hidden"
+        />
+        <Button type="button" variant="secondary" disabled={busy} onClick={() => inputRef.current?.click()}>
+          {busy ? "Processing…" : value ? "Change thumbnail" : "Upload thumbnail"}
+        </Button>
+        {value && (
+          <button
+            type="button"
+            onClick={() => onChange("")}
+            className="focus-ring text-xs text-zinc-500 hover:text-red-400"
+          >
+            Remove
+          </button>
+        )}
+      </div>
+      <p className="mt-1 text-xs text-zinc-500">JPEG, PNG, WebP, or GIF. Resized automatically — under 1MB.</p>
+      {error && <p className="mt-1 text-xs text-red-400">{error}</p>}
+      <ImageUrlPreview url={value} />
+    </div>
+  );
+}
+
+/**
+ * Plain text input for the manual, admin-entered "12:45"-style duration
+ * label shown as a badge on the class's thumbnail (Learn page grid, Lesson
+ * page sidebar, and the Lesson page's own cover thumbnail). Deliberately
+ * NOT auto-detected from the video file — nothing on this site probes a
+ * YouTube or Bunny embed for its runtime, so this stays a manual field the
+ * admin fills in themselves. Left blank, no badge renders at all.
+ */
+function DurationField({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  return (
+    <div>
+      <label className="mb-1 block text-xs text-zinc-400">Duration (optional)</label>
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="e.g. 12:45"
+        className={`${inputClass} max-w-[160px]`}
+      />
+      <p className="mt-1 text-xs text-zinc-500">
+        Shown as a badge on the thumbnail. Type it in as m:ss or h:mm:ss — this is never read from the video itself.
+      </p>
+    </div>
+  );
+}
+
+type LessonStatusFilter = "all" | "published" | "hidden" | "free" | "paid" | "no-video";
 
 interface LessonGroup {
   chapterName: string;
@@ -64,6 +163,24 @@ function groupLessonsByChapterOrder(lessons: AdminLesson[], chapters: AdminChapt
   return groups;
 }
 
+function matchesStatusFilter(lesson: AdminLesson, filter: LessonStatusFilter): boolean {
+  switch (filter) {
+    case "published":
+      return lesson.isActive;
+    case "hidden":
+      return !lesson.isActive;
+    case "free":
+      return lesson.isFree;
+    case "paid":
+      return !lesson.isFree;
+    case "no-video":
+      return !lesson.videoEmbedUrl;
+    case "all":
+    default:
+      return true;
+  }
+}
+
 export default function LessonsPage() {
   const [lessons, setLessons] = useState<AdminLesson[] | null>(null);
   const [chapters, setChapters] = useState<AdminChapter[] | null>(null);
@@ -75,6 +192,21 @@ export default function LessonsPage() {
   const [showAddLesson, setShowAddLesson] = useState(false);
   const [showAddChapter, setShowAddChapter] = useState(false);
   const [editingChapterId, setEditingChapterId] = useState<number | null>(null);
+
+  // Search + status filter for the Lessons list. Filtering only changes
+  // which classes are VISIBLE — it never reorders or renumbers anything.
+  // Drag-and-drop and the up/down arrows are disabled while a filter is
+  // active (see isFiltering below), since moving a class while some of its
+  // chapter-mates are hidden from view could silently misplace it relative
+  // to classes you can't currently see.
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<LessonStatusFilter>("all");
+  const isFiltering = search.trim().length > 0 || statusFilter !== "all";
+
+  // Bulk selection — checkboxes on each visible lesson row, acted on via
+  // the toolbar that appears once at least one is selected.
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   // Drag-and-drop state for reordering lessons (and moving them between
   // chapters). `dragOverChapter` is purely visual — it highlights whichever
@@ -228,6 +360,18 @@ export default function LessonsPage() {
     }
   }
 
+  async function duplicateLesson(lessonId: number) {
+    setBusy(true);
+    try {
+      await api.post(`/admin/lessons/${lessonId}/duplicate`, {});
+      await reloadSafely();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't duplicate lesson.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function deleteChapter(chapterId: number) {
     if (!confirm("Delete this chapter? This only works if it has no classes left in it.")) return;
     setBusy(true);
@@ -274,6 +418,38 @@ export default function LessonsPage() {
     }
   }
 
+  function toggleSelected(lessonId: number) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(lessonId)) next.delete(lessonId);
+      else next.add(lessonId);
+      return next;
+    });
+  }
+
+  async function runBulkAction(action: "publish" | "unpublish" | "delete") {
+    if (selectedIds.size === 0) return;
+    const ids = [...selectedIds];
+    if (action === "delete") {
+      if (
+        !confirm(
+          `Permanently delete ${ids.length} selected class${ids.length === 1 ? "" : "es"}? This cannot be undone, and any student progress on them will be lost too.`
+        )
+      )
+        return;
+    }
+    setBulkBusy(true);
+    try {
+      await api.post<{ ok: true; affected: number }>("/admin/lessons/bulk", { ids, action });
+      setSelectedIds(new Set());
+      await reloadSafely();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't apply that action to the selected classes.");
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
   if (error && !lessons) return <p className="text-sm text-red-400">{error}</p>;
   if (!lessons || !chapters) return <p className="text-sm text-zinc-500">Loading…</p>;
 
@@ -283,13 +459,48 @@ export default function LessonsPage() {
   // first in the raw (lesson_number-ordered) list.
   const lessonGroups = groupLessonsByChapterOrder(lessons, chapters);
 
+  const q = search.trim().toLowerCase();
+  const visibleGroups = lessonGroups
+    .map((group) => ({
+      ...group,
+      lessons: group.lessons.filter((lesson) => {
+        if (!matchesStatusFilter(lesson, statusFilter)) return false;
+        if (!q) return true;
+        return (
+          lesson.title.toLowerCase().includes(q) ||
+          (lesson.tagline ?? "").toLowerCase().includes(q) ||
+          `class ${lesson.lessonNumber}`.includes(q)
+        );
+      })
+    }))
+    .filter((group) => !isFiltering || group.lessons.length > 0);
+
+  const visibleLessonIds = visibleGroups.flatMap((g) => g.lessons.map((l) => l.id));
+  const allVisibleSelected = visibleLessonIds.length > 0 && visibleLessonIds.every((id) => selectedIds.has(id));
+
+  function toggleSelectAllVisible() {
+    setSelectedIds((prev) => {
+      if (allVisibleSelected) {
+        const next = new Set(prev);
+        for (const id of visibleLessonIds) next.delete(id);
+        return next;
+      }
+      return new Set([...prev, ...visibleLessonIds]);
+    });
+  }
+
   return (
     <div className="page-enter flex flex-col gap-8">
       {error && <p className="text-sm text-red-400">{error}</p>}
 
       <section>
         <div className="mb-3 flex items-center justify-between">
-          <h1 className="text-xl text-zinc-100">Chapters</h1>
+          <div className="flex items-center gap-2">
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-base-800 text-zinc-400">
+              <BookIcon />
+            </span>
+            <h1 className="text-xl text-zinc-100">Chapters</h1>
+          </div>
           <Button variant="secondary" onClick={() => setShowAddChapter((v) => !v)}>
             {showAddChapter ? "Cancel" : "+ Add chapter"}
           </Button>
@@ -306,70 +517,83 @@ export default function LessonsPage() {
         )}
 
         <Card className="mt-3 divide-y divide-base-800 p-0">
-          {chapters.map((chapter, i) => (
-            <div key={chapter.id} className="flex items-center gap-3 px-4 py-3">
-              <div className="flex flex-col">
-                <button
-                  disabled={busy || i === 0}
-                  onClick={() => moveChapter(chapter.id, -1)}
-                  className="text-zinc-500 hover:text-zinc-200 disabled:opacity-30"
-                  aria-label="Move chapter up"
-                >
-                  ▲
-                </button>
-                <button
-                  disabled={busy || i === chapters.length - 1}
-                  onClick={() => moveChapter(chapter.id, 1)}
-                  className="text-zinc-500 hover:text-zinc-200 disabled:opacity-30"
-                  aria-label="Move chapter down"
-                >
-                  ▼
-                </button>
-              </div>
-              <div className="flex-1">
-                {editingChapterId === chapter.id ? (
-                  <EditChapterForm
-                    chapter={chapter}
-                    onDone={() => {
-                      setEditingChapterId(null);
-                      reloadSafely();
-                    }}
-                    onError={setError}
-                  />
-                ) : (
-                  <>
-                    <div className="text-sm text-zinc-100">{chapter.name}</div>
-                    {chapter.tagline && <div className="text-xs text-zinc-500">{chapter.tagline}</div>}
-                  </>
-                )}
-              </div>
-              {editingChapterId !== chapter.id && (
-                <div className="flex shrink-0 gap-2">
+          {chapters.map((chapter, i) => {
+            const lessonCount = lessons.filter((l) => l.chapterName === chapter.name).length;
+            return (
+              <div key={chapter.id} className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-base-800/30">
+                <div className="flex flex-col">
                   <button
-                    onClick={() => setEditingChapterId(chapter.id)}
-                    className="focus-ring rounded-md border border-base-700 px-3 py-1 text-xs text-zinc-300 hover:bg-base-800"
+                    disabled={busy || i === 0}
+                    onClick={() => moveChapter(chapter.id, -1)}
+                    className="text-zinc-500 hover:text-zinc-200 disabled:opacity-30"
+                    aria-label="Move chapter up"
                   >
-                    Edit
+                    ▲
                   </button>
                   <button
-                    onClick={() => deleteChapter(chapter.id)}
-                    disabled={busy}
-                    className="focus-ring rounded-md border border-red-900/50 px-3 py-1 text-xs text-red-300 hover:bg-red-950/40 disabled:opacity-50"
+                    disabled={busy || i === chapters.length - 1}
+                    onClick={() => moveChapter(chapter.id, 1)}
+                    className="text-zinc-500 hover:text-zinc-200 disabled:opacity-30"
+                    aria-label="Move chapter down"
                   >
-                    Delete
+                    ▼
                   </button>
                 </div>
-              )}
-            </div>
-          ))}
+                <div className="flex-1">
+                  {editingChapterId === chapter.id ? (
+                    <EditChapterForm
+                      chapter={chapter}
+                      onDone={() => {
+                        setEditingChapterId(null);
+                        reloadSafely();
+                      }}
+                      onError={setError}
+                    />
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <div>
+                        <div className="text-sm text-zinc-100">{chapter.name}</div>
+                        {chapter.tagline && <div className="text-xs text-zinc-500">{chapter.tagline}</div>}
+                      </div>
+                      <span className="rounded-full bg-base-800 px-2 py-0.5 text-[10px] font-medium text-zinc-400">
+                        {lessonCount} {lessonCount === 1 ? "class" : "classes"}
+                      </span>
+                    </div>
+                  )}
+                </div>
+                {editingChapterId !== chapter.id && (
+                  <div className="flex shrink-0 gap-2">
+                    <button
+                      onClick={() => setEditingChapterId(chapter.id)}
+                      className="focus-ring rounded-md border border-base-700 px-3 py-1 text-xs text-zinc-300 hover:bg-base-800"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => deleteChapter(chapter.id)}
+                      disabled={busy}
+                      className="focus-ring rounded-md border border-red-900/50 px-3 py-1 text-xs text-red-300 hover:bg-red-950/40 disabled:opacity-50"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </Card>
       </section>
 
       <section>
-        <div className="mb-3 flex items-center justify-between">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 className="text-xl text-zinc-100">Lessons</h1>
-            <p className="text-xs text-zinc-500">
+            <div className="flex items-center gap-2">
+              <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-base-800 text-zinc-400">
+                <BookIcon />
+              </span>
+              <h1 className="text-xl text-zinc-100">Lessons</h1>
+            </div>
+            <p className="mt-1 text-xs text-zinc-500">
               First {freeLessonCount} class{freeLessonCount === 1 ? "" : "es"} (in this order) are free — change that
               in Settings → Course.
             </p>
@@ -378,6 +602,95 @@ export default function LessonsPage() {
             {showAddLesson ? "Cancel" : "+ Add lesson"}
           </Button>
         </div>
+
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <div className="relative w-full max-w-xs">
+            <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search classes by title or tagline…"
+              className="focus-ring w-full rounded-lg border border-base-700 bg-base-800 py-2 pl-9 pr-3 text-sm text-zinc-100 outline-none"
+            />
+          </div>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as LessonStatusFilter)}
+            className="focus-ring rounded-lg border border-base-700 bg-base-800 px-3 py-2 text-sm text-zinc-100 outline-none"
+          >
+            <option value="all">All classes</option>
+            <option value="published">Published</option>
+            <option value="hidden">Hidden</option>
+            <option value="free">Free</option>
+            <option value="paid">Paid</option>
+            <option value="no-video">Missing video</option>
+          </select>
+          {isFiltering && (
+            <button
+              onClick={() => {
+                setSearch("");
+                setStatusFilter("all");
+              }}
+              className="focus-ring rounded-lg border border-base-700 px-3 py-2 text-xs text-zinc-400 hover:bg-base-800"
+            >
+              Clear filters
+            </button>
+          )}
+        </div>
+
+        {isFiltering && (
+          <p className="mb-3 text-xs text-yellow-300/80">
+            Filtering hides non-matching classes and turns off drag-and-drop / reorder arrows — clear filters to
+            reorder.
+          </p>
+        )}
+
+        {visibleLessonIds.length > 0 && (
+          <div className="mb-3 flex flex-wrap items-center gap-3 rounded-lg border border-base-700 bg-base-900/60 px-3 py-2">
+            <label className="flex items-center gap-2 text-xs text-zinc-400">
+              <input
+                type="checkbox"
+                checked={allVisibleSelected}
+                onChange={toggleSelectAllVisible}
+                className="h-4 w-4 rounded border-base-700 bg-base-800 accent-accent-500"
+              />
+              Select all {isFiltering ? "matching" : "visible"} ({visibleLessonIds.length})
+            </label>
+            {selectedIds.size > 0 && (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs text-zinc-500">{selectedIds.size} selected</span>
+                <button
+                  onClick={() => runBulkAction("publish")}
+                  disabled={bulkBusy}
+                  className="focus-ring rounded-md border border-base-700 px-2.5 py-1 text-xs text-zinc-200 hover:bg-base-800 disabled:opacity-50"
+                >
+                  Publish
+                </button>
+                <button
+                  onClick={() => runBulkAction("unpublish")}
+                  disabled={bulkBusy}
+                  className="focus-ring rounded-md border border-base-700 px-2.5 py-1 text-xs text-zinc-200 hover:bg-base-800 disabled:opacity-50"
+                >
+                  Unpublish
+                </button>
+                <button
+                  onClick={() => runBulkAction("delete")}
+                  disabled={bulkBusy}
+                  className="focus-ring rounded-md border border-red-900/50 px-2.5 py-1 text-xs text-red-300 hover:bg-red-950/40 disabled:opacity-50"
+                >
+                  Delete
+                </button>
+                <button
+                  onClick={() => setSelectedIds(new Set())}
+                  disabled={bulkBusy}
+                  className="focus-ring rounded-md px-2.5 py-1 text-xs text-zinc-500 hover:text-zinc-300"
+                >
+                  Clear selection
+                </button>
+              </div>
+            )}
+          </div>
+        )}
 
         {chapters.length === 0 && (
           <p className="mb-3 text-xs text-zinc-500">Add a chapter above first — every lesson needs one.</p>
@@ -394,168 +707,192 @@ export default function LessonsPage() {
           />
         )}
 
-        <p className="mb-3 text-xs text-zinc-500">
-          Drag a class by its <span className="text-zinc-300">⠿</span> handle to reorder it — drop it into a
-          different chapter's box to move it there. "Class N" updates automatically to match top-to-bottom order.
-        </p>
+        {isFiltering && visibleGroups.length === 0 && (
+          <Card className="py-6 text-center text-sm text-zinc-500">No classes match your search/filter.</Card>
+        )}
 
-        <div className="mt-3 flex flex-col gap-6">
-          {lessonGroups.map((group) => {
-            const isDragOver = dragOverChapter === group.chapterName;
-            return (
-              <div key={group.chapterName}>
-                <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
-                  {group.chapterName}
-                </h2>
-                <Card
-                  className={`divide-y divide-base-800 p-0 transition-colors ${
-                    isDragOver ? "border-accent-500/60 bg-accent-500/5" : ""
-                  }`}
-                  onDragOver={(e) => {
-                    if (draggingId == null) return;
-                    e.preventDefault();
-                    setDragOverChapter(group.chapterName);
-                  }}
-                  onDragLeave={() => setDragOverChapter((c) => (c === group.chapterName ? null : c))}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    dropLesson(group.chapterName, null);
-                  }}
-                >
-                  {group.lessons.length === 0 && (
-                    <div className="px-4 py-6 text-center text-xs text-zinc-600">
-                      No classes here yet — drag one in, or use "+ Add lesson" above.
-                    </div>
-                  )}
-                  {group.lessons.map((lesson, indexInChapter) => {
-                    const isDragging = draggingId === lesson.id;
-                    return (
-                      <div
-                        key={lesson.id}
-                        draggable={editingId !== lesson.id}
-                        onDragStart={(e) => {
-                          setDraggingId(lesson.id);
-                          e.dataTransfer.effectAllowed = "move";
-                        }}
-                        onDragEnd={() => {
-                          setDraggingId(null);
-                          setDragOverChapter(null);
-                        }}
-                        onDragOver={(e) => {
-                          if (draggingId == null || draggingId === lesson.id) return;
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setDragOverChapter(group.chapterName);
-                        }}
-                        onDrop={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          dropLesson(group.chapterName, lesson.id);
-                        }}
-                        className={`px-4 py-3 ${isDragging ? "opacity-40" : ""}`}
-                      >
-                        <div className="flex items-start gap-3">
-                          <div className="flex cursor-grab flex-col items-center gap-1 pt-1 active:cursor-grabbing">
-                            <span className="text-zinc-600" aria-hidden="true" title="Drag to reorder">
-                              ⠿
+        <div className="flex flex-col gap-5">
+          {visibleGroups.map((group) => (
+            <div key={group.chapterName}>
+              <div className="mb-2 flex items-center gap-2 text-xs font-medium text-zinc-400">
+                <span>{group.chapterName}</span>
+                <span className="h-px flex-1 bg-base-800" />
+              </div>
+              <Card
+                className={`divide-y divide-base-800 p-0 transition-colors ${
+                  dragOverChapter === group.chapterName ? "ring-1 ring-accent-500/50" : ""
+                }`}
+                onDragOver={(e) => {
+                  if (isFiltering || draggingId == null) return;
+                  e.preventDefault();
+                  setDragOverChapter(group.chapterName);
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  if (isFiltering) return;
+                  dropLesson(group.chapterName, null);
+                }}
+              >
+                {group.lessons.length === 0 && (
+                  <div className="px-4 py-6 text-center text-xs text-zinc-600">
+                    No classes here yet — drag one in, or use "+ Add lesson" above.
+                  </div>
+                )}
+                {group.lessons.map((lesson, indexInChapter) => {
+                  const isDragging = draggingId === lesson.id;
+                  const isSelected = selectedIds.has(lesson.id);
+                  return (
+                    <div
+                      key={lesson.id}
+                      draggable={!isFiltering && editingId !== lesson.id}
+                      onDragStart={(e) => {
+                        setDraggingId(lesson.id);
+                        e.dataTransfer.effectAllowed = "move";
+                      }}
+                      onDragEnd={() => {
+                        setDraggingId(null);
+                        setDragOverChapter(null);
+                      }}
+                      onDragOver={(e) => {
+                        if (isFiltering || draggingId == null || draggingId === lesson.id) return;
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setDragOverChapter(group.chapterName);
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (isFiltering) return;
+                        dropLesson(group.chapterName, lesson.id);
+                      }}
+                      className={`px-4 py-3 transition-colors hover:bg-base-800/30 ${isDragging ? "opacity-40" : ""} ${isSelected ? "bg-accent-500/5" : ""}`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleSelected(lesson.id)}
+                          className="mt-1.5 h-4 w-4 shrink-0 rounded border-base-700 bg-base-800 accent-accent-500"
+                          aria-label={`Select ${lesson.title}`}
+                        />
+                        <div className="flex flex-col items-center gap-1 pt-1">
+                          <span
+                            className={`text-zinc-600 ${isFiltering ? "opacity-30" : "cursor-grab active:cursor-grabbing"}`}
+                            aria-hidden="true"
+                            title={isFiltering ? "Clear filters to reorder" : "Drag to reorder"}
+                          >
+                            ⠿
+                          </span>
+                          <button
+                            disabled={busy || isFiltering || indexInChapter === 0}
+                            onClick={() => moveLesson(lesson.id, -1)}
+                            className="text-zinc-500 hover:text-zinc-200 disabled:opacity-30"
+                            aria-label="Move lesson up"
+                          >
+                            ▲
+                          </button>
+                          <button
+                            disabled={busy || isFiltering || indexInChapter === group.lessons.length - 1}
+                            onClick={() => moveLesson(lesson.id, 1)}
+                            className="text-zinc-500 hover:text-zinc-200 disabled:opacity-30"
+                            aria-label="Move lesson down"
+                          >
+                            ▼
+                          </button>
+                        </div>
+
+                        <div className="flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-xs text-zinc-500">Class {lesson.lessonNumber}</span>
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                                lesson.isFree ? "bg-base-800 text-zinc-400" : "bg-accent-500/15 text-accent-300"
+                              }`}
+                            >
+                              {lesson.isFree ? "Free" : "Paid"}
                             </span>
-                            <button
-                              disabled={busy || indexInChapter === 0}
-                              onClick={() => moveLesson(lesson.id, -1)}
-                              className="text-zinc-500 hover:text-zinc-200 disabled:opacity-30"
-                              aria-label="Move lesson up"
-                            >
-                              ▲
-                            </button>
-                            <button
-                              disabled={busy || indexInChapter === group.lessons.length - 1}
-                              onClick={() => moveLesson(lesson.id, 1)}
-                              className="text-zinc-500 hover:text-zinc-200 disabled:opacity-30"
-                              aria-label="Move lesson down"
-                            >
-                              ▼
-                            </button>
-                          </div>
-
-                          <div className="flex-1">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="text-xs text-zinc-500">Class {lesson.lessonNumber}</span>
-                              <span
-                                className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                                  lesson.isFree ? "bg-base-800 text-zinc-400" : "bg-accent-500/15 text-accent-300"
-                                }`}
-                              >
-                                {lesson.isFree ? "Free" : "Paid"}
+                            {!lesson.isActive && (
+                              <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] font-medium text-red-300">
+                                Hidden
                               </span>
-                              {!lesson.isActive && (
-                                <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] font-medium text-red-300">
-                                  Hidden
-                                </span>
-                              )}
-                              {!lesson.videoEmbedUrl && (
-                                <span className="rounded-full bg-yellow-500/15 px-2 py-0.5 text-[10px] font-medium text-yellow-300">
-                                  No video yet
-                                </span>
-                              )}
-                            </div>
-
-                            {editingId === lesson.id ? (
-                              <EditLessonForm
-                                lesson={lesson}
-                                chapters={chapters}
-                                onDone={() => {
-                                  setEditingId(null);
-                                  reloadSafely();
-                                }}
-                                onError={setError}
-                              />
-                            ) : (
-                              <div className="mt-1">
-                                <div className="text-sm text-zinc-100">{lesson.title}</div>
-                                {lesson.tagline && <div className="text-xs text-zinc-500">{lesson.tagline}</div>}
-                              </div>
+                            )}
+                            {!lesson.videoEmbedUrl && (
+                              <span className="rounded-full bg-yellow-500/15 px-2 py-0.5 text-[10px] font-medium text-yellow-300">
+                                No video yet
+                              </span>
+                            )}
+                            {lesson.durationLabel && (
+                              <span className="rounded-full bg-base-800 px-2 py-0.5 text-[10px] font-medium text-zinc-400">
+                                {lesson.durationLabel}
+                              </span>
                             )}
                           </div>
 
-                          {editingId !== lesson.id && (
-                            <div className="flex shrink-0 gap-2">
-                              <button
-                                onClick={() => toggleActive(lesson)}
-                                disabled={busy}
-                                className="focus-ring rounded-md border border-base-700 px-3 py-1 text-xs text-zinc-300 hover:bg-base-800 disabled:opacity-50"
-                              >
-                                {lesson.isActive ? "Unpublish" : "Publish"}
-                              </button>
-                              <button
-                                onClick={() => setEditingId(lesson.id)}
-                                className="focus-ring rounded-md border border-base-700 px-3 py-1 text-xs text-zinc-300 hover:bg-base-800"
-                              >
-                                Edit
-                              </button>
-                              <button
-                                onClick={() => archiveLesson(lesson.id)}
-                                disabled={busy}
-                                className="focus-ring rounded-md border border-base-700 px-3 py-1 text-xs text-zinc-300 hover:bg-base-800 disabled:opacity-50"
-                              >
-                                Hide
-                              </button>
-                              <button
-                                onClick={() => deleteLesson(lesson.id)}
-                                disabled={busy}
-                                className="focus-ring rounded-md border border-red-900/50 px-3 py-1 text-xs text-red-300 hover:bg-red-950/40 disabled:opacity-50"
-                              >
-                                Delete
-                              </button>
+                          {editingId === lesson.id ? (
+                            <EditLessonForm
+                              lesson={lesson}
+                              chapters={chapters}
+                              onDone={() => {
+                                setEditingId(null);
+                                reloadSafely();
+                              }}
+                              onError={setError}
+                            />
+                          ) : (
+                            <div className="mt-1">
+                              <div className="text-sm text-zinc-100">{lesson.title}</div>
+                              {lesson.tagline && <div className="text-xs text-zinc-500">{lesson.tagline}</div>}
                             </div>
                           )}
                         </div>
+
+                        {editingId !== lesson.id && (
+                          <div className="flex shrink-0 flex-wrap justify-end gap-2">
+                            <button
+                              onClick={() => toggleActive(lesson)}
+                              disabled={busy}
+                              className="focus-ring rounded-md border border-base-700 px-3 py-1 text-xs text-zinc-300 hover:bg-base-800 disabled:opacity-50"
+                            >
+                              {lesson.isActive ? "Unpublish" : "Publish"}
+                            </button>
+                            <button
+                              onClick={() => setEditingId(lesson.id)}
+                              className="focus-ring rounded-md border border-base-700 px-3 py-1 text-xs text-zinc-300 hover:bg-base-800"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => duplicateLesson(lesson.id)}
+                              disabled={busy}
+                              title="Duplicate this class"
+                              className="focus-ring flex items-center gap-1 rounded-md border border-base-700 px-3 py-1 text-xs text-zinc-300 hover:bg-base-800 disabled:opacity-50"
+                            >
+                              <CopyIcon className="h-3.5 w-3.5" />
+                              Duplicate
+                            </button>
+                            <button
+                              onClick={() => archiveLesson(lesson.id)}
+                              disabled={busy}
+                              className="focus-ring rounded-md border border-base-700 px-3 py-1 text-xs text-zinc-300 hover:bg-base-800 disabled:opacity-50"
+                            >
+                              Hide
+                            </button>
+                            <button
+                              onClick={() => deleteLesson(lesson.id)}
+                              disabled={busy}
+                              className="focus-ring rounded-md border border-red-900/50 px-3 py-1 text-xs text-red-300 hover:bg-red-950/40 disabled:opacity-50"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        )}
                       </div>
-                    );
-                  })}
-                </Card>
-              </div>
-            );
-          })}
+                    </div>
+                  );
+                })}
+              </Card>
+            </div>
+          ))}
         </div>
       </section>
     </div>
@@ -660,6 +997,8 @@ function AddLessonForm({
   const [tagline, setTagline] = useState("");
   const [description, setDescription] = useState("");
   const [videoEmbedUrl, setVideoEmbedUrl] = useState("");
+  const [thumbnailUrl, setThumbnailUrl] = useState("");
+  const [durationLabel, setDurationLabel] = useState("");
   const [watermarkEnabled, setWatermarkEnabled] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -667,7 +1006,16 @@ function AddLessonForm({
     e.preventDefault();
     setSubmitting(true);
     try {
-      await api.post("/admin/lessons", { title, chapterName, tagline, description, videoEmbedUrl, watermarkEnabled });
+      await api.post("/admin/lessons", {
+        title,
+        chapterName,
+        tagline,
+        description,
+        videoEmbedUrl,
+        thumbnailUrl,
+        durationLabel,
+        watermarkEnabled
+      });
       onCreated();
     } catch (err) {
       onError(err instanceof ApiError ? err.message : "Couldn't create lesson.");
@@ -713,6 +1061,8 @@ function AddLessonForm({
             New lessons are created hidden ("Publish" it once the video link is ready).
           </p>
         </div>
+        <ThumbnailField value={thumbnailUrl} onChange={setThumbnailUrl} />
+        <DurationField value={durationLabel} onChange={setDurationLabel} />
         <label className="flex items-center gap-2 text-xs text-zinc-400">
           <input
             type="checkbox"
@@ -746,6 +1096,8 @@ function EditLessonForm({
   const [tagline, setTagline] = useState(lesson.tagline ?? "");
   const [description, setDescription] = useState(lesson.description ?? "");
   const [videoEmbedUrl, setVideoEmbedUrl] = useState(lesson.videoEmbedUrl ?? "");
+  const [thumbnailUrl, setThumbnailUrl] = useState(lesson.thumbnailUrl ?? "");
+  const [durationLabel, setDurationLabel] = useState(lesson.durationLabel ?? "");
   const [watermarkEnabled, setWatermarkEnabled] = useState(lesson.watermarkEnabled);
   const [submitting, setSubmitting] = useState(false);
 
@@ -759,6 +1111,8 @@ function EditLessonForm({
         tagline,
         description,
         videoEmbedUrl,
+        thumbnailUrl,
+        durationLabel,
         watermarkEnabled
       });
       onDone();
@@ -802,6 +1156,8 @@ function EditLessonForm({
           className={inputClass}
         />
       </div>
+      <ThumbnailField value={thumbnailUrl} onChange={setThumbnailUrl} />
+      <DurationField value={durationLabel} onChange={setDurationLabel} />
       <label className="flex items-center gap-2 text-xs text-zinc-400">
         <input
           type="checkbox"
