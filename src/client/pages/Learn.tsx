@@ -85,7 +85,13 @@ export default function Learn() {
             <div className="rounded-md border border-base-800 bg-base-900 p-4 shadow-[0_4px_16px_-4px_rgba(28,27,23,0.14),0_1px_3px_rgba(28,27,23,0.08)] sm:p-5">
               <div className="relative mb-4 aspect-video overflow-hidden rounded-md bg-base-800 bg-cover bg-center shadow-[0_1px_3px_rgba(28,27,23,0.16),0_1px_2px_rgba(28,27,23,0.10)] ring-1 ring-black/10 sm:mb-5">
                 {cover?.thumbnailUrl ? (
-                  <img src={cover.thumbnailUrl} alt="" className="h-full w-full object-cover" />
+                  <img
+                    src={cover.thumbnailUrl}
+                    alt=""
+                    decoding="async"
+                    fetchPriority="high"
+                    className="h-full w-full object-cover"
+                  />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center">
                     <span className="flex h-14 w-14 items-center justify-center rounded-full bg-accent-500/12 text-accent-500 sm:h-16 sm:w-16">

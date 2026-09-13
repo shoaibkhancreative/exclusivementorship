@@ -79,6 +79,7 @@ function Thumbnail({ item, isActive, size }: { item: OutlineItem; isActive: bool
           src={item.thumbnailUrl}
           alt=""
           loading="lazy"
+          decoding="async"
           className="h-full w-full object-cover"
         />
       ) : (

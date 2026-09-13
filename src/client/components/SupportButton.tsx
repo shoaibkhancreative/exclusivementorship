@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useState } from "react";
 import { api, type SupportTicket } from "../lib/api";
 import { useContent } from "../lib/useContent";
 import { useSession } from "../lib/SessionContext";
-import { SupportChatPanel } from "./SupportChatPanel";
+
+const SupportChatPanel = lazy(() => import("./SupportChatPanel").then((m) => ({ default: m.SupportChatPanel })));
 
 const NOTIFICATION_POLL_MS = 5_000;
 
@@ -61,12 +62,14 @@ export function SupportButton() {
   return (
     <>
       {open && (
-        <SupportChatPanel
-          fullscreen={fullscreen}
-          onToggleFullscreen={() => setFullscreen((f) => !f)}
-          onMinimize={handleMinimize}
-          onTicketsChange={handleTicketsChange}
-        />
+        <Suspense fallback={null}>
+          <SupportChatPanel
+            fullscreen={fullscreen}
+            onToggleFullscreen={() => setFullscreen((f) => !f)}
+            onMinimize={handleMinimize}
+            onTicketsChange={handleTicketsChange}
+          />
+        </Suspense>
       )}
 
       {!open && (

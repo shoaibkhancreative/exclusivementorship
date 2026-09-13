@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api, type LessonDetail, type OutlineResponse } from "../lib/api";
 import { Button, LoadingScreen } from "../components/ui";
+import { ExpandableText } from "../components/ExpandableText";
 import { OutlineList } from "../components/OutlineList";
 import { RetryBadge } from "../components/IllustrationBadge";
 import { SequenceLockModal } from "../components/SequenceLockModal";
@@ -227,7 +228,13 @@ export default function Lesson() {
                 </div>
 
                 {lesson.description && (
-                  <p className="mb-8 break-words text-sm leading-relaxed text-zinc-400">{lesson.description}</p>
+                  <ExpandableText
+                    text={lesson.description}
+                    maxChars={220}
+                    className="mb-8 break-words text-sm leading-relaxed text-zinc-400"
+                    moreLabel={t("lesson.description_show_more")}
+                    lessLabel={t("lesson.description_show_less")}
+                  />
                 )}
               </>
             )}

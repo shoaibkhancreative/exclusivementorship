@@ -110,7 +110,7 @@ export function ProfileMenu() {
         aria-expanded={open}
         aria-label="Account menu"
       >
-        <Avatar label={label} premium={isPremium} size={34} />
+        <Avatar label={label} premium={isPremium} size={30} />
       </button>
 
       {open && (

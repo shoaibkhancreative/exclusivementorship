@@ -365,6 +365,20 @@ export const CONTENT_FIELDS: ContentFieldDef[] = [
     defaultValue: "Course content"
   },
   {
+    key: "lesson.description_show_more",
+    group: "Lesson",
+    label: "Description \"Show more\" button",
+    type: "text",
+    defaultValue: "Show more"
+  },
+  {
+    key: "lesson.description_show_less",
+    group: "Lesson",
+    label: "Description \"Show less\" button",
+    type: "text",
+    defaultValue: "Show less"
+  },
+  {
     key: "lesson.playlist_position",
     group: "Lesson",
     label: "Playlist position (use {current}, {total})",

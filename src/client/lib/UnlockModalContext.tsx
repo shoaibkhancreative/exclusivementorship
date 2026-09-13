@@ -1,5 +1,6 @@
-import React, { createContext, useCallback, useContext, useMemo, useState } from "react";
-import { UnlockModal } from "../components/UnlockModal";
+import React, { Suspense, createContext, lazy, useCallback, useContext, useMemo, useState } from "react";
+
+const UnlockModal = lazy(() => import("../components/UnlockModal").then((m) => ({ default: m.UnlockModal })));
 
 interface UnlockModalContextValue {
   openUnlockModal: () => void;
@@ -20,7 +21,11 @@ export function UnlockModalProvider({ children }: { children: React.ReactNode })
   return (
     <UnlockModalContext.Provider value={value}>
       {children}
-      {open && <UnlockModal onClose={close} />}
+      {open && (
+        <Suspense fallback={null}>
+          <UnlockModal onClose={close} />
+        </Suspense>
+      )}
     </UnlockModalContext.Provider>
   );
 }
