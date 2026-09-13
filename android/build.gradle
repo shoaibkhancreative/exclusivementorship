@@ -1,0 +1,23 @@
+// Root build file. Regenerated/verified by `npx cap add android` /
+// `npx cap sync android` — this is the standard Capacitor 6 template plus
+// nothing custom, so it's safe to let the CLI overwrite it if versions drift.
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.7.2'
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+task clean(type: Delete) {
+    delete rootProject.buildDir
+}

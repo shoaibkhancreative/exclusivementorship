@@ -6,6 +6,7 @@ import { useContent } from "../lib/useContent";
 import { useDocumentMeta } from "../lib/useDocumentMeta";
 import { Button, Card } from "../components/ui";
 import { IllustrationBadge } from "../components/IllustrationBadge";
+import { isRunningInNativeApp, getNativeDeviceInfo } from "../lib/platform";
 
 function EnvelopeBadge() {
   return (
@@ -226,7 +227,25 @@ export default function Login() {
     setError(null);
     setSubmitting(true);
     try {
-      await api.post("/auth/verify-otp", { email, code });
+      if (isRunningInNativeApp()) {
+        // Inside the Android app shell: use the app login endpoint, which
+        // additionally enforces the paid-user single-device lock. deviceId
+        // comes from a Keystore-backed identifier generated on-device (see
+        // lib/platform.ts) rather than anything the webview itself can see
+        // or edit.
+        const deviceInfo = await getNativeDeviceInfo();
+        if (!deviceInfo) {
+          setError("Couldn't verify this device. Please reinstall the app and try again.");
+          return;
+        }
+        if (!deviceInfo.isTrusted) {
+          setError("This app can't run on a rooted or modified device.");
+          return;
+        }
+        await api.post("/auth/app/login", { email, code, deviceId: deviceInfo.deviceId });
+      } else {
+        await api.post("/auth/verify-otp", { email, code });
+      }
       await refresh();
       navigate("/learn");
     } catch (err) {

@@ -196,7 +196,7 @@ describe("Session lifecycle (HTTP)", () => {
     expect(protectedRes.status).toBe(401);
   });
 
-  it("enforces a single active session per account over HTTP: a second login logs the first device out", async () => {
+  it("allows multiple concurrent device sessions per account over HTTP (no single-session limit)", async () => {
     const { user, cookie: firstDeviceCookie } = await loginNewUser(env, "ivan@example.com");
     expect(
       (await call(env, "/api/auth/me", { cookie: firstDeviceCookie }).then((r) => r.json())) as {
@@ -207,15 +207,16 @@ describe("Session lifecycle (HTTP)", () => {
     const secondToken = await createSession(env, user.id);
     const secondDeviceCookie = `em_session=${secondToken}`;
 
+    // Logging in from a "second device" must NOT log the first one out.
     const firstAfter = await call(env, "/api/auth/me", { cookie: firstDeviceCookie });
     const firstAfterBody = (await firstAfter.json()) as { authenticated: boolean };
-    expect(firstAfterBody.authenticated).toBe(false);
+    expect(firstAfterBody.authenticated).toBe(true);
 
     const firstProtected = await call(env, "/api/lessons/1/complete-video", {
       method: "POST",
       cookie: firstDeviceCookie
     });
-    expect(firstProtected.status).toBe(401);
+    expect(firstProtected.status).toBe(200);
 
     const secondAfter = await call(env, "/api/auth/me", { cookie: secondDeviceCookie });
     const secondAfterBody = (await secondAfter.json()) as { authenticated: boolean };

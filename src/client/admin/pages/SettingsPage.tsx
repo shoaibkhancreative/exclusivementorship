@@ -12,6 +12,7 @@ interface SettingsResponse {
   introVideoEmbedUrl: string | null;
   siteLogoUrl: string | null;
   siteFaviconUrl: string | null;
+  appDownloadUrl: string | null;
 }
 
 function SectionHeading({ icon, title }: { icon: React.ReactNode; title: string }) {
@@ -40,6 +41,7 @@ export default function SettingsPage() {
 
   const [siteLogoUrl, setSiteLogoUrl] = useState("");
   const [siteFaviconUrl, setSiteFaviconUrl] = useState("");
+  const [appDownloadUrl, setAppDownloadUrl] = useState("");
   const [siteError, setSiteError] = useState<string | null>(null);
   const [siteSuccess, setSiteSuccess] = useState<string | null>(null);
   const [savingSite, setSavingSite] = useState(false);
@@ -53,6 +55,7 @@ export default function SettingsPage() {
     setIntroVideoEmbedUrl(res.introVideoEmbedUrl ?? "");
     setSiteLogoUrl(res.siteLogoUrl ?? "");
     setSiteFaviconUrl(res.siteFaviconUrl ?? "");
+    setAppDownloadUrl(res.appDownloadUrl ?? "");
   }
 
   useEffect(() => {
@@ -105,7 +108,8 @@ export default function SettingsPage() {
     try {
       const res = await api.post<SettingsResponse & { ok: true }>("/admin/settings", {
         siteLogoUrl,
-        siteFaviconUrl
+        siteFaviconUrl,
+        appDownloadUrl
       });
       setData(res);
       setSiteSuccess("Saved.");
@@ -223,8 +227,8 @@ export default function SettingsPage() {
         <SectionHeading icon={<GearIcon />} title="Site" />
         <Card>
           <p className="mb-4 text-sm text-zinc-400">
-            Logo/favicon (optional — paste a URL, no upload needed). Brand name and other page text are edited on the
-            Content page; the support chat's copy is in Content → Support chat.
+            Logo/favicon (optional — paste a URL, no upload needed) and the Android app download link. Brand name and
+            other page text are edited on the Content page; the support chat's copy is in Content → Support chat.
           </p>
           <form onSubmit={handleSiteSubmit} className="flex flex-col gap-4">
             <div>
@@ -254,6 +258,23 @@ export default function SettingsPage() {
                 className="focus-ring w-full rounded-lg border border-base-700 bg-base-800 px-3 py-2 text-sm text-zinc-100 outline-none"
               />
               <ImageUrlPreview url={siteFaviconUrl} className="h-10 w-10" />
+            </div>
+            <div>
+              <label htmlFor="app-download-url" className="mb-1 block text-xs text-zinc-400">
+                Android app download URL (Play Store or direct APK link)
+              </label>
+              <input
+                id="app-download-url"
+                type="url"
+                placeholder="https://play.google.com/store/apps/details?id=…"
+                value={appDownloadUrl}
+                onChange={(e) => setAppDownloadUrl(e.target.value)}
+                className="focus-ring w-full rounded-lg border border-base-700 bg-base-800 px-3 py-2 text-sm text-zinc-100 outline-none"
+              />
+              <p className="mt-1 text-xs text-zinc-500">
+                Leave blank until the app is published — the header's "Download App" button only appears once this is
+                set.
+              </p>
             </div>
             {siteError && <p className="text-sm text-red-400">{siteError}</p>}
             {siteSuccess && <p className="text-sm text-accent-300">{siteSuccess}</p>}

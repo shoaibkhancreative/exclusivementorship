@@ -58,6 +58,7 @@ export const SETTING_FREE_LESSON_COUNT = "free_lesson_count";
 export const SETTING_INTRO_VIDEO_EMBED_URL = "intro_video_embed_url";
 export const SETTING_SITE_LOGO_URL = "site_logo_url";
 export const SETTING_SITE_FAVICON_URL = "site_favicon_url";
+export const SETTING_APP_DOWNLOAD_URL = "app_download_url";
 
 export async function getEnrollmentAmount(env: Env): Promise<number> {
   const raw = await getSetting(env, SETTING_ENROLLMENT_PRICE_USDT, env.ENROLLMENT_PRICE_USDT);
@@ -90,6 +91,16 @@ export async function getSiteLogoUrl(env: Env): Promise<string | null> {
 
 export async function getSiteFaviconUrl(env: Env): Promise<string | null> {
   const raw = await getSetting(env, SETTING_SITE_FAVICON_URL, null);
+  return raw && raw.trim() ? raw.trim() : null;
+}
+
+// Placeholder until the Android app exists: the admin can leave this unset
+// and the header button will still render (per the requirement that the
+// button always shows), just pointing at "#" until a real APK/Play Store
+// link is configured. Phase 2 (the Capacitor app) should set this to the
+// real download URL.
+export async function getAppDownloadUrl(env: Env): Promise<string | null> {
+  const raw = await getSetting(env, SETTING_APP_DOWNLOAD_URL, null);
   return raw && raw.trim() ? raw.trim() : null;
 }
 

@@ -287,6 +287,10 @@ export interface StudentDirectoryRow {
   completed_lessons: number;
   total_lessons: number;
   latest_payment_status: string | null;
+  app_device_locked: number;
+  app_device_reset_count: number;
+  app_device_registered_at: string | null;
+  app_device_last_seen_at: string | null;
 }
 
 export async function listStudents(env: Env): Promise<StudentDirectoryRow[]> {
@@ -304,8 +308,13 @@ export async function listStudents(env: Env): Promise<StudentDirectoryRow[]> {
           WHERE lp.user_id = u.id AND lp.video_completed = 1 AND l.is_active = 1
        ) as completed_lessons,
        (SELECT COUNT(*) FROM lessons l WHERE l.is_active = 1) as total_lessons,
-       (SELECT po.status FROM payment_orders po WHERE po.user_id = u.id ORDER BY po.created_at DESC LIMIT 1) as latest_payment_status
+       (SELECT po.status FROM payment_orders po WHERE po.user_id = u.id ORDER BY po.created_at DESC LIMIT 1) as latest_payment_status,
+       CASE WHEN ad.device_id_hash IS NOT NULL AND ad.device_id_hash != '' THEN 1 ELSE 0 END as app_device_locked,
+       COALESCE(ad.reset_count, 0) as app_device_reset_count,
+       CASE WHEN ad.device_id_hash IS NOT NULL AND ad.device_id_hash != '' THEN ad.registered_at ELSE NULL END as app_device_registered_at,
+       ad.last_seen_at as app_device_last_seen_at
      FROM users u
+     LEFT JOIN app_devices ad ON ad.user_id = u.id
      ORDER BY u.created_at DESC`
   ).all<StudentDirectoryRow>();
   return result.results;

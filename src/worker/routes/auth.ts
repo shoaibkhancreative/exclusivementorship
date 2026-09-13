@@ -17,6 +17,7 @@ import { verifyTurnstile } from "../services/turnstile";
 import { verifyGoogleIdToken } from "../services/google";
 import { sha256Hex } from "../lib/crypto";
 import { SESSION_COOKIE_NAME } from "../lib/config";
+import { checkAndRegisterAppDevice } from "../lib/deviceLock";
 export const authRoutes = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
 function isValidEmail(email: string): boolean {
@@ -117,6 +118,69 @@ authRoutes.post("/verify-otp", async (c) => {
   const token = await createSession(c.env, result.user.id);
   c.header("Set-Cookie", buildSessionCookie(c.env, token));
   await logAuditEvent(c.env, "login", { userId: result.user.id, ipHash });
+
+  return c.json({ ok: true, user: { email: result.user.email, courseStatus: result.user.course_status } });
+});
+
+// Login endpoint for the Android app only. It's the same OTP check as
+// /verify-otp, plus the paid-user single-device lock (see lib/deviceLock.ts).
+//
+// LIMITATION: `deviceId` is currently whatever string the client sends. This
+// is fine for exercising the lock/reset/admin workflow now, but it is NOT a
+// real device attestation — a modified client could send any value it likes.
+// The Android app phase should replace this with a value derived from a real
+// attestation signal (e.g. Play Integrity), and the web app must keep
+// rejecting requests to this route with no Capacitor-originated proof once
+// that lands, so a browser can never pretend to be the app.
+authRoutes.post("/app/login", async (c) => {
+  const body = await c.req
+    .json<{ email?: string; code?: string; deviceId?: string }>()
+    .catch(() => ({}) as { email?: string; code?: string; deviceId?: string });
+  const email = (body.email ?? "").trim();
+  const code = (body.code ?? "").trim();
+  const deviceId = (body.deviceId ?? "").trim();
+
+  if (!isValidEmail(email) || !/^\d{6}$/.test(code)) {
+    return c.json({ error: "invalid_input", message: "Please enter the 6-digit code." }, 400);
+  }
+  if (!deviceId) {
+    return c.json({ error: "invalid_input", message: "Missing device identifier." }, 400);
+  }
+
+  const ip = c.req.header("cf-connecting-ip") ?? "unknown";
+  const ipHash = await sha256Hex(ip);
+
+  const rate = await checkRateLimit(c.env, `otp_verify:email:${email}`, RATE_LIMITS.otpVerifyPerEmailPer10Min, 600);
+  if (!rate.allowed) {
+    return c.json({ error: "rate_limited", message: "Too many attempts. Please request a new code." }, 429);
+  }
+
+  const result = await verifyOtp(c.env, email, code);
+  if (!result.ok) {
+    const messages: Record<string, string> = {
+      invalid: "That code is incorrect.",
+      expired: "That code has expired. Please request a new one.",
+      too_many_attempts: "Too many incorrect attempts. Please request a new code."
+    };
+    return c.json({ error: result.reason, message: messages[result.reason] }, 400);
+  }
+
+  const deviceCheck = await checkAndRegisterAppDevice(c.env, result.user.id, result.user.course_status, deviceId);
+  if (!deviceCheck.ok) {
+    await logAuditEvent(c.env, "login_app_device_blocked", { userId: result.user.id, ipHash });
+    return c.json(
+      {
+        error: "device_locked",
+        message:
+          "This account is already locked to another device. Log in on the website and message support to switch devices."
+      },
+      409
+    );
+  }
+
+  const token = await createSession(c.env, result.user.id, "app");
+  c.header("Set-Cookie", buildSessionCookie(c.env, token));
+  await logAuditEvent(c.env, "login_app", { userId: result.user.id, ipHash });
 
   return c.json({ ok: true, user: { email: result.user.email, courseStatus: result.user.course_status } });
 });

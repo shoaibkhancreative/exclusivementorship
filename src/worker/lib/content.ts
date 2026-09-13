@@ -17,6 +17,13 @@ export const CONTENT_FIELDS: ContentFieldDef[] = [
 
   { key: "topbar.nav_home", group: "Navigation", label: "Nav link — Home", type: "text", defaultValue: "Home" },
   { key: "topbar.nav_login", group: "Navigation", label: "Nav link — Log in", type: "text", defaultValue: "Log in" },
+  {
+    key: "topbar.download_app",
+    group: "Navigation",
+    label: "Header — Download App button",
+    type: "text",
+    defaultValue: "Download App"
+  },
 
   { key: "home.kicker", group: "Home", label: "Kicker", type: "text", defaultValue: "Next Level Trader" },
   {
@@ -314,6 +321,41 @@ export const CONTENT_FIELDS: ContentFieldDef[] = [
     label: "Video loading label",
     type: "text",
     defaultValue: "Loading video…"
+  },
+  {
+    key: "lesson.app_required_title",
+    group: "Lesson",
+    label: "Paid video on web — popup title",
+    type: "text",
+    defaultValue: "মোবাইল অ্যাপে দেখুন"
+  },
+  {
+    key: "lesson.app_required_message",
+    group: "Lesson",
+    label: "Paid video on web — popup message (Bangla)",
+    type: "textarea",
+    defaultValue: "Premium video দেখার জন্য মোবাইল অ্যাপ ডাউনলোড করতে হবে।"
+  },
+  {
+    key: "lesson.app_required_cta",
+    group: "Lesson",
+    label: "Paid video on web — popup download button",
+    type: "text",
+    defaultValue: "Download App"
+  },
+  {
+    key: "lesson.app_required_dismiss",
+    group: "Lesson",
+    label: "Paid video on web — popup close button",
+    type: "text",
+    defaultValue: "Close"
+  },
+  {
+    key: "lesson.device_untrusted",
+    group: "Lesson",
+    label: "Android app — video blocked on a rooted/modified device or app install",
+    type: "text",
+    defaultValue: "এই ডিভাইস বা অ্যাপ ইনস্টলে ভিডিও প্লে করা যাচ্ছে না। রুট করা বা মডিফাই করা ডিভাইসে/অ্যাপে Premium video দেখা যায় না।"
   },
   {
     key: "lesson.watched_badge",

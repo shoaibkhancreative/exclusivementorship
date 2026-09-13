@@ -73,22 +73,47 @@ export async function verifyOtp(env: Env, email: string, code: string): Promise<
   return { ok: true, user };
 }
 
-export async function createSession(env: Env, userId: string): Promise<string> {
+export type SessionPlatform = "web" | "app";
+
+// NOTE: there used to be a "single active session per account" rule here —
+// logging in anywhere would silently revoke every other session. That
+// restriction has been removed entirely: any number of web and app sessions
+// can now be active at once for the same account. The only remaining
+// per-account limit is the app-only single-device lock for paid users,
+// which lives in ./lib/deviceLock.ts and is enforced *before* this function
+// is ever called for an app login (see routes/auth.ts's /app/login).
+export async function createSession(env: Env, userId: string, platform: SessionPlatform = "web"): Promise<string> {
   const token = randomToken(32);
   const secret = requireSecret(env);
   const tokenHash = await hmacSha256Hex(secret, `session:${token}`);
   const expiresAt = new Date(Date.now() + SESSION_DURATION_DAYS * 24 * 60 * 60 * 1000).toISOString();
   const id = randomUuid();
 
-  await env.DB.prepare(`UPDATE sessions SET revoked_at = datetime('now') WHERE user_id = ? AND revoked_at IS NULL`)
-    .bind(userId)
-    .run();
-
-  await env.DB.prepare(`INSERT INTO sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)`)
-    .bind(id, userId, tokenHash, expiresAt)
+  await env.DB.prepare(`INSERT INTO sessions (id, user_id, token_hash, expires_at, platform) VALUES (?, ?, ?, ?, ?)`)
+    .bind(id, userId, tokenHash, expiresAt, platform)
     .run();
 
   return token;
+}
+
+// Used by the admin "reset app device" action: logs the user out of every
+// app session while leaving their web sessions untouched.
+export async function revokeSessionsByPlatform(env: Env, userId: string, platform: SessionPlatform): Promise<void> {
+  const rows = await env.DB.prepare(
+    `SELECT token_hash FROM sessions WHERE user_id = ? AND platform = ? AND revoked_at IS NULL`
+  )
+    .bind(userId, platform)
+    .all<{ token_hash: string }>();
+
+  await env.DB.prepare(
+    `UPDATE sessions SET revoked_at = datetime('now') WHERE user_id = ? AND platform = ? AND revoked_at IS NULL`
+  )
+    .bind(userId, platform)
+    .run();
+
+  for (const row of rows.results) {
+    await purgeCache(env, sessionCacheKey(row.token_hash));
+  }
 }
 
 export async function resolveSession(env: Env, token: string | undefined | null): Promise<UserRow | null> {

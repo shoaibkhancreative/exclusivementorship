@@ -22,9 +22,13 @@
     "db:seed:local": "wrangler d1 execute exclusive-mentorship-db --local --file=./seed/seed.sql",
     "db:seed:remote": "wrangler d1 execute exclusive-mentorship-db --remote --file=./seed/seed.sql",
     "admin:create:local": "node scripts/create-admin.mjs",
-    "admin:create:remote": "node scripts/create-admin.mjs --remote"
+    "admin:create:remote": "node scripts/create-admin.mjs --remote",
+    "android:sync": "cap sync android",
+    "android:open": "cap open android"
   },
   "dependencies": {
+    "@capacitor/android": "^6.2.1",
+    "@capacitor/core": "^6.2.1",
     "hono": "^4.6.9",
     "jose": "^5.10.0",
     "qrcode": "^1.5.4",
@@ -33,6 +37,7 @@
     "react-router-dom": "^7.18.3"
   },
   "devDependencies": {
+    "@capacitor/cli": "^6.2.1",
     "@cloudflare/workers-types": "^5.20260910.1",
     "@eslint/js": "^9.39.5",
     "@testing-library/jest-dom": "^6.9.1",

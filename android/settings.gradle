@@ -1,0 +1,7 @@
+include ':app'
+
+// This line is appended automatically by `npx cap sync android` and
+// includes every installed Capacitor plugin's native module (core +
+// @capacitor/android at minimum). Run `npx cap sync android` once after
+// `npm install` — it will add the missing `apply from:` line here.
+apply from: 'capacitor.settings.gradle'

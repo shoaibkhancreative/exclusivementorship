@@ -1,2 +1,15 @@
 node_modules/
 dist/
+
+# Android / Capacitor
+android/keystore.properties
+android/*.keystore
+android/app/*.keystore
+android/app/build/
+android/build/
+android/.gradle/
+android/local.properties
+android/capacitor.settings.gradle
+android/app/capacitor.build.gradle
+android/app/src/main/assets/public/
+android/app/src/main/assets/capacitor.config.json

@@ -62,6 +62,20 @@ export function TopBar() {
         </Link>
 
         <nav className="flex items-center gap-2 text-sm">
+          {config?.appDownloadUrl && (
+            <a
+              href={config.appDownloadUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="focus-ring flex items-center gap-1.5 rounded-full border border-base-700 px-3 py-1.5 text-zinc-200 transition-colors hover:border-base-600 hover:bg-base-800"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <rect x="7" y="2" width="10" height="20" rx="2" stroke="currentColor" strokeWidth="1.6" />
+                <path d="M11 18h2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+              </svg>
+              <span className="hidden sm:inline">{t("topbar.download_app")}</span>
+            </a>
+          )}
           {me?.authenticated ? (
             <>
               <Link

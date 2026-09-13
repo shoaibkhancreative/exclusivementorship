@@ -6,7 +6,8 @@ import {
   getFreeLessonCount,
   getIntroVideoEmbedUrl,
   getSiteLogoUrl,
-  getSiteFaviconUrl
+  getSiteFaviconUrl,
+  getAppDownloadUrl
 } from "../lib/config";
 import { isBunnyEmbedUrl, signBunnyEmbedUrl } from "../lib/bunny";
 import { getContentMap, getAllLayouts } from "../db";
@@ -39,14 +40,15 @@ function defaultLayoutFallback(pageKey: string) {
 
 configRoutes.get("/public", async (c) => {
   const payload = await getCached(c.env, CACHE_KEYS.publicConfig, async () => {
-    const [enrollmentPrice, referencePrice, freeLessonCount, rawIntroVideoEmbedUrl, siteLogoUrl, siteFaviconUrl] =
+    const [enrollmentPrice, referencePrice, freeLessonCount, rawIntroVideoEmbedUrl, siteLogoUrl, siteFaviconUrl, appDownloadUrl] =
       await Promise.all([
         getEnrollmentAmount(c.env),
         getReferenceAmount(c.env),
         getFreeLessonCount(c.env),
         getIntroVideoEmbedUrl(c.env),
         getSiteLogoUrl(c.env),
-        getSiteFaviconUrl(c.env)
+        getSiteFaviconUrl(c.env),
+        getAppDownloadUrl(c.env)
       ]);
 
     let introVideoEmbedUrl = rawIntroVideoEmbedUrl;
@@ -69,7 +71,8 @@ configRoutes.get("/public", async (c) => {
       turnstileSiteKey: c.env.TURNSTILE_SITE_KEY,
       googleClientId: c.env.GOOGLE_CLIENT_ID || null,
       siteLogoUrl,
-      siteFaviconUrl
+      siteFaviconUrl,
+      appDownloadUrl
     };
   });
 

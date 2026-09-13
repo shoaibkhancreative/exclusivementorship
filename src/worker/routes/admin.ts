@@ -7,12 +7,14 @@ import {
   SETTING_INTRO_VIDEO_EMBED_URL,
   SETTING_SITE_LOGO_URL,
   SETTING_SITE_FAVICON_URL,
+  SETTING_APP_DOWNLOAD_URL,
   getEnrollmentAmount,
   getReferenceAmount,
   getFreeLessonCount,
   getIntroVideoEmbedUrl,
   getSiteLogoUrl,
-  getSiteFaviconUrl
+  getSiteFaviconUrl,
+  getAppDownloadUrl
 } from "../lib/config";
 import type { AdminVariables } from "../middleware/adminSession";
 import { requireAdmin } from "../middleware/adminSession";
@@ -66,6 +68,8 @@ import {
 } from "../lib/validation";
 import { LESSON_THUMBNAIL_ALLOWED_MIME_TYPES, LESSON_THUMBNAIL_MAX_BYTES } from "../lib/config";
 import { fetchBunnyThumbnailUrl } from "../lib/bunny";
+import { resetAppDevice } from "../lib/deviceLock";
+import { revokeSessionsByPlatform } from "../auth";
 
 export const adminRoutes = new Hono<{ Bindings: Env; Variables: AdminVariables }>();
 
@@ -176,7 +180,11 @@ adminRoutes.get("/students", async (c) => {
       paidAt: s.paid_at,
       completedLessons: s.completed_lessons,
       totalLessons: s.total_lessons,
-      latestPaymentStatus: s.latest_payment_status
+      latestPaymentStatus: s.latest_payment_status,
+      appDeviceLocked: Boolean(s.app_device_locked),
+      appDeviceResetCount: s.app_device_reset_count,
+      appDeviceRegisteredAt: s.app_device_registered_at,
+      appDeviceLastSeenAt: s.app_device_last_seen_at
     }))
   });
 });
@@ -194,6 +202,27 @@ adminRoutes.post("/students/:id/access", async (c) => {
   await logAuditEvent(c.env, "admin_access_changed", {
     userId: id,
     metadata: { adminId: admin.id, status: body.status }
+  });
+
+  return c.json({ ok: true });
+});
+
+// Clears a paid student's app device lock (their next app login registers a
+// fresh device) and force-logs-them-out of the app only — their web sessions
+// are left completely alone, matching the "web is never locked" rule.
+adminRoutes.post("/students/:id/reset-device", async (c) => {
+  const admin = c.get("admin")!;
+  const id = c.req.param("id");
+
+  const students = await listStudents(c.env);
+  const student = students.find((s) => s.id === id);
+  if (!student) return c.json({ error: "not_found" }, 404);
+
+  await resetAppDevice(c.env, id, admin.id);
+  await revokeSessionsByPlatform(c.env, id, "app");
+  await logAuditEvent(c.env, "admin_app_device_reset", {
+    userId: id,
+    metadata: { adminId: admin.id, resetCount: student.app_device_reset_count + 1 }
   });
 
   return c.json({ ok: true });
@@ -638,14 +667,15 @@ adminRoutes.post("/lessons/bulk", async (c) => {
 });
 
 adminRoutes.get("/settings", async (c) => {
-  const [enrollmentPrice, referencePrice, freeLessonCount, introVideoEmbedUrl, siteLogoUrl, siteFaviconUrl] =
+  const [enrollmentPrice, referencePrice, freeLessonCount, introVideoEmbedUrl, siteLogoUrl, siteFaviconUrl, appDownloadUrl] =
     await Promise.all([
       getEnrollmentAmount(c.env),
       getReferenceAmount(c.env),
       getFreeLessonCount(c.env),
       getIntroVideoEmbedUrl(c.env),
       getSiteLogoUrl(c.env),
-      getSiteFaviconUrl(c.env)
+      getSiteFaviconUrl(c.env),
+      getAppDownloadUrl(c.env)
     ]);
   return c.json({
     enrollmentPrice,
@@ -654,7 +684,8 @@ adminRoutes.get("/settings", async (c) => {
     freeLessonCount,
     introVideoEmbedUrl,
     siteLogoUrl,
-    siteFaviconUrl
+    siteFaviconUrl,
+    appDownloadUrl
   });
 });
 
@@ -668,6 +699,7 @@ adminRoutes.post("/settings", async (c) => {
       introVideoEmbedUrl?: string | null;
       siteLogoUrl?: string | null;
       siteFaviconUrl?: string | null;
+      appDownloadUrl?: string | null;
     }>()
     .catch(() => ({}) as Record<string, never>);
 
@@ -713,6 +745,12 @@ adminRoutes.post("/settings", async (c) => {
         setSetting(c.env, SETTING_SITE_FAVICON_URL, normalizeOptionalUrl(body.siteFaviconUrl) ?? "", admin.id)
       );
     }
+
+    if (body.appDownloadUrl !== undefined) {
+      updates.push(
+        setSetting(c.env, SETTING_APP_DOWNLOAD_URL, normalizeOptionalUrl(body.appDownloadUrl) ?? "", admin.id)
+      );
+    }
   } catch {
     return c.json({ error: "invalid_input", message: "Every link must be a valid http(s) URL." }, 400);
   }
@@ -725,14 +763,15 @@ adminRoutes.post("/settings", async (c) => {
   await purgeCache(c.env, CACHE_KEYS.publicConfig);
   await logAuditEvent(c.env, "admin_settings_updated", { metadata: { adminId: admin.id, ...body } });
 
-  const [enrollmentPrice, referencePrice, freeLessonCount, introVideoEmbedUrl, siteLogoUrl, siteFaviconUrl] =
+  const [enrollmentPrice, referencePrice, freeLessonCount, introVideoEmbedUrl, siteLogoUrl, siteFaviconUrl, appDownloadUrl] =
     await Promise.all([
       getEnrollmentAmount(c.env),
       getReferenceAmount(c.env),
       getFreeLessonCount(c.env),
       getIntroVideoEmbedUrl(c.env),
       getSiteLogoUrl(c.env),
-      getSiteFaviconUrl(c.env)
+      getSiteFaviconUrl(c.env),
+      getAppDownloadUrl(c.env)
     ]);
   return c.json({
     ok: true,
@@ -742,7 +781,8 @@ adminRoutes.post("/settings", async (c) => {
     freeLessonCount,
     introVideoEmbedUrl,
     siteLogoUrl,
-    siteFaviconUrl
+    siteFaviconUrl,
+    appDownloadUrl
   });
 });
 

@@ -47,6 +47,7 @@ export interface PublicConfig {
   googleClientId: string | null;
   siteLogoUrl: string | null;
   siteFaviconUrl: string | null;
+  appDownloadUrl: string | null;
 }
 
 export interface MeResponse {

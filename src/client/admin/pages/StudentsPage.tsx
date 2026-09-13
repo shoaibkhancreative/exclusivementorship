@@ -17,6 +17,10 @@ interface StudentRow {
   completedLessons: number;
   totalLessons: number;
   latestPaymentStatus: string | null;
+  appDeviceLocked: boolean;
+  appDeviceResetCount: number;
+  appDeviceRegisteredAt: string | null;
+  appDeviceLastSeenAt: string | null;
 }
 
 type StatusFilter = "all" | "paid" | "free";
@@ -104,6 +108,25 @@ export default function StudentsPage() {
       load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : `Couldn't delete ${student.email}.`);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function resetDevice(student: StudentRow) {
+    if (
+      !confirm(
+        `Reset ${student.email}'s app device lock? They'll be logged out of the app (web sessions are unaffected), and the next device they log in from on the app will become the new lock.`
+      )
+    )
+      return;
+
+    setBusyId(student.id);
+    try {
+      await api.post(`/admin/students/${student.id}/reset-device`);
+      load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : `Couldn't reset the device lock for ${student.email}.`);
     } finally {
       setBusyId(null);
     }
@@ -272,6 +295,7 @@ export default function StudentsPage() {
                   <SortHeader label="Joined" sortField="createdAt" />
                 </th>
                 <th className="px-4 py-3 uppercase">Access</th>
+                <th className="px-4 py-3 uppercase">App Device</th>
                 <th className="px-4 py-3 uppercase">Danger</th>
               </tr>
             </thead>
@@ -333,6 +357,28 @@ export default function StudentsPage() {
                     </button>
                   </td>
                   <td className="px-4 py-3">
+                    {s.courseStatus !== "paid" ? (
+                      <span className="text-xs text-zinc-600">—</span>
+                    ) : s.appDeviceLocked ? (
+                      <div className="flex flex-col items-start gap-1">
+                        <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-300">
+                          Locked{s.appDeviceResetCount > 0 ? ` · reset ×${s.appDeviceResetCount}` : ""}
+                        </span>
+                        <button
+                          onClick={() => resetDevice(s)}
+                          disabled={busyId === s.id}
+                          className="focus-ring rounded-md border border-base-700 px-2 py-1 text-xs text-zinc-400 transition-colors hover:bg-base-800 disabled:opacity-50"
+                        >
+                          {busyId === s.id ? "Working…" : "Reset device"}
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="rounded-full bg-base-800 px-2 py-0.5 text-xs font-medium text-zinc-500">
+                        {s.appDeviceResetCount > 0 ? `Unlocked · reset ×${s.appDeviceResetCount}` : "Not registered"}
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
                     <button
                       onClick={() => deleteStudent(s)}
                       disabled={busyId === s.id}
@@ -345,7 +391,7 @@ export default function StudentsPage() {
               ))}
               {paged.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-4 py-6 text-center text-zinc-500">
+                  <td colSpan={9} className="px-4 py-6 text-center text-zinc-500">
                     {students && students.length > 0 ? "No students match your search." : "No students yet."}
                   </td>
                 </tr>

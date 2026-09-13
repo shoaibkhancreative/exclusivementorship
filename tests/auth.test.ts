@@ -8,6 +8,7 @@ import {
   readCookie,
   resolveSession,
   revokeSession,
+  revokeSessionsByPlatform,
   verifyOtp
 } from "../src/worker/auth";
 import type { Env } from "../src/worker/lib/config";
@@ -129,7 +130,7 @@ describe("Sessions", () => {
     expect(resolved).toBeNull();
   });
 
-  it("enforces a single active session per account: a second login revokes the first", async () => {
+  it("allows unlimited concurrent sessions per account (no single-session limit)", async () => {
     const code = await issueOtp(env, "shared@example.com");
     const verify = await verifyOtp(env, "shared@example.com", code);
     if (!verify.ok) throw new Error("expected ok");
@@ -138,15 +139,32 @@ describe("Sessions", () => {
     expect((await resolveSession(env, firstToken))?.id).toBe(verify.user.id);
 
     const secondToken = await createSession(env, verify.user.id);
+    const thirdToken = await createSession(env, verify.user.id);
 
-    const firstResolved = await resolveSession(env, firstToken);
-    expect(firstResolved).toBeNull();
-
-    const secondResolved = await resolveSession(env, secondToken);
-    expect(secondResolved?.id).toBe(verify.user.id);
+    // Logging in again from other "devices" must NOT revoke earlier sessions.
+    expect((await resolveSession(env, firstToken))?.id).toBe(verify.user.id);
+    expect((await resolveSession(env, secondToken))?.id).toBe(verify.user.id);
+    expect((await resolveSession(env, thirdToken))?.id).toBe(verify.user.id);
   });
 
-  it("does not let single-session enforcement cross accounts", async () => {
+  it("tags sessions with their platform and can revoke just one platform", async () => {
+    const code = await issueOtp(env, "multi@example.com");
+    const verify = await verifyOtp(env, "multi@example.com", code);
+    if (!verify.ok) throw new Error("expected ok");
+
+    const webToken = await createSession(env, verify.user.id, "web");
+    const appToken = await createSession(env, verify.user.id, "app");
+
+    expect((await resolveSession(env, webToken))?.id).toBe(verify.user.id);
+    expect((await resolveSession(env, appToken))?.id).toBe(verify.user.id);
+
+    await revokeSessionsByPlatform(env, verify.user.id, "app");
+
+    expect((await resolveSession(env, webToken))?.id).toBe(verify.user.id);
+    expect(await resolveSession(env, appToken)).toBeNull();
+  });
+
+  it("does not let concurrent sessions cross accounts", async () => {
     const codeA = await issueOtp(env, "alice@example.com");
     const verifyA = await verifyOtp(env, "alice@example.com", codeA);
     if (!verifyA.ok) throw new Error("expected ok");

@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/AppTheme"
+        android:usesCleartextTraffic="false">
+        <!--
+          allowBackup is off on purpose: Android's auto-backup can copy app
+          data (including anything WebView caches) off-device to the user's
+          Google account, which we don't want for paid-content sessions.
+        -->
+
+        <activity
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:name="xyz.exclusivementorship.app.MainActivity"
+            android:theme="@style/AppTheme.NoActionBarLaunch"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+    </application>
+
+    <!-- Just internet access — no camera/mic/storage/location. The app is a
+         thin WebView shell over the live site plus our own Keystore-backed
+         plugin; it has no reason to ask for anything broader. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+</manifest>
