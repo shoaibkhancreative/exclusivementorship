@@ -380,7 +380,12 @@ submission step. See `src/worker/lib/course.ts` and
   renumbers lessons 1..N to match (see the warning in the code comments:
   this reassigns "Class N" for anyone mid-course, so reorder only content
   nobody's actively working through). New lessons are created hidden;
-  publish once the embed link is ready.
+  publish once the embed link is ready. Leave the thumbnail field blank on
+  a Bunny-hosted lesson to auto-use Bunny's own generated thumbnail
+  (requires `BUNNY_PULL_ZONE_HOST` in `wrangler.jsonc` plus the
+  `BUNNY_STREAM_API_KEY` secret — see the comments next to
+  `BUNNY_PULL_ZONE_HOST` for where to find both in the Bunny dashboard);
+  otherwise upload one manually as before.
 - **Settings** — price/discount (unchanged), plus **free lesson count**
   (how many classes, from Class 1, are free before enrollment is required)
   and the **homepage intro video** embed link. Both take effect immediately

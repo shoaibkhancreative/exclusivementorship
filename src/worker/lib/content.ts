@@ -51,7 +51,25 @@ export const CONTENT_FIELDS: ContentFieldDef[] = [
   // admin-editable copy left for the flow. Everything else in the modal
   // (amount, network, address, timer) is generated from live order data,
   // not admin content.
+  //
+  // NOTE: the offer-step keys below (title/description/cta/pdf_link_label)
+  // were previously referenced from UnlockModal.tsx via t("unlock.title")
+  // etc. — a different key namespace ("unlock." instead of "unlock_modal.")
+  // that was never registered here or in the client's BUNDLED_DEFAULTS. The
+  // popup was rendering the raw key names as visible text. Fixed by
+  // registering the real keys under the same "unlock_modal." prefix used
+  // for the rest of this flow.
   // ---------------------------------------------------------------------
+  { key: "unlock_modal.title", group: "Unlock Modal", label: "Offer step — headline", type: "text", defaultValue: "Unlock Full Mentorship" },
+  {
+    key: "unlock_modal.description",
+    group: "Unlock Modal",
+    label: "Offer step — one-line description",
+    type: "text",
+    defaultValue: "Get lifetime access to every advanced class, right away."
+  },
+  { key: "unlock_modal.cta", group: "Unlock Modal", label: "Offer step — CTA button", type: "text", defaultValue: "Continue to Payment" },
+  { key: "unlock_modal.pdf_link_label", group: "Unlock Modal", label: "Offer step — curriculum PDF link", type: "text", defaultValue: "View free curriculum PDF" },
   {
     key: "unlock_modal.instruction_bn",
     group: "Unlock Modal",
@@ -109,6 +127,20 @@ export const CONTENT_FIELDS: ContentFieldDef[] = [
   { key: "learn.cta_continue", group: "Learn", label: "CTA — mid-course (free or paid)", type: "text", defaultValue: "Continue" },
   { key: "learn.cta_unlock", group: "Learn", label: "CTA — free tier finished, not paid", type: "text", defaultValue: "Unlock Mentorship" },
   { key: "learn.cta_finished", group: "Learn", label: "CTA — entire course finished (paid)", type: "text", defaultValue: "Finished" },
+  {
+    key: "learn.finished_message",
+    group: "Learn",
+    label: "Friendly note shown once every class is finished (paid)",
+    type: "text",
+    defaultValue: "You've completed every class — congratulations on finishing the mentorship."
+  },
+  {
+    key: "learn.empty_state",
+    group: "Learn",
+    label: "Shown when no classes have been published yet",
+    type: "text",
+    defaultValue: "Classes are on their way — check back soon."
+  },
 
   // ---------------------------------------------------------------------
   // Lesson (class) page
@@ -131,14 +163,9 @@ export const CONTENT_FIELDS: ContentFieldDef[] = [
     type: "text",
     defaultValue: "এই ক্লাসটি দেখতে এক্সক্লুসিভ মেন্টরশিপ আনলক করুন।"
   },
-  {
-    key: "lesson.locked_payment_unlock_button",
-    group: "Lesson",
-    label: "Locked (payment) — \"Unlock Now\" button label",
-    type: "text",
-    defaultValue: "Unlock Now"
-  },
   { key: "lesson.video_coming_soon", group: "Lesson", label: "No-video-yet placeholder", type: "text", defaultValue: "Video coming soon." },
+  { key: "lesson.video_error", group: "Lesson", label: "Video playback error message", type: "text", defaultValue: "This video can't be played right now." },
+  { key: "lesson.video_loading", group: "Lesson", label: "Video loading label", type: "text", defaultValue: "Loading video…" },
   { key: "lesson.watched_badge", group: "Lesson", label: "Watched badge", type: "text", defaultValue: "Watched — next class unlocked" },
   { key: "lesson.watch_prompt", group: "Lesson", label: "Unwatched prompt", type: "text", defaultValue: "Watch to the end to unlock the next class." },
   { key: "lesson.fallback_link", group: "Lesson", label: "\"Not unlocking\" fallback link", type: "text", defaultValue: "Video finished but not unlocking? Click here" },
@@ -295,7 +322,15 @@ export const CONTENT_FIELDS: ContentFieldDef[] = [
     label: "Close-conversation confirmation prompt",
     type: "text",
     defaultValue: "Close this conversation? You won't see it in your list anymore, but you can always start a new one."
-  }
+  },
+
+  // ---------------------------------------------------------------------
+  // Notification bell (TopBar dropdown)
+  // ---------------------------------------------------------------------
+  { key: "notifications.panel_title", group: "Notifications", label: "Dropdown title", type: "text", defaultValue: "Notifications" },
+  { key: "notifications.mark_all_read", group: "Notifications", label: "\"Mark all read\" button", type: "text", defaultValue: "Mark all read" },
+  { key: "notifications.loading", group: "Notifications", label: "Loading label", type: "text", defaultValue: "Loading…" },
+  { key: "notifications.empty_state", group: "Notifications", label: "Shown when there are no notifications", type: "text", defaultValue: "No notifications yet." }
 ];
 
 export const CONTENT_DEFAULTS: Record<string, string> = Object.fromEntries(

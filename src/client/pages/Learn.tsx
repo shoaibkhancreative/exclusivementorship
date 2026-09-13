@@ -4,6 +4,7 @@ import { api, type OutlineResponse } from "../lib/api";
 import { Button, LoadingScreen } from "../components/ui";
 import { OutlineList } from "../components/OutlineList";
 import { Footer } from "../components/Footer";
+import { RetryBadge } from "../components/IllustrationBadge";
 import { useContent } from "../lib/useContent";
 import { useUnlockModal } from "../lib/UnlockModalContext";
 
@@ -28,9 +29,10 @@ export default function Learn() {
 
   if (error) {
     return (
-      <div className="mx-auto max-w-4xl px-5 py-24 text-center sm:px-6">
-        <p className="mb-4 text-sm text-red-400">{t("learn.load_error")}</p>
-        <Button variant="secondary" onClick={loadOutline}>
+      <div className="page-enter mx-auto max-w-md px-6 py-20 text-center sm:py-28">
+        <RetryBadge />
+        <p className="mx-auto mt-5 max-w-xs text-sm leading-snug text-zinc-400">{t("learn.load_error")}</p>
+        <Button variant="secondary" onClick={loadOutline} className="mt-6">
           {t("learn.retry_button")}
         </Button>
       </div>
@@ -106,58 +108,110 @@ export default function Learn() {
         {/* Cover card — sticks in place while the class list scrolls past it,
             same "the playlist itself doesn't move" behavior as YouTube's
             playlist header. `page-enter` lives directly on this sticky
-            element (not on an ancestor) — see the note above. */}
-        <div className="page-enter lg:sticky lg:top-24">
-          <div className="relative mb-4 aspect-video overflow-hidden rounded-lg border border-base-800 bg-base-800 bg-cover bg-center sm:mb-5">
-            {cover?.thumbnailUrl ? (
-              <img src={cover.thumbnailUrl} alt="" className="h-full w-full object-cover" />
-            ) : (
-              <div className="flex h-full w-full items-center justify-center text-zinc-600">
-                <svg width="30" height="30" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="1.4" />
-                  <path d="M8 5v14M16 5v14M3 9.5h5M3 14.5h5M16 9.5h5M16 14.5h5" stroke="currentColor" strokeWidth="1.4" />
-                </svg>
+            element (not on an ancestor) — see the note above.
+            `lg:mt-16` nudges the card down on desktop only: the class list
+            beside it opens with a chapter heading (h2 + spacing ≈ 53px)
+            before its first thumbnail even starts, plus that row's own
+            ~12px top padding — so without this the card's cover thumbnail
+            sits noticeably higher than the first class thumbnail next to
+            it. 64px (mt-16) lines the two up. Mobile stacks the card above
+            the list instead of beside it, so no nudge is applied there. */}
+        <div className="page-enter lg:sticky lg:top-24 lg:mt-16">
+          <div className="rounded-md border border-base-800 bg-base-900 p-4 shadow-[0_4px_16px_-4px_rgba(28,27,23,0.14),0_1px_3px_rgba(28,27,23,0.08)] sm:p-5">
+            <div className="relative mb-4 aspect-video overflow-hidden rounded-md bg-base-800 bg-cover bg-center shadow-[0_1px_3px_rgba(28,27,23,0.16),0_1px_2px_rgba(28,27,23,0.10)] ring-1 ring-black/10 sm:mb-5">
+              {cover?.thumbnailUrl ? (
+                <img src={cover.thumbnailUrl} alt="" className="h-full w-full object-cover" />
+              ) : (
+                // Warm placeholder for a cover with no thumbnail yet — a
+                // soft accent-tinted circle with a simple flat play mark,
+                // not the flat gray "film strip" glyph this used to be.
+                // Same soft-circle-badge language as the lock badge on
+                // locked thumbnails and the progress-percent chip below,
+                // just sized up for this bigger cover slot.
+                <div className="flex h-full w-full items-center justify-center">
+                  <span className="flex h-14 w-14 items-center justify-center rounded-full bg-accent-500/12 text-accent-500 sm:h-16 sm:w-16">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                      <path d="M9.5 7.5v9c0 .6.65.98 1.18.68l7.5-4.5a.79.79 0 0 0 0-1.36l-7.5-4.5A.79.79 0 0 0 9.5 7.5Z" fill="currentColor" />
+                    </svg>
+                  </span>
+                </div>
+              )}
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-base-950/55 via-transparent to-transparent" />
+              {cover?.durationLabel && (
+                <span className="absolute bottom-2 right-2 rounded bg-zinc-100/90 px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-base-950">
+                  {cover.durationLabel}
+                </span>
+              )}
+            </div>
+
+            <p className="kicker mb-2">{t("learn.progress_kicker")}</p>
+            <h1 className="mb-4 break-words text-lg font-semibold leading-snug text-zinc-50 sm:text-xl lg:text-2xl">
+              {t("learn.page_title")}
+            </h1>
+
+            {/* Real progress bar — completed / total classes, always visible.
+                This replaces both the old plain progress line and the
+                "X free classes left" text, which is removed entirely. */}
+            <div className="mb-6">
+              <div className="mb-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[13px] sm:text-sm">
+                <span className="text-zinc-300">
+                  {completedCount} / {total} <span className="text-zinc-500">{t("learn.progress_label")}</span>
+                </span>
+                <span className="rounded-full bg-accent-500/12 px-2 py-0.5 text-[12px] font-semibold tabular-nums text-accent-300">
+                  {progressPercent}%
+                </span>
+              </div>
+              <div
+                className="h-2 w-full overflow-hidden rounded-full bg-base-800 shadow-[inset_0_1px_2px_rgba(28,27,23,0.15)]"
+                role="progressbar"
+                aria-valuenow={progressPercent}
+                aria-valuemin={0}
+                aria-valuemax={100}
+              >
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-accent-500 to-accent-400 transition-all duration-300"
+                  style={{ width: `${progressPercent}%` }}
+                />
+              </div>
+            </div>
+
+            {/* The one and only button on this card — label and destination
+                are entirely state-driven (see the ctaLabel logic above). */}
+            <Button className="w-full" onClick={onCtaClick} disabled={ctaDisabled}>
+              {ctaLabel}
+            </Button>
+
+            {/* One small, state-driven note under the button — never both at
+                once, and never alongside the free-tier "Continue" state,
+                which doesn't need extra convincing. Same soft-circle-icon +
+                muted-text language as the rest of the card (see the cover
+                placeholder above), just sized down: a round accent-tinted
+                badge with a flat, single-color glyph, never a stock icon. */}
+            {!isPaid && finishedFreeTier && completedCount > 0 && (
+              <div className="mt-4 flex items-start gap-3 rounded-md bg-accent-500/[0.07] p-3">
+                <span className="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-accent-500/15 text-accent-500">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path
+                      d="M12 2.5 14 9l6.5.3-5.2 4 2 6.2L12 15.8 6.7 19.5l2-6.2-5.2-4L10 9l2-6.5Z"
+                      fill="currentColor"
+                    />
+                  </svg>
+                </span>
+                <p className="pt-1 text-[13px] leading-snug text-zinc-400">{t("learn.completed_message")}</p>
               </div>
             )}
-            <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-base-950/55 via-transparent to-transparent" />
-            {cover?.durationLabel && (
-              <span className="absolute bottom-2 right-2 rounded bg-base-950/80 px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-zinc-100">
-                {cover.durationLabel}
-              </span>
+
+            {isPaid && finishedCourse && (
+              <div className="mt-4 flex items-start gap-3 rounded-md bg-highlight-500/[0.1] p-3">
+                <span className="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-highlight-500/20 text-highlight-500">
+                  <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+                    <path d="M2.5 7.2 5.4 10 11.5 3.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                  </svg>
+                </span>
+                <p className="pt-1 text-[13px] leading-snug text-zinc-400">{t("learn.finished_message")}</p>
+              </div>
             )}
           </div>
-
-          <p className="kicker mb-2">{t("learn.progress_kicker")}</p>
-          <h1 className="mb-4 break-words text-lg font-semibold leading-snug text-zinc-50 sm:text-xl lg:text-2xl">
-            {t("learn.page_title")}
-          </h1>
-
-          {/* Real progress bar — completed / total classes, always visible.
-              This replaces both the old plain progress line and the
-              "X free classes left" text, which is removed entirely. */}
-          <div className="mb-6">
-            <div className="mb-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[13px] sm:text-sm">
-              <span className="text-zinc-300">
-                {completedCount} / {total} <span className="text-zinc-500">{t("learn.progress_label")}</span>
-              </span>
-              <span className="tabular-nums text-zinc-500">{progressPercent}%</span>
-            </div>
-            <div
-              className="h-2 w-full overflow-hidden rounded-full bg-base-800"
-              role="progressbar"
-              aria-valuenow={progressPercent}
-              aria-valuemin={0}
-              aria-valuemax={100}
-            >
-              <div className="h-full rounded-full bg-accent-500 transition-all duration-300" style={{ width: `${progressPercent}%` }} />
-            </div>
-          </div>
-
-          {/* The one and only button on this card — label and destination
-              are entirely state-driven (see the ctaLabel logic above). */}
-          <Button className="w-full" onClick={onCtaClick} disabled={ctaDisabled}>
-            {ctaLabel}
-          </Button>
         </div>
 
         <div className="page-enter mt-10 lg:mt-0">

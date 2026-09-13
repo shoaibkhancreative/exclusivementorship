@@ -17,6 +17,10 @@ const BUNDLED_DEFAULTS: Record<string, string> = {
   "home.intro_video_fallback": "Intro video coming soon",
   "home.body": "Market structure, liquidity, and price delivery — a framework for traders ready to level up. Free lessons start today.",
   "home.cta_start": "Start Learning",
+  "unlock_modal.title": "Unlock Full Mentorship",
+  "unlock_modal.description": "Get lifetime access to every advanced class, right away.",
+  "unlock_modal.cta": "Continue to Payment",
+  "unlock_modal.pdf_link_label": "View free curriculum PDF",
   "unlock_modal.instruction_bn":
     "QR কোড স্ক্যান করুন অথবা ঠিকানা কপি করে সঠিক পরিমাণ শুধুমাত্র BEP20 নেটওয়ার্কে পাঠান।",
   "access.badge": "Payment successful",
@@ -49,14 +53,17 @@ const BUNDLED_DEFAULTS: Record<string, string> = {
   "learn.cta_continue": "Continue",
   "learn.cta_unlock": "Unlock Mentorship",
   "learn.cta_finished": "Finished",
+  "learn.finished_message": "You've completed every class — congratulations on finishing the mentorship.",
+  "learn.empty_state": "Classes are on their way — check back soon.",
   "lesson.back_to_home": "Back to Home",
   "lesson.nav_previous": "← Previous",
   "lesson.nav_next": "Next →",
   "lesson.nav_next_title_last": "This is the last class in the course",
   "lesson.locked_sequence_message_bn": "এই ক্লাসটি দেখতে হলে আগের ক্লাসটি আগে দেখে নিন।",
   "lesson.locked_payment_message_bn": "এই ক্লাসটি দেখতে এক্সক্লুসিভ মেন্টরশিপ আনলক করুন।",
-  "lesson.locked_payment_unlock_button": "Unlock Now",
   "lesson.video_coming_soon": "Video coming soon.",
+  "lesson.video_error": "This video can't be played right now.",
+  "lesson.video_loading": "Loading video…",
   "lesson.watched_badge": "Watched — next class unlocked",
   "lesson.watch_prompt": "Watch to the end to unlock the next class.",
   "lesson.fallback_link": "Video finished but not unlocking? Click here",
@@ -98,7 +105,11 @@ const BUNDLED_DEFAULTS: Record<string, string> = {
   "support.compose_placeholder": "Describe your issue…",
   "support.reply_placeholder": "Type a message…",
   "support.close_button": "Close conversation",
-  "support.close_confirm": "Close this conversation? You won't see it in your list anymore, but you can always start a new one."
+  "support.close_confirm": "Close this conversation? You won't see it in your list anymore, but you can always start a new one.",
+  "notifications.panel_title": "Notifications",
+  "notifications.mark_all_read": "Mark all read",
+  "notifications.loading": "Loading…",
+  "notifications.empty_state": "No notifications yet."
 };
 
 interface ContentResponse {

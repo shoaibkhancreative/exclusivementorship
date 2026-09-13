@@ -103,23 +103,21 @@ export function SupportButton() {
           onClick={handleOpen}
           aria-label="Contact support"
           title={t("support.button_label")}
-          className="focus-ring fixed bottom-5 right-5 z-40 flex items-center justify-center rounded-full bg-accent-500 text-base-950 shadow-lg transition-transform duration-150 hover:scale-105 hover:bg-accent-400 active:scale-95 sm:bottom-6 sm:right-6"
-          style={{ width: 52, height: 52 }}
+          className="focus-ring fixed bottom-5 right-5 z-40 flex items-center justify-center rounded-full bg-accent-500 shadow-[0_10px_28px_-8px_rgba(230,57,70,0.55)] transition-transform duration-150 hover:scale-105 hover:bg-accent-400 active:scale-95 sm:bottom-6 sm:right-6"
+          style={{ width: 56, height: 56 }}
         >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          {/* Flat, single-shape "friendly chat" badge — same illustration
+              language as IllustrationBadge (filled shapes in brand hex,
+              generous rounding) rather than a thin corporate line icon. */}
+          <svg width="26" height="26" viewBox="0 0 26 26" fill="none" aria-hidden="true">
             <path
-              d="M21 12c0 4.418-4.03 8-9 8-1.06 0-2.076-.163-3.017-.463L3 21l1.395-3.72C3.512 15.892 3 14.492 3 13c0-4.418 4.03-8 9-8s9 3.582 9 8Z"
-              stroke="currentColor"
-              strokeWidth="1.7"
-              strokeLinecap="round"
-              strokeLinejoin="round"
+              d="M13 4c-5.8 0-10 3.9-10 8.5 0 2.5 1.25 4.75 3.3 6.3-.1 1.2-.5 2.25-1.2 3.15a.5.5 0 0 0 .55.78c1.7-.45 3.05-1.1 4.1-1.85.98.25 2.05.37 3.25.37 5.8 0 10-3.9 10-8.75S18.8 4 13 4Z"
+              fill="#fdf8e9"
             />
-            <circle cx="8.5" cy="12.5" r="0.9" fill="currentColor" />
-            <circle cx="12" cy="12.5" r="0.9" fill="currentColor" />
-            <circle cx="15.5" cy="12.5" r="0.9" fill="currentColor" />
+            <path d="M8.7 13.4c.85 1.05 2.4 1.75 4.3 1.75s3.45-.7 4.3-1.75" stroke="#e63946" strokeWidth="1.6" strokeLinecap="round" />
           </svg>
           {unreadCount > 0 && (
-            <span className="absolute -right-0.5 -top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-base-950 bg-red-500 px-1 text-[10px] font-bold text-white">
+            <span className="absolute -right-0.5 -top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-base-950 bg-highlight-500 px-1 text-[10px] font-bold text-base-950">
               {unreadCount > 9 ? "9+" : unreadCount}
             </span>
           )}
@@ -128,4 +126,3 @@ export function SupportButton() {
     </>
   );
 }
-

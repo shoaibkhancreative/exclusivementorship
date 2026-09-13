@@ -1,90 +1,118 @@
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "exclusive-mentorship",
-  "main": "src/worker/index.ts",
-  "compatibility_date": "2024-09-23",
-  "compatibility_flags": [],
-
-  // Serves the built React SPA (dist/client) as static assets.
-  // run_worker_first ensures every request (including /api/*) hits our
-  // Worker fetch handler first; the Worker forwards non-API requests to
-  // env.ASSETS, which also handles SPA fallback for unknown routes.
-  "assets": {
-    "directory": "./dist/client",
-    "binding": "ASSETS",
-    "not_found_handling": "single-page-application",
-    "run_worker_first": true
-  },
-
-  // Cloudflare D1 - primary relational database.
-  // Replace database_id after running: npm run db:create
-  "d1_databases": [
-    {
-      "binding": "DB",
-      "database_name": "exclusive-mentorship-db",
-      "database_id": "57165448-b946-44e9-b9b9-b87ffacb283f"
-    }
-  ],
-
-  // Non-secret configuration. Real secrets (API keys, tokens) must be set
-  // with `wrangler secret put <NAME>` and are NOT listed here.
-  "vars": {
-    "APP_URL": "https://exclusivementorship.xyz",
-    "EMAIL_FROM": "Next Level Trader <support@exclusivementorship.xyz>",
-    "MENTORSHIP_PDF_URL": "https://drive.google.com/uc?export=download&id=1s4bVQJob9v7GY26IGOOPBJgnp9ne9CS6",
-    "TURNSTILE_SITE_KEY": "0x4AAAAAAEo5D0k14ZdX8XP5",
-    // "Sign in with Google" — added as a second login method alongside
-    // email OTP, because OTP emails were landing in spam for some users
-    // (domain reputation, not something fixable in code). This is a public
-    // OAuth Client ID (not a secret) from Google Cloud Console → APIs &
-    // Services → Credentials → OAuth client ID → Web application, with
-    // https://exclusivementorship.xyz added under "Authorized JavaScript
-    // origins". Leave empty to keep Google sign-in hidden and OTP-only.
-    "GOOGLE_CLIENT_ID": "911372350454-hrsmpbv3jnrue6opb801le8qrpdj7838.apps.googleusercontent.com",
-    "ENROLLMENT_PRICE_USDT": "49",
-    "REFERENCE_PRICE_USDT": "100",
-    "UNDERPAYMENT_TOLERANCE_USDT": "2",
-    // Support button destinations — the one Telegram touchpoint kept on the
-    // site. Free learners and paid (Exclusive Mentorship) learners are
-    // routed to two different Telegram contacts — which one is used is
-    // decided server-side from the learner's real course_status (see
-    // routes/config.ts + SupportButton.tsx), never a client-side guess.
-    // In-site support inbox (replaces the old Telegram button — see
-    // routes/support.ts, routes/admin-support.ts, admin/pages/SupportPage.tsx).
-    // Where "new ticket" / "new learner message" alert emails are sent.
-    // Optional — leave empty/remove to skip those admin-alert emails
-    // (learner-facing reply emails aren't affected either way).
-    "SUPPORT_NOTIFY_EMAIL": "support@exclusivementorship.xyz"
-  },
-
-  "observability": {
-    "enabled": true
-  },
-
-  // Scheduled cleanup job (Cron Trigger) — ENABLED. The Worker's exported
-  // `scheduled` handler (src/worker/index.ts, logic in
-  // src/worker/scheduled.ts) deletes stale rows from otp_codes,
-  // rate_limits, and audit_events (financial audit events like
-  // 'payment_confirmed' are always kept). Runs once a day at 03:17 UTC — an
-  // off-peak, deliberately non-round minute to avoid piling up alongside
-  // other crons on the shared Cloudflare fleet.
-  //
-  // Optionally set a non-default retention window by adding
-  // "AUDIT_RETENTION_DAYS": "90" (or whatever you want, in days) to the
-  // "vars" block above — it defaults to 90 days if omitted.
-  //
-  // Cron Triggers are only registered on deploy, not on local edits — run
-  // `npm run deploy` (or `npx wrangler deploy`) to push this, then confirm
-  // with `npx wrangler triggers` or the Cloudflare dashboard (Workers &
-  // Pages → your Worker → Triggers).
-  // A second, much more frequent trigger for the abandoned-checkout
-  // reminder job (scheduled.ts / sendAbandonedCheckoutReminders). Unlike
-  // the daily cleanup above, this one is time-sensitive: a payment window
-  // is only ~20 minutes long, so checking once a day would mean some
-  // reminders go out nearly 24 hours late. Every 15 minutes keeps the
-  // reminder close to when the order actually went stale without adding a
-  // meaningful load (the query is a handful of indexed rows at most).
-  "triggers": {
-    "crons": ["17 3 * * *", "*/15 * * * *"]
-  }
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "exclusive-mentorship",
+	"main": "src/worker/index.ts",
+	"compatibility_date": "2024-09-23",
+	"compatibility_flags": [],
+	// Serves the built React SPA (dist/client) as static assets.
+	// run_worker_first is scoped to /api/* ONLY — every other request (the
+	// SPA's index.html, JS/CSS bundles, images, fonts) is served directly by
+	// Cloudflare's asset layer WITHOUT invoking the Worker at all. This
+	// matters a lot on the Workers Free plan: asset requests are free and
+	// unlimited, while Worker invocations are metered (100k/day on Free) —
+	// so a viral traffic spike that's mostly people just loading pages
+	// (not calling the API) won't burn through that quota or get 429'd.
+	// Security headers (CSP/HSTS/etc.) for these bypassed asset responses
+	// come from src/client/public/_headers (copied into dist/client by the
+	// Vite build) instead of middleware/security.ts, since Worker-only
+	// response headers never reach a request the Worker didn't handle.
+	// not_found_handling still does SPA fallback (e.g. /learn, /login)
+	// entirely at the asset layer, with no Worker involvement either.
+	"assets": {
+		"directory": "./dist/client",
+		"binding": "ASSETS",
+		"not_found_handling": "single-page-application",
+		"run_worker_first": ["/api/*"]
+	},
+	// Cloudflare D1 - primary relational database.
+	// Replace database_id after running: npm run db:create
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "exclusive-mentorship-db",
+			"database_id": "57165448-b946-44e9-b9b9-b87ffacb283f"
+		}
+	],
+	// Non-secret configuration. Real secrets (API keys, tokens) must be set
+	// with `wrangler secret put <NAME>` and are NOT listed here.
+	"vars": {
+		"APP_URL": "https://exclusivementorship.xyz",
+		"EMAIL_FROM": "Next Level Trader <support@exclusivementorship.xyz>",
+		"MENTORSHIP_PDF_URL": "https://drive.google.com/uc?export=download&id=1s4bVQJob9v7GY26IGOOPBJgnp9ne9CS6",
+		"TURNSTILE_SITE_KEY": "0x4AAAAAAEo5D0k14ZdX8XP5",
+		// "Sign in with Google" — added as a second login method alongside
+		// email OTP, because OTP emails were landing in spam for some users
+		// (domain reputation, not something fixable in code). This is a public
+		// OAuth Client ID (not a secret) from Google Cloud Console → APIs &
+		// Services → Credentials → OAuth client ID → Web application, with
+		// https://exclusivementorship.xyz added under "Authorized JavaScript
+		// origins". Leave empty to keep Google sign-in hidden and OTP-only.
+		"GOOGLE_CLIENT_ID": "911372350454-hrsmpbv3jnrue6opb801le8qrpdj7838.apps.googleusercontent.com",
+		// The CDN hostname bunny.net gave your Stream library — looks like
+		// "vz-abc12345-de6.b-cdn.net". Find it in the Bunny dashboard under
+		// Stream -> your library -> any video -> "Direct Play URL" (the host
+		// part, before the video id). Lets the admin panel auto-fill a
+		// lesson's thumbnail with Bunny's own generated one when you leave
+		// the thumbnail field blank, instead of uploading one separately for
+		// every lesson — see src/worker/lib/bunny.ts. Also requires the
+		// BUNNY_STREAM_API_KEY secret (wrangler secret put BUNNY_STREAM_API_KEY
+		// — the "Video Library API Key" from Stream -> your library -> API)
+		// to look up each video's actual thumbnail filename, since Bunny
+		// doesn't use a fixed name like "thumbnail.jpg". Leave this var empty
+		// to keep the old behavior (thumbnail must be set manually).
+		"BUNNY_PULL_ZONE_HOST": "vz-9d84e14b-539.b-cdn.net",
+		"ENROLLMENT_PRICE_USDT": "49",
+		"REFERENCE_PRICE_USDT": "100",
+		"UNDERPAYMENT_TOLERANCE_USDT": "2",
+		// Support button destinations — the one Telegram touchpoint kept on the
+		// site. Free learners and paid (Exclusive Mentorship) learners are
+		// routed to two different Telegram contacts — which one is used is
+		// decided server-side from the learner's real course_status (see
+		// routes/config.ts + SupportButton.tsx), never a client-side guess.
+		// In-site support inbox (replaces the old Telegram button — see
+		// routes/support.ts, routes/admin-support.ts, admin/pages/SupportPage.tsx).
+		// Where "new ticket" / "new learner message" alert emails are sent.
+		// Optional — leave empty/remove to skip those admin-alert emails
+		// (learner-facing reply emails aren't affected either way).
+		"SUPPORT_NOTIFY_EMAIL": "support@exclusivementorship.xyz"
+	},
+	"observability": {
+		"enabled": true
+	},
+	// Scheduled cleanup job (Cron Trigger) — ENABLED. The Worker's exported
+	// `scheduled` handler (src/worker/index.ts, logic in
+	// src/worker/scheduled.ts) deletes stale rows from otp_codes,
+	// rate_limits, and audit_events (financial audit events like
+	// 'payment_confirmed' are always kept). Runs once a day at 03:17 UTC — an
+	// off-peak, deliberately non-round minute to avoid piling up alongside
+	// other crons on the shared Cloudflare fleet.
+	//
+	// Optionally set a non-default retention window by adding
+	// "AUDIT_RETENTION_DAYS": "90" (or whatever you want, in days) to the
+	// "vars" block above — it defaults to 90 days if omitted.
+	//
+	// Cron Triggers are only registered on deploy, not on local edits — run
+	// `npm run deploy` (or `npx wrangler deploy`) to push this, then confirm
+	// with `npx wrangler triggers` or the Cloudflare dashboard (Workers &
+	// Pages → your Worker → Triggers).
+	// A second, much more frequent trigger for the abandoned-checkout
+	// reminder job (scheduled.ts / sendAbandonedCheckoutReminders). Unlike
+	// the daily cleanup above, this one is time-sensitive: a payment window
+	// is only ~20 minutes long, so checking once a day would mean some
+	// reminders go out nearly 24 hours late. Every 15 minutes keeps the
+	// reminder close to when the order actually went stale without adding a
+	// meaningful load (the query is a handful of indexed rows at most).
+	"triggers": {
+		"crons": [
+			"17 3 * * *",
+			"*/15 * * * *"
+		]
+	},
+	"kv_namespaces": [
+		{
+			"binding": "CONFIG_CACHE",
+			"id": "959b4d24e40b458aa5f6f912d15c2337",
+			"remote": true
+		}
+	]
 }

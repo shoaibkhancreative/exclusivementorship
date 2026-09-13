@@ -3,6 +3,8 @@ import { useNavigate, useParams } from "react-router-dom";
 import { api, type LessonDetail, type OutlineResponse } from "../lib/api";
 import { Button, LoadingScreen } from "../components/ui";
 import { OutlineList } from "../components/OutlineList";
+import { RetryBadge } from "../components/IllustrationBadge";
+import { SequenceLockModal } from "../components/SequenceLockModal";
 import { VideoStage } from "../components/VideoStage";
 import { useSession } from "../lib/SessionContext";
 import { useContent } from "../lib/useContent";
@@ -20,13 +22,13 @@ export default function Lesson() {
   const [error, setError] = useState<string | null>(null);
   const [completing, setCompleting] = useState(false);
   const [showFallback, setShowFallback] = useState(false);
-  // One line of Bangla explanation, revealed only after the learner taps the
-  // lock icon — this is only ever used for the "sequence" lock reason now.
-  // A "payment" lock always shows its message and Unlock Now button up
-  // front (see the isLocked branch below), since that's an action we want
-  // the learner to see immediately, not something to discover by tapping.
-  // Reset whenever the lesson changes.
-  const [showLockMessage, setShowLockMessage] = useState(false);
+  // Whether the "finish the previous class first" popup is open — opened by
+  // tapping the lock button on a sequence-locked class (see the isLocked
+  // branch below). A "payment" lock instead opens the shared UnlockModal via
+  // openUnlockModal; either way, tapping the lock button now always opens a
+  // popup rather than ever putting an explanation on top of the video
+  // itself. Reset whenever the lesson changes.
+  const [showSequenceLockModal, setShowSequenceLockModal] = useState(false);
 
   const loadOutline = useCallback(() => {
     setOutlineError(false);
@@ -39,19 +41,8 @@ export default function Lesson() {
       .catch(() => setOutlineError(true));
   }, []);
 
-  useEffect(() => {
-    setLesson(null);
+  const loadLesson = useCallback(() => {
     setError(null);
-    setShowFallback(false);
-    setShowLockMessage(false);
-
-    // The fallback "mark as watched" link only appears after a short delay.
-    // It exists for genuine technical failures (an ad-blocker or browser
-    // extension silently blocking YouTube's completion-tracking script) —
-    // not as an instant skip button. See VideoPlayer.tsx for the primary,
-    // automatic detection path.
-    const fallbackTimer = window.setTimeout(() => setShowFallback(true), 45000);
-
     api
       .get<LessonDetail>(`/lessons/${id}`)
       .then(setLesson)
@@ -62,11 +53,26 @@ export default function Lesson() {
         // lesson number, or a network problem.
         setError(t("lesson.load_error"));
       });
+  }, [id, t]);
 
+  useEffect(() => {
+    setLesson(null);
+    setError(null);
+    setShowFallback(false);
+    setShowSequenceLockModal(false);
+
+    // The fallback "mark as watched" link only appears after a short delay.
+    // It exists for genuine technical failures (an ad-blocker or browser
+    // extension silently blocking YouTube's completion-tracking script) —
+    // not as an instant skip button. See VideoPlayer.tsx for the primary,
+    // automatic detection path.
+    const fallbackTimer = window.setTimeout(() => setShowFallback(true), 45000);
+
+    loadLesson();
     loadOutline();
 
     return () => window.clearTimeout(fallbackTimer);
-  }, [id, navigate, loadOutline]);
+  }, [id, navigate, loadOutline, loadLesson]);
 
   /**
    * Called only once the video player itself reports the video ended (see
@@ -91,7 +97,15 @@ export default function Lesson() {
   }, [lesson, completing, loadOutline]);
 
   if (error) {
-    return <div className="mx-auto max-w-4xl px-6 py-16 text-center text-sm text-red-400">{error}</div>;
+    return (
+      <div className="page-enter mx-auto max-w-md px-6 py-20 text-center sm:py-28">
+        <RetryBadge />
+        <p className="mx-auto mt-5 max-w-xs text-sm leading-snug text-zinc-400">{error}</p>
+        <Button variant="secondary" onClick={loadLesson} className="mt-6">
+          {t("learn.retry_button")}
+        </Button>
+      </div>
+    );
   }
   if (!lesson) return <LoadingScreen />;
 
@@ -182,57 +196,50 @@ export default function Lesson() {
 
             {lesson.isLocked ? (
               <div>
-                {/* The thumbnail is always shown, even fully locked — it's the
-                    same image already visible in the outline list, never the
-                    actual video. A dark wash keeps the centered lock/play
-                    prompt legible over any thumbnail. */}
+                {/* The thumbnail is always shown, even fully locked — it's
+                    the same image already visible in the outline list, never
+                    the actual video. Shown fully clear/undimmed here (no dark
+                    wash) — the lock button below is a solid filled circle so
+                    it stays legible on its own regardless of what's under it.
+                    The outline list's own thumbnails (OutlineList.tsx) keep
+                    their separate dim/lock treatment unchanged — this only
+                    affects the big thumbnail on the class's own page. */}
                 <div
                   className="relative aspect-video overflow-hidden rounded-lg border border-base-800 bg-black bg-cover bg-center"
                   style={lesson.thumbnailUrl ? { backgroundImage: `url(${lesson.thumbnailUrl})` } : undefined}
                 >
-                  <div className="absolute inset-0 bg-black/60" aria-hidden="true" />
                   {lesson.durationLabel && (
-                    <span className="absolute bottom-2 right-2 rounded bg-base-950/80 px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-zinc-100">
+                    <span className="absolute bottom-2 right-2 rounded bg-zinc-100/90 px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-base-950">
                       {lesson.durationLabel}
                     </span>
                   )}
-                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center">
-                    {lesson.lockReason === "payment" ? (
-                      // Payment lock: message and action are always visible,
-                      // never hidden behind a tap — this is the one place we
-                      // want the learner to see an obvious next step.
-                      <>
-                        <span className="flex h-14 w-14 items-center justify-center rounded-full bg-accent-500 text-base-950">
-                          <svg width="18" height="20" viewBox="0 0 20 22" fill="currentColor" aria-hidden="true">
-                            <path d="M1 1.5v19l18-9.5-18-9.5Z" />
-                          </svg>
-                        </span>
-                        <p className="max-w-xs text-sm font-medium text-zinc-100">{t("lesson.locked_payment_message_bn")}</p>
-                        <Button onClick={openUnlockModal} className="!px-5 !py-2 text-sm">
-                          {t("lesson.locked_payment_unlock_button")}
-                        </Button>
-                      </>
-                    ) : (
-                      // Sequence lock: unchanged — a plain lock icon, and
-                      // the explanation only appears once tapped.
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => setShowLockMessage((v) => !v)}
-                          aria-label={t("lesson.locked_sequence_message_bn")}
-                          className="focus-ring flex h-14 w-14 items-center justify-center rounded-full bg-base-800/90 text-zinc-300 transition-colors duration-150 hover:bg-base-700"
-                        >
-                          <svg width="20" height="21" viewBox="0 0 12 13" aria-hidden="true">
-                            <rect x="1.5" y="5.5" width="9" height="6.5" rx="1.3" stroke="currentColor" strokeWidth="1.3" fill="none" />
-                            <path d="M3.5 5.5V3.75a2.5 2.5 0 0 1 5 0V5.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" fill="none" />
-                          </svg>
-                        </button>
-
-                        {showLockMessage && (
-                          <p className="max-w-xs text-sm font-medium text-zinc-100">{t("lesson.locked_sequence_message_bn")}</p>
-                        )}
-                      </>
-                    )}
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    {/* One button design for every locked class, matching
+                        the size/shape of the unlocked-class play button in
+                        VideoStage.tsx (same h-10/h-11 circle, same hover/
+                        active motion) so a locked class reads as "the same
+                        kind of thing, not available yet" rather than a
+                        different control — just in accent color, with a
+                        lock glyph instead of a play glyph, and never any
+                        text on top of the video itself. Tapping it always
+                        opens a popup: the existing shared checkout for a
+                        payment lock, or a small explanation popup for a
+                        sequence lock (see SequenceLockModal.tsx). */}
+                    <button
+                      type="button"
+                      onClick={() => (lesson.lockReason === "payment" ? openUnlockModal() : setShowSequenceLockModal(true))}
+                      aria-label={
+                        lesson.lockReason === "payment"
+                          ? t("lesson.locked_payment_message_bn")
+                          : t("lesson.locked_sequence_message_bn")
+                      }
+                      className="focus-ring flex h-10 w-10 flex-none items-center justify-center rounded-full bg-accent-500 text-base-950 shadow-md transition-transform duration-150 hover:scale-105 active:scale-95 sm:h-11 sm:w-11"
+                    >
+                      <svg width="15" height="16" viewBox="0 0 12 13" aria-hidden="true">
+                        <rect x="1.5" y="5.5" width="9" height="6.5" rx="1.3" stroke="currentColor" strokeWidth="1.3" fill="none" />
+                        <path d="M3.5 5.5V3.75a2.5 2.5 0 0 1 5 0V5.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" fill="none" />
+                      </svg>
+                    </button>
                   </div>
                 </div>
               </div>
@@ -322,7 +329,7 @@ export default function Lesson() {
             <div className="px-2 py-2 lg:overflow-y-auto">
               {outlineError ? (
                 <div className="flex flex-wrap items-center gap-3 px-2 py-2">
-                  <p className="text-sm text-red-400">{t("lesson.outline_error")}</p>
+                  <p className="text-sm text-accent-300">{t("lesson.outline_error")}</p>
                   <Button variant="secondary" onClick={loadOutline}>
                     {t("learn.retry_button")}
                   </Button>
@@ -342,6 +349,10 @@ export default function Lesson() {
           </div>
         </aside>
       </div>
+
+      {showSequenceLockModal && (
+        <SequenceLockModal message={t("lesson.locked_sequence_message_bn")} onClose={() => setShowSequenceLockModal(false)} />
+      )}
     </div>
   );
 }

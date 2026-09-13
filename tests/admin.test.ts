@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import worker from "../src/worker/index";
 import { createTestEnv } from "./testEnv";
 import { createSession } from "../src/worker/auth";
@@ -680,6 +680,112 @@ describe("Admin lessons & chapters management (HTTP)", () => {
       body: JSON.stringify({ ids: Array.from({ length: 501 }, (_, i) => i + 1), action: "unpublish" })
     });
     expect(tooMany.status).toBe(400);
+  });
+});
+
+describe("Admin lessons — Bunny auto-thumbnail (HTTP)", () => {
+  let env: Env;
+  let adminCookie: string;
+  let fetchSpy: ReturnType<typeof vi.fn>;
+
+  beforeEach(async () => {
+    env = await createTestEnv({ BUNNY_STREAM_API_KEY: "test-stream-api-key" });
+    await seedAdmin(env, "admin@example.com", "correct-horse-battery");
+    adminCookie = await loginAdmin(env, "admin@example.com", "correct-horse-battery");
+    fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("auto-fills a Bunny lesson's thumbnail from Bunny's own reported filename when none is given", async () => {
+    fetchSpy.mockResolvedValueOnce(
+      new Response(JSON.stringify({ thumbnailFileName: "thumbnail_062bc1d3.jpg" }), { status: 200 })
+    );
+
+    const create = await call(env, "/api/admin/lessons", {
+      method: "POST",
+      cookie: adminCookie,
+      body: JSON.stringify({
+        title: "Bunny Class",
+        chapterName: "Foundation",
+        videoEmbedUrl: "https://iframe.mediadelivery.net/embed/747219/vid-777"
+        // thumbnailUrl intentionally omitted
+      })
+    });
+    expect(create.status).toBe(200);
+    const created = (await create.json()) as { lesson: { id: number; thumbnailUrl: string | null } };
+    expect(created.lesson.thumbnailUrl).toBe("https://vz-test12345-de6.b-cdn.net/vid-777/thumbnail_062bc1d3.jpg");
+  });
+
+  it("never overrides a manually-provided thumbnail with Bunny's own, and never calls the Bunny API for it", async () => {
+    const create = await call(env, "/api/admin/lessons", {
+      method: "POST",
+      cookie: adminCookie,
+      body: JSON.stringify({
+        title: "Bunny Class With Custom Thumbnail",
+        chapterName: "Foundation",
+        videoEmbedUrl: "https://iframe.mediadelivery.net/embed/747219/vid-888",
+        thumbnailUrl: "https://example.com/custom-thumb.jpg"
+      })
+    });
+    expect(create.status).toBe(200);
+    const created = (await create.json()) as { lesson: { thumbnailUrl: string | null } };
+    expect(created.lesson.thumbnailUrl).toBe("https://example.com/custom-thumb.jpg");
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("leaves the thumbnail null (never fails the save) when the Bunny API call fails", async () => {
+    fetchSpy.mockResolvedValueOnce(new Response("not found", { status: 404 }));
+
+    const create = await call(env, "/api/admin/lessons", {
+      method: "POST",
+      cookie: adminCookie,
+      body: JSON.stringify({
+        title: "Bunny Class Still Processing",
+        chapterName: "Foundation",
+        videoEmbedUrl: "https://iframe.mediadelivery.net/embed/747219/vid-processing"
+      })
+    });
+    expect(create.status).toBe(200);
+    const created = (await create.json()) as { lesson: { thumbnailUrl: string | null } };
+    expect(created.lesson.thumbnailUrl).toBeNull();
+  });
+
+  it("re-derives the Bunny thumbnail on edit when the video URL changes and the thumbnail is left blank", async () => {
+    const create = await call(env, "/api/admin/lessons", {
+      method: "POST",
+      cookie: adminCookie,
+      body: JSON.stringify({
+        title: "Class To Rehost",
+        chapterName: "Foundation",
+        videoEmbedUrl: "https://www.youtube-nocookie.com/embed/old123",
+        thumbnailUrl: "https://example.com/old-thumb.jpg"
+      })
+    });
+    const created = (await create.json()) as { lesson: { id: number } };
+    expect(fetchSpy).not.toHaveBeenCalled(); // YouTube URL — never worth calling Bunny's API for
+
+    fetchSpy.mockResolvedValueOnce(
+      new Response(JSON.stringify({ thumbnailFileName: "thumbnail_9fa21c.jpg" }), { status: 200 })
+    );
+    const patch = await call(env, `/api/admin/lessons/${created.lesson.id}`, {
+      method: "PATCH",
+      cookie: adminCookie,
+      body: JSON.stringify({
+        videoEmbedUrl: "https://iframe.mediadelivery.net/embed/747219/vid-999",
+        thumbnailUrl: ""
+      })
+    });
+    expect(patch.status).toBe(200);
+
+    const lessons = (await (await call(env, "/api/admin/lessons", { cookie: adminCookie })).json()) as {
+      lessons: Array<{ id: number; thumbnailUrl: string | null }>;
+    };
+    expect(lessons.lessons.find((l) => l.id === created.lesson.id)?.thumbnailUrl).toBe(
+      "https://vz-test12345-de6.b-cdn.net/vid-999/thumbnail_9fa21c.jpg"
+    );
   });
 });
 

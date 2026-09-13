@@ -92,7 +92,10 @@ function ThumbnailField({ value, onChange }: { value: string; onChange: (dataUrl
           </button>
         )}
       </div>
-      <p className="mt-1 text-xs text-zinc-500">JPEG, PNG, WebP, or GIF. Resized automatically — under 1MB.</p>
+      <p className="mt-1 text-xs text-zinc-500">
+        JPEG, PNG, WebP, or GIF. Resized automatically — under 1MB. Leave blank for a Bunny-hosted lesson to use
+        Bunny's own thumbnail automatically.
+      </p>
       {error && <p className="mt-1 text-xs text-red-400">{error}</p>}
       <ImageUrlPreview url={value} />
     </div>

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type Notification } from "../lib/api";
 import { useSession } from "../lib/SessionContext";
+import { useContent } from "../lib/useContent";
 
 // Same order of magnitude as SupportChatPanel's THREAD_POLL_MS — this
 // project has no WebSocket/Durable Object infrastructure, so a short poll
@@ -23,6 +24,7 @@ function formatRelativeTime(iso: string): string {
 
 export function NotificationBell() {
   const { me } = useSession();
+  const { t } = useContent();
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[] | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -107,7 +109,7 @@ export function NotificationBell() {
         className="focus-ring relative flex h-8 w-8 items-center justify-center rounded-full text-zinc-400 transition-colors hover:text-zinc-100"
         aria-haspopup="true"
         aria-expanded={open}
-        aria-label="Notifications"
+        aria-label={t("notifications.panel_title")}
       >
         <svg width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true">
           <path
@@ -132,7 +134,7 @@ export function NotificationBell() {
           className="animate-scale-in absolute right-0 top-full z-50 mt-2 w-80 max-w-[90vw] origin-top-right overflow-hidden rounded-xl border border-base-800 bg-base-900"
         >
           <div className="flex items-center justify-between border-b border-base-800 px-4 py-3">
-            <span className="text-sm font-medium text-zinc-100">Notifications</span>
+            <span className="text-sm font-medium text-zinc-100">{t("notifications.panel_title")}</span>
             {unreadCount > 0 && (
               <button
                 type="button"
@@ -140,15 +142,15 @@ export function NotificationBell() {
                 role="menuitem"
                 className="focus-ring rounded text-[11px] text-accent-400 transition-colors hover:text-accent-300"
               >
-                Mark all read
+                {t("notifications.mark_all_read")}
               </button>
             )}
           </div>
           <div className="max-h-80 overflow-y-auto">
             {notifications === null ? (
-              <div className="p-4 text-center text-sm text-zinc-500">Loading…</div>
+              <div className="p-4 text-center text-sm text-zinc-500">{t("notifications.loading")}</div>
             ) : notifications.length === 0 ? (
-              <div className="p-6 text-center text-sm text-zinc-500">No notifications yet.</div>
+              <div className="p-6 text-center text-sm text-zinc-500">{t("notifications.empty_state")}</div>
             ) : (
               <ul className="divide-y divide-base-800">
                 {notifications.map((n) => (

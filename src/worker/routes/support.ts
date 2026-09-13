@@ -1,6 +1,7 @@
 import { Hono, type Context } from "hono";
 import type { Env } from "../lib/config";
 import {
+  RATE_LIMITS,
   SUPPORT_AGENT_LABELS,
   SUPPORT_ALLOWED_ATTACHMENT_MIME_TYPES,
   SUPPORT_GUEST_COOKIE_NAME,
@@ -9,9 +10,10 @@ import {
 } from "../lib/config";
 import type { AppVariables } from "../middleware/session";
 import { readCookie, buildGuestIdCookie } from "../auth";
-import { randomUuid } from "../lib/crypto";
+import { randomUuid, sha256Hex } from "../lib/crypto";
 import { decodeImageDataUrl } from "../lib/validation";
 import {
+  checkRateLimit,
   createSupportMessage,
   createSupportTicket,
   getSupportMessageAttachment,
@@ -163,6 +165,20 @@ supportRoutes.post("/tickets", async (c) => {
     return c.json({ error: "empty_message", message: "Please write a message." }, 400);
   }
 
+  const ip = c.req.header("cf-connecting-ip") ?? "unknown";
+  const ipHash = await sha256Hex(ip);
+  const identityKey = identity.userId ?? `guest:${identity.guestId}`;
+  const perIp = await checkRateLimit(c.env, `support_ticket:ip:${ipHash}`, RATE_LIMITS.supportTicketCreatePerIpPerHour, 3600);
+  const perIdentity = await checkRateLimit(
+    c.env,
+    `support_ticket:identity:${identityKey}`,
+    RATE_LIMITS.supportTicketCreatePerIdentityPerHour,
+    3600
+  );
+  if (!perIp.allowed || !perIdentity.allowed) {
+    return c.json({ error: "rate_limited", message: "Too many requests. Please try again shortly." }, 429);
+  }
+
   if (await hasVisibleSupportTicket(c.env, identity)) {
     return c.json(
       {
@@ -236,6 +252,17 @@ supportRoutes.post("/tickets/:id/messages", async (c) => {
   const text = (body.body ?? "").trim();
   if (!text && !body.attachment) {
     return c.json({ error: "empty_message", message: "Please write a message." }, 400);
+  }
+
+  const identityKey = identity.userId ?? `guest:${identity.guestId}`;
+  const rate = await checkRateLimit(
+    c.env,
+    `support_message:identity:${identityKey}`,
+    RATE_LIMITS.supportMessagePerIdentityPerHour,
+    3600
+  );
+  if (!rate.allowed) {
+    return c.json({ error: "rate_limited", message: "Too many messages. Please try again shortly." }, 429);
   }
 
   let attachment: { bytes: Uint8Array; mime: string; filename: string } | null = null;

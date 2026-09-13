@@ -57,6 +57,54 @@ export function isBunnyEmbedUrl(embedUrl: string): boolean {
 }
 
 /**
+ * Looks up the actual thumbnail filename bunny.net generated for a video via
+ * the Stream Management API's "Get Video" endpoint, then builds the direct
+ * CDN URL for it — see docs.bunny.net/stream/storage-structure:
+ *
+ *   https://{pull_zone}.b-cdn.net/{video_id}/{thumbnail_file_name}
+ *
+ * The filename is NOT predictable — Bunny generates something like
+ * "thumbnail_062bc1d3.jpg", not a fixed "thumbnail.jpg" — so this calls
+ * `GET https://video.bunnycdn.com/library/{libraryId}/videos/{videoId}`
+ * (see docs.bunny.net/api-reference/stream/manage-videos/get-video) with
+ * the library's management API key and reads `thumbnailFileName` off the
+ * response, rather than guessing.
+ *
+ * This is a public CDN URL, not signed — Embed View Token Authentication
+ * (signBunnyEmbedUrl below) only covers the iframe, not raw pull-zone
+ * URLs. If CDN Token Authentication is ever turned on for this pull zone
+ * in the Bunny dashboard, this thumbnail URL would need signing too (a
+ * different scheme — see docs.bunny.net/docs/cdn-token-authentication) and
+ * this function would need updating; it does not currently sign anything.
+ *
+ * Returns null (never throws) whenever an auto thumbnail can't be
+ * determined — not a Bunny embed URL, `BUNNY_PULL_ZONE_HOST` /
+ * `BUNNY_STREAM_API_KEY` not configured, the API call fails, or the video
+ * hasn't finished processing yet (no thumbnail generated) — so callers can
+ * cleanly fall back to "no auto thumbnail" rather than failing the whole
+ * lesson save over a Bunny API hiccup.
+ */
+export async function fetchBunnyThumbnailUrl(env: Env, embedUrl: string): Promise<string | null> {
+  const ref = parseBunnyEmbedUrl(embedUrl);
+  if (!ref) return null;
+  if (!env.BUNNY_PULL_ZONE_HOST || !env.BUNNY_STREAM_API_KEY) return null;
+
+  try {
+    const res = await fetch(`https://video.bunnycdn.com/library/${ref.libraryId}/videos/${ref.videoId}`, {
+      headers: { AccessKey: env.BUNNY_STREAM_API_KEY }
+    });
+    if (!res.ok) return null;
+
+    const data = (await res.json()) as { thumbnailFileName?: string | null };
+    if (!data.thumbnailFileName) return null;
+
+    return `https://${env.BUNNY_PULL_ZONE_HOST}/${ref.videoId}/${data.thumbnailFileName}`;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Signs a Bunny Stream embed URL with Embed View Token Authentication.
  *
  * Algorithm (verified against Bunny's docs, not assumed):

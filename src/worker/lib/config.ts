@@ -6,6 +6,11 @@ import { getSetting } from "../db";
 export interface Env {
   DB: D1Database;
   ASSETS: Fetcher;
+  // KV namespace for caching read-mostly, admin-editable data (public
+  // config, page content, page layout) off of D1. Optional in the type so
+  // older/local envs that haven't added the binding yet don't fail to
+  // typecheck — lib/cache.ts falls back to D1 directly when it's absent.
+  CONFIG_CACHE?: KVNamespace;
 
   // vars (wrangler.jsonc "vars", safe to be non-secret)
   APP_URL: string;
@@ -21,6 +26,17 @@ export interface Env {
   GOOGLE_CLIENT_ID?: string;
   ENROLLMENT_PRICE_USDT: string;
   REFERENCE_PRICE_USDT: string;
+  // The CDN hostname bunny.net gave this Stream library, e.g.
+  // "vz-abc12345-de6.b-cdn.net" — find it in the Bunny dashboard under
+  // Stream → your library → any existing video → "Direct Play URL" (the
+  // host in that link, before the video id). NOT a secret (it's the same
+  // host every embed's video segments already load from), just not
+  // something we can derive from the library id. Used only to build the
+  // *default* thumbnail URL for a Bunny-hosted lesson — see
+  // lib/bunny.ts:bunnyThumbnailUrl. Optional: if unset, lessons.ts /
+  // routes/admin.ts fall back to requiring a manually-set thumbnail, same
+  // as before this existed.
+  BUNNY_PULL_ZONE_HOST?: string;
   // Optional — how much (in USDT, ~1:1 with USD since it's a stablecoin) a
   // buyer may underpay by and still be auto-unlocked. Covers people who
   // didn't realize the network fee is deducted separately and send a
@@ -52,6 +68,16 @@ export interface Env {
   // logged. Left unset locally unless added to .dev.vars — video-token
   // requests fail closed (500) rather than falling back to an unsigned URL.
   BUNNY_TOKEN_AUTH_KEY?: string;
+  // Bunny Stream → your library → API → "Video Library API Key" (a
+  // per-library read/write management key, different from the token-auth
+  // key above). Used ONLY to look up a video's actual generated thumbnail
+  // filename via Bunny's "Get Video" API — see
+  // lib/bunny.ts:fetchBunnyThumbnailUrl. That filename is NOT predictable
+  // (it's "thumbnail_<random-hex>.jpg", not always "thumbnail.jpg"), so
+  // this API call is the only reliable way to auto-fill a Bunny lesson's
+  // thumbnail. Optional: if unset, auto-fill is skipped and the admin must
+  // set a thumbnail manually, same as before this existed.
+  BUNNY_STREAM_API_KEY?: string;
 }
 
 /** Hardcoded fallback used only until an admin ever saves a value from the panel. */
@@ -81,7 +107,18 @@ export const RATE_LIMITS = {
   // load, maybe a manual retry). Generous enough to never bother a real
   // student, tight enough to blunt a script trying to mint many signed
   // links quickly.
-  videoTokenPerUserPerHour: 60
+  videoTokenPerUserPerHour: 60,
+  // Support ticket creation accepts an unauthenticated caller (a guest
+  // identity is just a self-issued cookie, freely reset by clearing
+  // cookies) and each message can carry up to SUPPORT_MAX_ATTACHMENT_BYTES
+  // of attachment — so, unlike every other write in this app, nothing here
+  // is naturally self-limiting the way "one payment per checkout" or "one
+  // OTP per login" is. Rate-limited by IP (defeats cookie-clearing) AND by
+  // identity (defeats a single IP cycling guest ids), same
+  // belt-and-suspenders pattern as OTP request.
+  supportTicketCreatePerIpPerHour: 10,
+  supportTicketCreatePerIdentityPerHour: 5,
+  supportMessagePerIdentityPerHour: 30
 };
 
 // site_settings keys used for admin-editable price/discount, course
@@ -221,5 +258,3 @@ export const SUPPORT_ALLOWED_ATTACHMENT_MIME_TYPES = new Set([
  */
 export const LESSON_THUMBNAIL_MAX_BYTES = 1 * 1024 * 1024;
 export const LESSON_THUMBNAIL_ALLOWED_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
-
-

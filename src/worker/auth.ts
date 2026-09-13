@@ -9,6 +9,7 @@ import {
 } from "./lib/config";
 import { generateOtp, hmacSha256Hex, randomToken, randomUuid, timingSafeEqual } from "./lib/crypto";
 import { getOrCreateUser, type UserRow } from "./db";
+import { getRawCached, putRawCached, sessionCacheKey, SESSION_CACHE_TTL_SECONDS, purgeCache } from "./lib/cache";
 
 function requireSecret(env: Env): string {
   const secret = env.SESSION_SECRET;
@@ -125,6 +126,21 @@ export async function resolveSession(env: Env, token: string | undefined | null)
   if (!token) return null;
   const secret = requireSecret(env);
   const tokenHash = await hmacSha256Hex(secret, `session:${token}`);
+  const cacheKey = sessionCacheKey(tokenHash);
+
+  // Cache-aside: a hit here skips both D1 reads below entirely (session
+  // lookup + user lookup) — this runs on every single authenticated
+  // request, so it's the highest-traffic query path in the app. See
+  // lib/cache.ts for the TTL trade-off (short, so a revoked session stops
+  // working within ~45s even if this request path never touches D1 again).
+  const cached = await getRawCached(env, cacheKey);
+  if (cached !== null) {
+    try {
+      return JSON.parse(cached) as UserRow;
+    } catch {
+      // Corrupt cache entry — fall through and re-resolve from D1.
+    }
+  }
 
   const row = await env.DB.prepare(
     `SELECT s.user_id as user_id, s.expires_at as expires_at, s.revoked_at as revoked_at
@@ -139,7 +155,11 @@ export async function resolveSession(env: Env, token: string | undefined | null)
   if (expiresAt.getTime() < Date.now()) return null;
 
   const { findUserById } = await import("./db");
-  return findUserById(env, row.user_id);
+  const user = await findUserById(env, row.user_id);
+  if (user) {
+    await putRawCached(env, cacheKey, JSON.stringify(user), SESSION_CACHE_TTL_SECONDS);
+  }
+  return user;
 }
 
 export async function revokeSession(env: Env, token: string): Promise<void> {
@@ -148,6 +168,10 @@ export async function revokeSession(env: Env, token: string): Promise<void> {
   await env.DB.prepare("UPDATE sessions SET revoked_at = datetime('now') WHERE token_hash = ?")
     .bind(tokenHash)
     .run();
+  // Purge immediately so an explicit logout takes effect on the very next
+  // request, rather than waiting out the cache TTL like an implicit
+  // single-session-per-account revoke (see createSession) does.
+  await purgeCache(env, sessionCacheKey(tokenHash));
 }
 
 export function buildSessionCookie(env: Env, token: string): string {

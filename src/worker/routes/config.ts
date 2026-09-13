@@ -5,6 +5,7 @@ import { isBunnyEmbedUrl, signBunnyEmbedUrl } from "../lib/bunny";
 import { getContentMap, getAllLayouts } from "../db";
 import { CONTENT_DEFAULTS } from "../lib/content";
 import { PAGE_BLOCKS } from "../lib/layout";
+import { getCached, CACHE_KEYS } from "../lib/cache";
 
 export const configRoutes = new Hono<{ Bindings: Env }>();
 
@@ -17,7 +18,7 @@ export const configRoutes = new Hono<{ Bindings: Env }>();
  * shouldn't have to wait on or re-fetch it.
  */
 configRoutes.get("/content", async (c) => {
-  const content = await getContentMap(c.env, CONTENT_DEFAULTS);
+  const content = await getCached(c.env, CACHE_KEYS.content, () => getContentMap(c.env, CONTENT_DEFAULTS));
   return c.json({ content });
 });
 
@@ -32,7 +33,7 @@ configRoutes.get("/content", async (c) => {
 configRoutes.get("/layout", async (c) => {
   const pageKeys = Object.keys(PAGE_BLOCKS);
   try {
-    const layouts = await getAllLayouts(c.env, pageKeys);
+    const layouts = await getCached(c.env, CACHE_KEYS.layout, () => getAllLayouts(c.env, pageKeys));
     return c.json({ layouts });
   } catch {
     // Never break the public site over a layout-table hiccup — fall back to
@@ -48,44 +49,54 @@ function defaultLayoutFallback(pageKey: string) {
   return (PAGE_BLOCKS[pageKey] ?? []).map((b) => ({ id: b.id, visible: true }));
 }
 
-/** Only non-secret, display-safe values. Never put API keys/tokens here. */
+/**
+ * Only non-secret, display-safe values. Never put API keys/tokens here.
+ *
+ * Cached for 2 minutes (well under the Bunny embed token's 30-minute TTL,
+ * see lib/bunny.ts) — a cached response still hands out a signed URL that
+ * is valid when the visitor's browser actually opens it.
+ */
 configRoutes.get("/public", async (c) => {
-  const [enrollmentPrice, referencePrice, freeLessonCount, rawIntroVideoEmbedUrl, siteLogoUrl, siteFaviconUrl] =
-    await Promise.all([
-      getEnrollmentAmount(c.env),
-      getReferenceAmount(c.env),
-      getFreeLessonCount(c.env),
-      getIntroVideoEmbedUrl(c.env),
-      getSiteLogoUrl(c.env),
-      getSiteFaviconUrl(c.env)
-    ]);
+  const payload = await getCached(c.env, CACHE_KEYS.publicConfig, async () => {
+    const [enrollmentPrice, referencePrice, freeLessonCount, rawIntroVideoEmbedUrl, siteLogoUrl, siteFaviconUrl] =
+      await Promise.all([
+        getEnrollmentAmount(c.env),
+        getReferenceAmount(c.env),
+        getFreeLessonCount(c.env),
+        getIntroVideoEmbedUrl(c.env),
+        getSiteLogoUrl(c.env),
+        getSiteFaviconUrl(c.env)
+      ]);
 
-  // The intro video lives on the same Bunny Stream library as every gated
-  // lesson, and that library has Embed View Token Authentication enabled —
-  // so an unsigned embed URL is rejected by Bunny just like an unsigned
-  // lesson would be. Sign it here exactly like lessons.ts does, and fall
-  // back to the raw URL only for non-Bunny embeds (e.g. a YouTube link) or
-  // if signing fails, rather than breaking the whole homepage.
-  let introVideoEmbedUrl = rawIntroVideoEmbedUrl;
-  if (rawIntroVideoEmbedUrl && isBunnyEmbedUrl(rawIntroVideoEmbedUrl)) {
-    try {
-      introVideoEmbedUrl = await signBunnyEmbedUrl(c.env, rawIntroVideoEmbedUrl);
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error("signBunnyEmbedUrl failed for intro video", err);
+    // The intro video lives on the same Bunny Stream library as every gated
+    // lesson, and that library has Embed View Token Authentication enabled —
+    // so an unsigned embed URL is rejected by Bunny just like an unsigned
+    // lesson would be. Sign it here exactly like lessons.ts does, and fall
+    // back to the raw URL only for non-Bunny embeds (e.g. a YouTube link) or
+    // if signing fails, rather than breaking the whole homepage.
+    let introVideoEmbedUrl = rawIntroVideoEmbedUrl;
+    if (rawIntroVideoEmbedUrl && isBunnyEmbedUrl(rawIntroVideoEmbedUrl)) {
+      try {
+        introVideoEmbedUrl = await signBunnyEmbedUrl(c.env, rawIntroVideoEmbedUrl);
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error("signBunnyEmbedUrl failed for intro video", err);
+      }
     }
-  }
 
-  return c.json({
-    enrollmentPrice,
-    referencePrice,
-    discountPercent: Math.round((1 - enrollmentPrice / referencePrice) * 100),
-    freeLessonCount,
-    introVideoEmbedUrl,
-    mentorshipPdfUrl: c.env.MENTORSHIP_PDF_URL,
-    turnstileSiteKey: c.env.TURNSTILE_SITE_KEY,
-    googleClientId: c.env.GOOGLE_CLIENT_ID || null,
-    siteLogoUrl,
-    siteFaviconUrl
+    return {
+      enrollmentPrice,
+      referencePrice,
+      discountPercent: Math.round((1 - enrollmentPrice / referencePrice) * 100),
+      freeLessonCount,
+      introVideoEmbedUrl,
+      mentorshipPdfUrl: c.env.MENTORSHIP_PDF_URL,
+      turnstileSiteKey: c.env.TURNSTILE_SITE_KEY,
+      googleClientId: c.env.GOOGLE_CLIENT_ID || null,
+      siteLogoUrl,
+      siteFaviconUrl
+    };
   });
+
+  return c.json(payload);
 });

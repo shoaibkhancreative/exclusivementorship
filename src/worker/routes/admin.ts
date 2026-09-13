@@ -60,6 +60,7 @@ import {
 } from "../db";
 import { CONTENT_FIELDS, CONTENT_DEFAULTS } from "../lib/content";
 import { PAGE_BLOCKS, PAGE_LABELS, reconcileLayout, type LayoutBlockState } from "../lib/layout";
+import { purgeCache, CACHE_KEYS } from "../lib/cache";
 import { sha256Hex } from "../lib/crypto";
 import {
   normalizeLessonDuration,
@@ -69,6 +70,7 @@ import {
   validateIdArray
 } from "../lib/validation";
 import { LESSON_THUMBNAIL_ALLOWED_MIME_TYPES, LESSON_THUMBNAIL_MAX_BYTES } from "../lib/config";
+import { fetchBunnyThumbnailUrl } from "../lib/bunny";
 
 export const adminRoutes = new Hono<{ Bindings: Env; Variables: AdminVariables }>();
 
@@ -329,6 +331,7 @@ adminRoutes.post("/chapters", async (c) => {
   if (!name) return c.json({ error: "invalid_input", message: "Chapter name is required." }, 400);
 
   const chapter = await createChapter(c.env, name, body.tagline?.trim() || null);
+  await purgeCache(c.env, CACHE_KEYS.lessonsOutline);
   await logAuditEvent(c.env, "admin_chapter_created", { metadata: { adminId: admin.id, chapterId: chapter.id } });
   return c.json({
     ok: true,
@@ -349,6 +352,7 @@ adminRoutes.patch("/chapters/:id", async (c) => {
   } catch {
     return c.json({ error: "not_found" }, 404);
   }
+  await purgeCache(c.env, CACHE_KEYS.lessonsOutline);
   await logAuditEvent(c.env, "admin_chapter_updated", { metadata: { adminId: admin.id, chapterId: id } });
   return c.json({ ok: true });
 });
@@ -361,6 +365,7 @@ adminRoutes.post("/chapters/reorder", async (c) => {
     return c.json({ error: "invalid_input", message: "orderedIds must be a non-empty array of positive integers." }, 400);
   }
   await reorderChapters(c.env, orderedIds);
+  await purgeCache(c.env, CACHE_KEYS.lessonsOutline);
   await logAuditEvent(c.env, "admin_chapters_reordered", { metadata: { adminId: admin.id } });
   return c.json({ ok: true });
 });
@@ -385,6 +390,7 @@ adminRoutes.delete("/chapters/:id", async (c) => {
     }
     return c.json({ error: "not_found" }, 404);
   }
+  await purgeCache(c.env, CACHE_KEYS.lessonsOutline);
   await logAuditEvent(c.env, "admin_chapter_deleted", { metadata: { adminId: admin.id, chapterId: id } });
   return c.json({ ok: true });
 });
@@ -473,6 +479,16 @@ adminRoutes.post("/lessons", async (c) => {
     return c.json({ error: "invalid_input", message: "Duration must look like 12:45 or 1:04:30." }, 400);
   }
 
+  // Auto-fill the thumbnail from Bunny's own generated thumbnail (looked up
+  // via Bunny's API — the filename isn't guessable, see
+  // lib/bunny.ts:fetchBunnyThumbnailUrl) when the admin left the thumbnail
+  // field blank on a Bunny-hosted lesson. A manually-provided thumbnail
+  // (URL or upload) always wins; this only fills the gap when there isn't
+  // one.
+  if (!thumbnailUrl && videoEmbedUrl) {
+    thumbnailUrl = await fetchBunnyThumbnailUrl(c.env, videoEmbedUrl);
+  }
+
   const lesson = await createLesson(c.env, {
     title,
     chapterName,
@@ -484,6 +500,7 @@ adminRoutes.post("/lessons", async (c) => {
     durationLabel
   });
 
+  await purgeCache(c.env, CACHE_KEYS.lessonsOutline);
   await logAuditEvent(c.env, "admin_lesson_created", { metadata: { adminId: admin.id, lessonId: lesson.id } });
 
   return c.json({
@@ -558,6 +575,15 @@ adminRoutes.patch("/lessons/:id", async (c) => {
     return c.json({ error: "invalid_input", message: "Duration must look like 12:45 or 1:04:30." }, 400);
   }
 
+  // Same auto-fill as lesson creation, but only when this request actually
+  // touches the video URL and leaves the thumbnail blank — an edit that
+  // doesn't mention either field must leave whatever thumbnail already
+  // exists alone (thumbnailUrl stays `undefined`, which updateLesson treats
+  // as "don't change this column").
+  if (videoEmbedUrl !== undefined && thumbnailUrl === null) {
+    thumbnailUrl = videoEmbedUrl ? await fetchBunnyThumbnailUrl(c.env, videoEmbedUrl) : null;
+  }
+
   try {
     await updateLesson(c.env, id, {
       ...body,
@@ -571,6 +597,7 @@ adminRoutes.patch("/lessons/:id", async (c) => {
     return c.json({ error: "not_found" }, 404);
   }
 
+  await purgeCache(c.env, CACHE_KEYS.lessonsOutline);
   await logAuditEvent(c.env, "admin_lesson_updated", { metadata: { adminId: admin.id, lessonId: id } });
   return c.json({ ok: true });
 });
@@ -580,6 +607,7 @@ adminRoutes.post("/lessons/:id/archive", async (c) => {
   const id = parsePositiveIntId(c.req.param("id"));
   if (id === null) return c.json({ error: "not_found" }, 404);
   await archiveLesson(c.env, id);
+  await purgeCache(c.env, CACHE_KEYS.lessonsOutline);
   await logAuditEvent(c.env, "admin_lesson_archived", { metadata: { adminId: admin.id, lessonId: id } });
   return c.json({ ok: true });
 });
@@ -599,6 +627,7 @@ adminRoutes.delete("/lessons/:id", async (c) => {
   } catch {
     return c.json({ error: "not_found" }, 404);
   }
+  await purgeCache(c.env, CACHE_KEYS.lessonsOutline);
   await logAuditEvent(c.env, "admin_lesson_deleted", { metadata: { adminId: admin.id, lessonId: id } });
   return c.json({ ok: true });
 });
@@ -652,6 +681,7 @@ adminRoutes.post("/lessons/reorder", async (c) => {
     );
   }
 
+  await purgeCache(c.env, CACHE_KEYS.lessonsOutline);
   await logAuditEvent(c.env, "admin_lessons_reordered", { metadata: { adminId: admin.id } });
   return c.json({ ok: true });
 });
@@ -671,6 +701,7 @@ adminRoutes.post("/lessons/:id/duplicate", async (c) => {
   } catch {
     return c.json({ error: "not_found" }, 404);
   }
+  await purgeCache(c.env, CACHE_KEYS.lessonsOutline);
   await logAuditEvent(c.env, "admin_lesson_duplicated", {
     metadata: { adminId: admin.id, sourceLessonId: id, newLessonId: lesson.id }
   });
@@ -713,6 +744,7 @@ adminRoutes.post("/lessons/bulk", async (c) => {
   }
 
   const affected = await bulkUpdateLessons(c.env, ids, body.action);
+  await purgeCache(c.env, CACHE_KEYS.lessonsOutline);
   await logAuditEvent(c.env, "admin_lessons_bulk_action", {
     metadata: { adminId: admin.id, action: body.action, ids, affected }
   });
@@ -811,6 +843,7 @@ adminRoutes.post("/settings", async (c) => {
   }
 
   await Promise.all(updates);
+  await purgeCache(c.env, CACHE_KEYS.publicConfig);
   await logAuditEvent(c.env, "admin_settings_updated", { metadata: { adminId: admin.id, ...body } });
 
   const [enrollmentPrice, referencePrice, freeLessonCount, introVideoEmbedUrl, siteLogoUrl, siteFaviconUrl] =
@@ -868,6 +901,7 @@ adminRoutes.post("/content", async (c) => {
   }
 
   await setContentValue(c.env, body.key, body.value ?? null, defaultValue, admin.id);
+  await purgeCache(c.env, CACHE_KEYS.content);
   await logAuditEvent(c.env, "admin_content_updated", { metadata: { adminId: admin.id, key: body.key } });
   return c.json({ ok: true });
 });
@@ -881,6 +915,7 @@ adminRoutes.post("/content/:key/reset", async (c) => {
   }
 
   await resetContentValue(c.env, key, defaultValue, admin.id);
+  await purgeCache(c.env, CACHE_KEYS.content);
   await logAuditEvent(c.env, "admin_content_reset", { metadata: { adminId: admin.id, key } });
   return c.json({ ok: true, value: defaultValue });
 });
@@ -934,6 +969,7 @@ adminRoutes.post("/layout/:pageKey", async (c) => {
   const reconciled = reconcileLayout(pageKey, blocks);
 
   await setLayout(c.env, pageKey, reconciled, admin.id);
+  await purgeCache(c.env, CACHE_KEYS.layout);
   await logAuditEvent(c.env, "admin_layout_updated", { metadata: { adminId: admin.id, pageKey } });
   return c.json({ ok: true, blocks: reconciled });
 });

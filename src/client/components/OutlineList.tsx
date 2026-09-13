@@ -2,6 +2,8 @@ import { Link } from "react-router-dom";
 import { useEffect, useRef } from "react";
 import type { CSSProperties } from "react";
 import type { OutlineItem, SemesterMeta } from "../lib/api";
+import { IllustrationBadge } from "./IllustrationBadge";
+import { useContent } from "../lib/useContent";
 
 function PlayGlyph() {
   return (
@@ -66,12 +68,22 @@ function Thumbnail({
   // width scale gracefully from small phones up through the row's own
   // breakpoints — a single fixed pixel width would either overflow a
   // narrow phone screen or look cramped on a wide one.
-  const dims = size === "full" ? "w-[150px] sm:w-[192px] lg:w-[208px]" : "w-[124px] sm:w-[144px] lg:w-[152px]";
+  // xl bump added for wide/multi-monitor desktops — "full" size only, since
+  // that's the only variant given the extra room to grow (Learn page's
+  // right column widens past lg too; see Learn.tsx). "compact" stays as-is,
+  // it's the fixed-width Lesson-page sidebar panel regardless of screen size.
+  const dims = size === "full" ? "w-[150px] sm:w-[192px] lg:w-[208px] xl:w-[224px]" : "w-[124px] sm:w-[144px] lg:w-[152px]";
 
   return (
     <div
-      className={`relative aspect-video flex-none overflow-hidden rounded-md border bg-base-800 ${dims} ${
-        isActive ? "border-accent-500/70" : "border-base-800"
+      // A border matched to the page background (border-base-800) used to be
+      // the only edge definition here — invisible the moment a thumbnail's
+      // own art happened to land on a similarly warm/cream tone. A real drop
+      // shadow plus a neutral (colorless) ring gives every tile a visible
+      // edge and a slight lift off the page regardless of what color the
+      // thumbnail art itself is.
+      className={`relative aspect-video flex-none overflow-hidden rounded-md bg-base-800 shadow-[0_1px_3px_rgba(28,27,23,0.16),0_1px_2px_rgba(28,27,23,0.10)] ring-1 ${dims} ${
+        isActive ? "ring-accent-500/70" : "ring-black/10"
       }`}
     >
       {item.thumbnailUrl ? (
@@ -79,12 +91,10 @@ function Thumbnail({
           src={item.thumbnailUrl}
           alt=""
           loading="lazy"
-          // Locked thumbnails used to be dimmed almost to invisibility —
-          // now the image itself stays nearly full-strength (a hint of
-          // desaturation is enough to read as "not available yet") and the
-          // separate dark wash below carries the rest of the "locked"
-          // signal, so the class is still clearly recognizable at a glance.
-          className={`h-full w-full object-cover ${locked ? "opacity-90 grayscale-[0.15]" : ""}`}
+          // Locked thumbnails now stay exactly as clear as unlocked ones —
+          // no dimming/desaturation — since the small lock badge on top is
+          // by itself enough to read as "locked".
+          className="h-full w-full object-cover"
         />
       ) : (
         <div className="flex h-full w-full items-center justify-center text-zinc-600">
@@ -93,9 +103,10 @@ function Thumbnail({
       )}
 
       {locked && (
-        <div className="absolute inset-0 flex items-center justify-center bg-base-950/15">
+        <div className="absolute inset-0 flex items-center justify-center">
           {/* Small lock glyph on a subtle round backing, not a large icon
-              floating directly on the image. */}
+              floating directly on the image. No dark wash behind it anymore —
+              the thumbnail underneath stays fully clear/visible. */}
           <span className="flex h-5 w-5 items-center justify-center rounded-full bg-base-950/55 text-zinc-100 backdrop-blur-[1px]">
             <LockGlyph />
           </span>
@@ -117,10 +128,40 @@ function Thumbnail({
       )}
 
       {item.durationLabel && (
-        <span className="absolute bottom-1 right-1 rounded bg-base-950/80 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-zinc-100">
+        // Was a translucent cream chip (bg-base-950/80) with dark text — the
+        // same warm tone as the page and most thumbnail art, so it barely
+        // read as a badge. A solid dark chip with light text (the same
+        // high-contrast pairing YouTube itself uses for duration badges)
+        // stays legible no matter what's underneath it.
+        <span className="absolute bottom-1 right-1 rounded bg-zinc-100/90 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-base-950">
           {item.durationLabel}
         </span>
       )}
+    </div>
+  );
+}
+
+/**
+ * "No classes published yet" hero — same one-shape warm-illustration
+ * language as the rest of the site (see UnlockModal's GiftBadge/ClockBadge,
+ * Learn.tsx's RetryBadge). Only shown for the full-page variant; the
+ * compact sidebar panel never reaches an empty list in practice, and
+ * showing a full hero there would be clutter in that tight space.
+ */
+function EmptyOutline({ message }: { message: string }) {
+  return (
+    <div className="page-enter py-12 text-center sm:py-16">
+      <IllustrationBadge size={72} bg="rgba(230,57,70,0.1)">
+        <svg viewBox="0 0 64 64" width={34} height={34} aria-hidden="true">
+          <rect x="12" y="14" width="40" height="36" rx="6" fill="#e63946" opacity="0.16" />
+          <path d="M12 22h40" stroke="#e63946" strokeWidth="3.5" strokeLinecap="round" />
+          <path d="M22 12v8M42 12v8" stroke="#e63946" strokeWidth="3.5" strokeLinecap="round" />
+          <circle cx="26" cy="35" r="3" fill="#e63946" />
+          <circle cx="38" cy="35" r="3" fill="#e63946" />
+          <circle cx="26" cy="43" r="3" fill="#e63946" opacity="0.5" />
+        </svg>
+      </IllustrationBadge>
+      <p className="mx-auto mt-5 max-w-xs text-sm leading-snug text-zinc-400">{message}</p>
     </div>
   );
 }
@@ -149,6 +190,7 @@ export function OutlineList({
 }) {
   const semesterByChapter = new Map((semesters ?? []).map((s) => [s.chapterName, s]));
   const activeRowRef = useRef<HTMLDivElement>(null);
+  const { t } = useContent();
 
   useEffect(() => {
     if (!scrollActiveIntoView || !activeRowRef.current) return;
@@ -159,6 +201,10 @@ export function OutlineList({
   }, [scrollActiveIntoView, activeLessonNumber]);
 
   const compact = variant === "compact";
+
+  if (items.length === 0 && !compact) {
+    return <EmptyOutline message={t("learn.empty_state")} />;
+  }
 
   return (
     <div>

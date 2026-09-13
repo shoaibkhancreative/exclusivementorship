@@ -6,6 +6,28 @@ import { useContent } from "../lib/useContent";
 import { useUnlockModal } from "../lib/UnlockModalContext";
 import { Avatar } from "./Avatar";
 
+// Same flat, single-stroke language as OutlineList's Lock/Check/Play glyphs
+// (rounded caps, currentColor, no fill) — small identifying icons for the
+// two menu actions, not decoration. An open padlock for "unlock" (something
+// about to become available) and an arrow leaving a doorway for "logout".
+function UnlockGlyph() {
+  return (
+    <svg width="13" height="14" viewBox="0 0 14 15" fill="none" aria-hidden="true">
+      <rect x="1.5" y="6.5" width="10" height="7" rx="1.4" stroke="currentColor" strokeWidth="1.4" />
+      <path d="M4 6.5V4.2A2.7 2.7 0 0 1 9.8 3.4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function LogoutGlyph() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M6.5 2.5H3a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M9.5 5 13 8l-3.5 3M13 8H5.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 // Mirrors the Dashboard's cover-card threshold (see pages/Learn.tsx) — a
 // free learner needs to have completed this many classes before the
 // "Unlock Full Mentorship" button appears here too.
@@ -91,10 +113,12 @@ export function ProfileMenu() {
 
   return (
     <div className="relative" ref={containerRef}>
+      {/* Padding around the avatar widens the tap target to a comfortable
+          size on touch screens without growing the avatar itself. */}
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="focus-ring rounded-full"
+        className="focus-ring rounded-full p-0.5"
         aria-haspopup="true"
         aria-expanded={open}
         aria-label="Account menu"
@@ -105,7 +129,7 @@ export function ProfileMenu() {
       {open && (
         <div
           role="menu"
-          className="animate-scale-in absolute right-0 top-full z-50 mt-2 w-72 max-w-[90vw] origin-top-right overflow-hidden rounded-xl border border-base-800 bg-base-900"
+          className="animate-scale-in absolute right-0 top-full z-50 mt-2 w-72 max-w-[90vw] origin-top-right overflow-hidden rounded-2xl border border-base-800 bg-base-900 shadow-lg shadow-base-800/30"
         >
           {/* Identity */}
           <div className="flex items-center gap-3 px-4 pb-3 pt-4">
@@ -117,15 +141,19 @@ export function ProfileMenu() {
           </div>
 
           {/* Account actions — the single status-driven Unlock button (once
-              earned), plus logout. Nothing else lives in this menu. */}
+              earned), plus logout. Nothing else lives in this menu. Each
+              gets one small flat icon, same restrained treatment as every
+              other icon on the site — not decoration piled on for its own
+              sake. */}
           <div className="flex flex-col gap-1 border-t border-base-800 p-2">
             {showUnlockCta && (
               <button
                 type="button"
                 onClick={handleUnlockClick}
                 role="menuitem"
-                className="focus-ring flex w-full items-center justify-center rounded-lg bg-accent-500 px-3 py-2 text-sm font-medium text-base-950 transition-colors hover:bg-accent-400"
+                className="focus-ring flex w-full items-center justify-center gap-2 rounded-xl bg-accent-500 px-3 py-2.5 text-sm font-medium text-base-950 transition-colors hover:bg-accent-400"
               >
+                <UnlockGlyph />
                 {t("profile.unlock_button")}
               </button>
             )}
@@ -134,8 +162,9 @@ export function ProfileMenu() {
               type="button"
               onClick={handleLogout}
               role="menuitem"
-              className="focus-ring w-full rounded-lg px-3 py-2 text-left text-sm text-zinc-400 transition-colors hover:bg-base-800 hover:text-zinc-100"
+              className="focus-ring flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm text-zinc-400 transition-colors hover:bg-base-800 hover:text-zinc-100"
             >
+              <LogoutGlyph />
               {t("profile.logout_button")}
             </button>
           </div>

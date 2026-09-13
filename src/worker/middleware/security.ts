@@ -2,10 +2,16 @@ import type { Context, Next } from "hono";
 import type { Env } from "../lib/config";
 
 /**
- * Applies a conservative security-header baseline to every response.
- * The CSP allows YouTube's embed origin (video), Cloudflare Turnstile's
- * script/frame, and Google Identity Services' script/iframe (Sign in with
- * Google) — everything else is same-origin.
+ * Applies a conservative security-header baseline to every response the
+ * Worker itself handles — which, with wrangler.jsonc's run_worker_first
+ * scoped to ["/api/*"], is now only /api/* responses (JSON, mostly). The
+ * actual HTML/JS/CSS the browser loads bypasses the Worker entirely and is
+ * served straight from Cloudflare's asset layer, so THOSE responses get
+ * their security headers from src/client/public/_headers instead — this
+ * middleware never runs for them. Keep the two files in sync if the policy
+ * changes. The CSP allows YouTube's embed origin (video), Cloudflare
+ * Turnstile's script/frame, and Google Identity Services' script/iframe
+ * (Sign in with Google) — everything else is same-origin.
  */
 export async function securityHeaders(c: Context<{ Bindings: Env }>, next: Next) {
   await next();

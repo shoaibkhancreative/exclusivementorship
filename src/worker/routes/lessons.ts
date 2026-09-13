@@ -7,6 +7,7 @@ import { canAccessLesson, computeNextCurrentLesson, lessonState, lockReasonForLe
 import { listChapters, logAuditEvent, checkRateLimit } from "../db";
 import { RATE_LIMITS } from "../lib/config";
 import { isBunnyEmbedUrl, signBunnyEmbedUrl, VIDEO_TOKEN_TTL_SECONDS } from "../lib/bunny";
+import { getCached, CACHE_KEYS } from "../lib/cache";
 
 export const lessonRoutes = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
@@ -32,14 +33,26 @@ interface ProgressRow {
   video_completed: number;
 }
 
-/** Public outline — safe for logged-out visitors too. */
+/**
+ * Public outline — safe for logged-out visitors too, and by far the
+ * highest-traffic endpoint on the site (every homepage/dashboard load calls
+ * this). The lessons list, chapters, and free-lesson-count barely ever
+ * change (only when an admin edits the course), so that part is cached in
+ * KV for a short TTL — same cache-aside pattern as /config/public — instead
+ * of hitting D1 on every single anonymous page view. Per-user progress is
+ * never part of the cached payload; it's always read fresh below, per
+ * request, for whoever is actually logged in.
+ */
 lessonRoutes.get("/", async (c) => {
   const user = c.get("user");
-  const [lessons, chapters, freeLessonCount] = await Promise.all([
-    c.env.DB.prepare("SELECT * FROM lessons WHERE is_active = 1 ORDER BY sort_order ASC").all<LessonRow>(),
-    listChapters(c.env),
-    getFreeLessonCount(c.env)
-  ]);
+  const { lessons, chapters, freeLessonCount } = await getCached(c.env, CACHE_KEYS.lessonsOutline, async () => {
+    const [lessonsResult, chaptersResult, freeLessonCountResult] = await Promise.all([
+      c.env.DB.prepare("SELECT * FROM lessons WHERE is_active = 1 ORDER BY sort_order ASC").all<LessonRow>(),
+      listChapters(c.env),
+      getFreeLessonCount(c.env)
+    ]);
+    return { lessons: lessonsResult.results, chapters: chaptersResult, freeLessonCount: freeLessonCountResult };
+  });
 
   let progressByLessonId = new Map<number, ProgressRow>();
   if (user) {
@@ -54,7 +67,7 @@ lessonRoutes.get("/", async (c) => {
   const currentLesson = user?.current_lesson ?? 1;
   const courseStatus = user?.course_status ?? "free";
 
-  const outline = lessons.results.map((lesson) => {
+  const outline = lessons.map((lesson) => {
     const progress = progressByLessonId.get(lesson.id);
     const completed = Boolean(progress?.video_completed);
     const state = lessonState(lesson.lesson_number, completed, {

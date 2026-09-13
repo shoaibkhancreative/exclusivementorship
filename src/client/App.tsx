@@ -100,8 +100,10 @@ function StudentApp() {
               {/* There is no standalone "/unlock" page anymore — every
                   "Unlock Mentorship" / "Unlock Now" trigger anywhere in the
                   app (Dashboard CTA, locked-class prompt, ProfileMenu
-                  button) opens the checkout popup directly via
-                  useUnlockModal().openUnlockModal(). Old bookmarks/emails
+                  button) opens the same two-step UnlockModal directly via
+                  useUnlockModal().openUnlockModal(): step 1 is the calm
+                  offer recap (what the old /unlock page used to show),
+                  step 2 is the crypto checkout ticket. Old bookmarks/emails
                   pointing at /unlock still land somewhere useful instead of
                   404ing — redirect to the Dashboard, where the same
                   state-driven Unlock CTA lives (see pages/Learn.tsx). */}

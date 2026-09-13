@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, type VideoTokenResponse } from "../lib/api";
+import { useContent } from "../lib/useContent";
+import { RetryBadge } from "./IllustrationBadge";
 import { FullscreenStage } from "./FullscreenStage";
 import { VideoPlayer } from "./VideoPlayer";
 import { WatermarkOverlay } from "./WatermarkOverlay";
@@ -61,6 +63,7 @@ export function VideoStage({
   watermarkLabel,
   thumbnailUrl
 }: VideoStageProps) {
+  const { t } = useContent();
   const isBunny = isBunnyHost(rawEmbedUrl);
   // Every Bunny-hosted video needs a signed token — this is NOT tied to
   // payment gating (there used to be a `requiresToken` prop here that only
@@ -156,7 +159,10 @@ export function VideoStage({
         className="focus-ring group relative flex aspect-video w-full items-center justify-center overflow-hidden rounded-lg border border-base-800 bg-black bg-cover bg-center"
         style={thumbnailUrl ? { backgroundImage: `url(${thumbnailUrl})` } : undefined}
       >
-        <div className="absolute inset-0 bg-black/20 transition-colors duration-150 group-hover:bg-black/30" aria-hidden="true" />
+        {/* No dark wash over the thumbnail itself anymore — it stays fully
+            clear/undimmed. The play button on top is a solid filled circle,
+            so it reads fine on its own without a darkened backdrop; only its
+            own hover/active scale gives the click affordance now. */}
         <span className="relative flex h-10 w-10 flex-none items-center justify-center rounded-full bg-black/55 text-white shadow-md backdrop-blur-[1px] transition-transform duration-150 group-hover:scale-105 group-active:scale-95 sm:h-11 sm:w-11">
           <svg width="14" height="15" viewBox="0 0 20 22" fill="currentColor" aria-hidden="true" className="ml-0.5">
             <path d="M1 1.5v19l18-9.5-18-9.5Z" />
@@ -168,14 +174,15 @@ export function VideoStage({
 
   if (needsToken && tokenError) {
     return (
-      <div className="flex aspect-video flex-col items-center justify-center gap-3 rounded-lg border border-base-800 bg-base-900 text-sm text-zinc-400">
-        <p>This video can&apos;t be played right now.</p>
+      <div className="flex aspect-video flex-col items-center justify-center gap-1 rounded-lg border border-base-800 bg-base-900 px-6 text-center">
+        <RetryBadge size={56} />
+        <p className="mt-3 max-w-xs text-sm leading-snug text-zinc-400">{t("lesson.video_error")}</p>
         <button
           type="button"
           onClick={fetchToken}
-          className="focus-ring rounded-full border border-base-700 px-4 py-1.5 text-zinc-300 transition-colors hover:bg-base-800"
+          className="focus-ring mt-3 rounded-full border border-base-700 px-4 py-1.5 text-sm text-zinc-300 transition-colors hover:bg-base-800"
         >
-          Try again
+          {t("learn.retry_button")}
         </button>
       </div>
     );
@@ -185,7 +192,7 @@ export function VideoStage({
     return (
       <div className="flex aspect-video items-center justify-center rounded-lg border border-base-800 bg-black text-sm text-zinc-500">
         <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-base-700 border-t-accent-500" />
-        <span className="ml-2.5">Loading video…</span>
+        <span className="ml-2.5">{t("lesson.video_loading")}</span>
       </div>
     );
   }

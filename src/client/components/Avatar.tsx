@@ -16,13 +16,8 @@ export function Avatar({ label, premium = false, size = 36 }: AvatarProps) {
 
   return (
     <div
-      className="inline-flex shrink-0 items-center justify-center rounded-full"
-      style={{
-        width: size,
-        height: size,
-        padding: premium ? 2 : 0,
-        background: premium ? "#b8862e" : "transparent"
-      }}
+      className={`inline-flex shrink-0 items-center justify-center rounded-full ${premium ? "bg-highlight-500 p-0.5" : "bg-transparent p-0"}`}
+      style={{ width: size, height: size }}
     >
       <div
         className="flex h-full w-full items-center justify-center rounded-full bg-base-800 font-semibold text-zinc-200"

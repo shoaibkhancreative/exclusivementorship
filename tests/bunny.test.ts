@@ -1,5 +1,11 @@
-import { describe, expect, it, beforeEach } from "vitest";
-import { isBunnyEmbedUrl, parseBunnyEmbedUrl, signBunnyEmbedUrl, VIDEO_TOKEN_TTL_SECONDS } from "../src/worker/lib/bunny";
+import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
+import {
+  fetchBunnyThumbnailUrl,
+  isBunnyEmbedUrl,
+  parseBunnyEmbedUrl,
+  signBunnyEmbedUrl,
+  VIDEO_TOKEN_TTL_SECONDS
+} from "../src/worker/lib/bunny";
 import { sha256Hex } from "../src/worker/lib/crypto";
 import worker from "../src/worker/index";
 import { createTestEnv } from "./testEnv";
@@ -198,5 +204,86 @@ describe("Free Bunny-hosted lessons are accessible to logged-out visitors", () =
 
     expect([outlineRes.status, detailRes.status]).not.toContain(401);
     expect([outlineRes.status, detailRes.status]).not.toContain(403);
+  });
+});
+
+describe("fetchBunnyThumbnailUrl", () => {
+  let fetchSpy: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("builds the CDN thumbnail URL from Bunny's own reported filename (not a guessed one)", async () => {
+    const env = await createTestEnv({
+      BUNNY_PULL_ZONE_HOST: "vz-9d84e14b-539.b-cdn.net",
+      BUNNY_STREAM_API_KEY: "test-stream-api-key"
+    });
+    fetchSpy.mockResolvedValueOnce(
+      new Response(JSON.stringify({ thumbnailFileName: "thumbnail_062bc1d3.jpg" }), { status: 200 })
+    );
+
+    const url = await fetchBunnyThumbnailUrl(env, BUNNY_URL);
+
+    expect(url).toBe("https://vz-9d84e14b-539.b-cdn.net/abc-123-def/thumbnail_062bc1d3.jpg");
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "https://video.bunnycdn.com/library/747219/videos/abc-123-def",
+      expect.objectContaining({ headers: { AccessKey: "test-stream-api-key" } })
+    );
+  });
+
+  it("returns null for a non-Bunny embed URL without calling the API", async () => {
+    const env = await createTestEnv({
+      BUNNY_PULL_ZONE_HOST: "vz-9d84e14b-539.b-cdn.net",
+      BUNNY_STREAM_API_KEY: "test-stream-api-key"
+    });
+    expect(await fetchBunnyThumbnailUrl(env, YOUTUBE_URL)).toBeNull();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("returns null when BUNNY_PULL_ZONE_HOST isn't configured, without calling the API", async () => {
+    const env = await createTestEnv({ BUNNY_PULL_ZONE_HOST: undefined, BUNNY_STREAM_API_KEY: "test-stream-api-key" });
+    expect(await fetchBunnyThumbnailUrl(env, BUNNY_URL)).toBeNull();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("returns null when BUNNY_STREAM_API_KEY isn't configured, without calling the API", async () => {
+    const env = await createTestEnv({
+      BUNNY_PULL_ZONE_HOST: "vz-9d84e14b-539.b-cdn.net",
+      BUNNY_STREAM_API_KEY: undefined
+    });
+    expect(await fetchBunnyThumbnailUrl(env, BUNNY_URL)).toBeNull();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("returns null (never throws) when the Bunny API call fails", async () => {
+    const env = await createTestEnv({
+      BUNNY_PULL_ZONE_HOST: "vz-9d84e14b-539.b-cdn.net",
+      BUNNY_STREAM_API_KEY: "test-stream-api-key"
+    });
+    fetchSpy.mockResolvedValueOnce(new Response("not found", { status: 404 }));
+    expect(await fetchBunnyThumbnailUrl(env, BUNNY_URL)).toBeNull();
+  });
+
+  it("returns null when the video hasn't finished processing yet (no thumbnailFileName)", async () => {
+    const env = await createTestEnv({
+      BUNNY_PULL_ZONE_HOST: "vz-9d84e14b-539.b-cdn.net",
+      BUNNY_STREAM_API_KEY: "test-stream-api-key"
+    });
+    fetchSpy.mockResolvedValueOnce(new Response(JSON.stringify({ thumbnailFileName: null }), { status: 200 }));
+    expect(await fetchBunnyThumbnailUrl(env, BUNNY_URL)).toBeNull();
+  });
+
+  it("returns null (never throws) on a network error", async () => {
+    const env = await createTestEnv({
+      BUNNY_PULL_ZONE_HOST: "vz-9d84e14b-539.b-cdn.net",
+      BUNNY_STREAM_API_KEY: "test-stream-api-key"
+    });
+    fetchSpy.mockRejectedValueOnce(new Error("network down"));
+    expect(await fetchBunnyThumbnailUrl(env, BUNNY_URL)).toBeNull();
   });
 });

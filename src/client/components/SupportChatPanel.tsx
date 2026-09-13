@@ -27,6 +27,21 @@ function friendlyAttachmentError(err: unknown): string {
   return "Couldn't process that image. Please try another, or a screenshot instead.";
 }
 
+/** Same warm three-dot loader as UnlockModal's FriendlyLoader — kept local since that one isn't exported. */
+function FriendlyLoader() {
+  return (
+    <div className="flex items-center justify-center gap-1.5 py-4" role="status" aria-label="Loading">
+      {[0, 1, 2].map((i) => (
+        <span
+          key={i}
+          className="h-2 w-2 rounded-full bg-accent-500"
+          style={{ animation: "dot-bounce 1s ease-in-out infinite", animationDelay: `${i * 0.15}s` }}
+        />
+      ))}
+    </div>
+  );
+}
+
 interface Props {
   fullscreen: boolean;
   onToggleFullscreen: () => void;
@@ -231,8 +246,8 @@ export function SupportChatPanel({ fullscreen, onToggleFullscreen, onMinimize, o
   const composerBox = (onSend: () => void, placeholder: string) => (
     <div className="border-t border-base-700 bg-base-900 p-3">
       {pendingAttachment && (
-        <div className="mb-2 flex items-center gap-2 rounded-md border border-base-700 bg-base-950 p-1.5">
-          <img src={pendingAttachment.previewUrl} alt="Attachment preview" className="h-10 w-10 rounded object-cover" />
+        <div className="mb-2 flex items-center gap-2 rounded-xl border border-base-700 bg-base-950 p-1.5">
+          <img src={pendingAttachment.previewUrl} alt="Attachment preview" className="h-10 w-10 rounded-lg object-cover" />
           <span className="flex-1 truncate text-xs text-zinc-500">{pendingAttachment.filename}</span>
           <button
             type="button"
@@ -250,7 +265,7 @@ export function SupportChatPanel({ fullscreen, onToggleFullscreen, onMinimize, o
           type="button"
           onClick={() => fileInputRef.current?.click()}
           disabled={compressing || sending}
-          className="focus-ring flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-base-700 text-zinc-500 transition-colors hover:border-base-600 hover:text-zinc-300 disabled:opacity-40"
+          className="focus-ring flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-base-700 text-zinc-500 transition-colors hover:border-base-600 hover:bg-base-800/60 hover:text-zinc-300 disabled:opacity-40"
           aria-label="Attach an image"
           title="Attach an image"
         >
@@ -280,7 +295,7 @@ export function SupportChatPanel({ fullscreen, onToggleFullscreen, onMinimize, o
           }}
           placeholder={placeholder}
           rows={1}
-          className="focus-ring max-h-24 flex-1 resize-none rounded-md border border-base-700 bg-base-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500"
+          className="focus-ring max-h-24 flex-1 resize-none rounded-xl border border-base-700 bg-base-950 px-3.5 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-500"
         />
         <Button
           onClick={onSend}
@@ -296,10 +311,15 @@ export function SupportChatPanel({ fullscreen, onToggleFullscreen, onMinimize, o
   return (
     <div
       style={{ transformOrigin: "bottom right" }}
-      className={`animate-scale-in fixed z-[100] flex flex-col overflow-hidden border border-base-700 bg-base-900 shadow-2xl ${
+      // Mobile opens like the site's other bottom sheets (animate-slide-up,
+      // e.g. UnlockModal/SequenceLockModal); at sm+ it becomes an anchored
+      // popover growing from its corner (animate-scale-in, same as
+      // ProfileMenu). The shadow is the same warm/muted cream-tinted one
+      // ProfileMenu uses for its popover, not a generic black shadow-2xl.
+      className={`animate-slide-up sm:animate-scale-in fixed z-[100] flex flex-col overflow-hidden border border-base-700 bg-base-900 shadow-2xl shadow-base-800/40 ${
         fullscreen
           ? "inset-0 rounded-none"
-          : "inset-x-3 bottom-3 top-16 rounded-2xl sm:inset-x-auto sm:top-auto sm:bottom-24 sm:right-6 sm:h-[560px] sm:w-[380px] sm:rounded-xl"
+          : "inset-x-3 bottom-3 top-16 rounded-t-[28px] rounded-b-[28px] sm:inset-x-auto sm:top-auto sm:bottom-24 sm:right-6 sm:h-[min(560px,calc(100vh-7rem))] sm:w-[min(392px,calc(100vw-2.5rem))] sm:rounded-[28px]"
       }`}
       role="dialog"
       aria-label="Support chat"
@@ -310,7 +330,7 @@ export function SupportChatPanel({ fullscreen, onToggleFullscreen, onMinimize, o
           <button
             type="button"
             onClick={() => setView("list")}
-            className="focus-ring -ml-1 flex h-7 w-7 items-center justify-center rounded-md text-zinc-500 hover:text-zinc-200"
+            className="focus-ring flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-base-800/80 hover:text-zinc-200"
             aria-label="Back to tickets"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -318,7 +338,7 @@ export function SupportChatPanel({ fullscreen, onToggleFullscreen, onMinimize, o
             </svg>
           </button>
         ) : (
-          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-accent-500 text-[11px] font-bold text-base-950">EM</span>
+          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-accent-500 text-[11px] font-bold text-base-950">EM</span>
         )}
         <div className="min-w-0 flex-1">
           <div className="truncate text-[13.5px] font-medium text-zinc-100">
@@ -331,7 +351,7 @@ export function SupportChatPanel({ fullscreen, onToggleFullscreen, onMinimize, o
             type="button"
             onClick={closeConversation}
             disabled={closing}
-            className="focus-ring flex h-7 items-center gap-1 rounded-md px-2 text-[11px] text-zinc-500 hover:text-accent-300 disabled:opacity-50"
+            className="focus-ring flex h-8 items-center gap-1 rounded-full px-2.5 text-[11px] text-zinc-500 transition-colors hover:bg-base-800/80 hover:text-accent-300 disabled:opacity-50"
             title={t("support.close_button")}
           >
             {t("support.close_button")}
@@ -340,7 +360,7 @@ export function SupportChatPanel({ fullscreen, onToggleFullscreen, onMinimize, o
         <button
           type="button"
           onClick={onToggleFullscreen}
-          className="focus-ring flex h-7 w-7 items-center justify-center rounded-md text-zinc-500 hover:text-zinc-200"
+          className="focus-ring flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-base-800/80 hover:text-zinc-200"
           aria-label={fullscreen ? "Exit fullscreen" : "Expand to fullscreen"}
           title={fullscreen ? "Exit fullscreen" : "Fullscreen"}
         >
@@ -367,7 +387,7 @@ export function SupportChatPanel({ fullscreen, onToggleFullscreen, onMinimize, o
         <button
           type="button"
           onClick={onMinimize}
-          className="focus-ring flex h-7 w-7 items-center justify-center rounded-md text-zinc-500 hover:text-zinc-200"
+          className="focus-ring flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-base-800/80 hover:text-zinc-200"
           aria-label="Minimize"
           title="Minimize"
         >
@@ -380,7 +400,7 @@ export function SupportChatPanel({ fullscreen, onToggleFullscreen, onMinimize, o
         <div className="flex flex-1 flex-col overflow-hidden">
           <div className="flex-1 overflow-y-auto">
             {tickets === null ? (
-              <div className="p-4 text-center text-sm text-zinc-500">Loading…</div>
+              <FriendlyLoader />
             ) : tickets.length === 0 ? (
               <div className="p-6 text-center text-sm text-zinc-500">{t("support.empty_state")}</div>
             ) : (
@@ -445,7 +465,7 @@ export function SupportChatPanel({ fullscreen, onToggleFullscreen, onMinimize, o
                   value={guestEmail}
                   onChange={(e) => setGuestEmail(e.target.value)}
                   placeholder="you@example.com"
-                  className="focus-ring w-full rounded-md border border-base-700 bg-base-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500"
+                  className="focus-ring w-full rounded-xl border border-base-700 bg-base-950 px-3.5 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-500"
                 />
                 <p className="mt-1 text-[11px] text-zinc-500">{t("support.email_prompt_note")}</p>
               </div>
@@ -460,13 +480,15 @@ export function SupportChatPanel({ fullscreen, onToggleFullscreen, onMinimize, o
         <div className="flex flex-1 flex-col overflow-hidden">
           <div className="flex-1 space-y-3 overflow-y-auto p-3.5">
             {messages === null ? (
-              <div className="text-center text-sm text-zinc-500">Loading…</div>
+              <FriendlyLoader />
             ) : (
               messages.map((m) => (
                 <div key={m.id} className={`flex ${m.senderType === "user" ? "justify-end" : "justify-start"}`}>
                   <div
-                    className={`max-w-[80%] rounded-lg px-3 py-2 text-[13px] ${
-                      m.senderType === "user" ? "bg-accent-500 text-base-950" : "border border-base-700 bg-base-950 text-zinc-100"
+                    className={`max-w-[80%] rounded-2xl px-3.5 py-2.5 text-[13px] ${
+                      m.senderType === "user"
+                        ? "rounded-br-md bg-accent-500 text-base-950"
+                        : "rounded-bl-md border border-base-700 bg-base-950 text-zinc-100"
                     } ${m.id.startsWith("temp-") ? "opacity-60" : ""}`}
                   >
                     {m.body && <p className="whitespace-pre-wrap break-words">{m.body}</p>}

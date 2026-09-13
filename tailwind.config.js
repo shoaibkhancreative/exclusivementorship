@@ -49,6 +49,25 @@ export default {
       fontSize: {
         display: ["clamp(2.25rem, 1.85rem + 1.8vw, 3.25rem)", { lineHeight: "1.08", letterSpacing: "-0.02em" }]
       },
+      keyframes: {
+        // Subtle "alive" breathing loop for hero illustrations — kept small
+        // (2% scale) so it reads as warmth, not a distracting wobble.
+        "gentle-breathe": {
+          "0%, 100%": { transform: "scale(1)" },
+          "50%": { transform: "scale(1.045)" }
+        },
+        // One-shot soft pop for the payment-confirmed badge.
+        "gentle-pop": {
+          "0%": { transform: "scale(0.85)", opacity: "0" },
+          "60%": { transform: "scale(1.06)", opacity: "1" },
+          "100%": { transform: "scale(1)", opacity: "1" }
+        },
+        // Friendly three-dot loader, used instead of a technical spinner ring.
+        "dot-bounce": {
+          "0%, 80%, 100%": { transform: "translateY(0)", opacity: "0.5" },
+          "40%": { transform: "translateY(-6px)", opacity: "1" }
+        }
+      },
     }
   },
   plugins: []

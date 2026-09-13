@@ -23,6 +23,7 @@ export async function createTestEnv(overrides: Partial<Env> = {}): Promise<Env> 
     SESSION_SECRET: "test-session-secret-not-for-production",
     NOWPAYMENTS_IPN_SECRET: "test-ipn-secret",
     BUNNY_TOKEN_AUTH_KEY: "test-bunny-token-key",
+    BUNNY_PULL_ZONE_HOST: "vz-test12345-de6.b-cdn.net",
     // RESEND_API_KEY, NOWPAYMENTS_API_KEY, and TURNSTILE_SECRET_KEY are
     // intentionally left unset: each service module has an explicit "not
     // configured" dev-mode fallback (see services/email.ts,
