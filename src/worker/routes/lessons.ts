@@ -3,7 +3,13 @@ import type { Env } from "../lib/config";
 import { getFreeLessonCount } from "../lib/config";
 import type { AppVariables } from "../middleware/session";
 import { requireAuth } from "../middleware/session";
-import { canAccessLesson, computeNextCurrentLesson, lessonState, lockReasonForLesson, shouldShowPremiumGate } from "../lib/course";
+import {
+  canAccessLesson,
+  computeNextCurrentLesson,
+  lessonState,
+  lockReasonForLesson,
+  shouldShowPremiumGate
+} from "../lib/course";
 import { listChapters, logAuditEvent, checkRateLimit } from "../db";
 import { RATE_LIMITS } from "../lib/config";
 import { isBunnyEmbedUrl, signBunnyEmbedUrl, VIDEO_TOKEN_TTL_SECONDS } from "../lib/bunny";
@@ -24,7 +30,6 @@ interface LessonRow {
   is_active: number;
   sort_order: number;
   watermark_enabled: number;
-  /** Admin-entered display label like "12:45" — see migration 0018. Never auto-detected. */
   duration_label: string | null;
 }
 
@@ -33,16 +38,6 @@ interface ProgressRow {
   video_completed: number;
 }
 
-/**
- * Public outline — safe for logged-out visitors too, and by far the
- * highest-traffic endpoint on the site (every homepage/dashboard load calls
- * this). The lessons list, chapters, and free-lesson-count barely ever
- * change (only when an admin edits the course), so that part is cached in
- * KV for a short TTL — same cache-aside pattern as /config/public — instead
- * of hitting D1 on every single anonymous page view. Per-user progress is
- * never part of the cached payload; it's always read fresh below, per
- * request, for whoever is actually logged in.
- */
 lessonRoutes.get("/", async (c) => {
   const user = c.get("user");
   const { lessons, chapters, freeLessonCount } = await getCached(c.env, CACHE_KEYS.lessonsOutline, async () => {
@@ -56,9 +51,7 @@ lessonRoutes.get("/", async (c) => {
 
   let progressByLessonId = new Map<number, ProgressRow>();
   if (user) {
-    const progress = await c.env.DB.prepare(
-      "SELECT lesson_id, video_completed FROM lesson_progress WHERE user_id = ?"
-    )
+    const progress = await c.env.DB.prepare("SELECT lesson_id, video_completed FROM lesson_progress WHERE user_id = ?")
       .bind(user.id)
       .all<ProgressRow>();
     progressByLessonId = new Map(progress.results.map((p) => [p.lesson_id, p]));
@@ -93,20 +86,22 @@ lessonRoutes.get("/", async (c) => {
     currentLesson,
     courseStatus,
     freeLessonCount,
-    semesters: chapters.map((ch) => ({ number: ch.sort_order, chapterName: ch.name, name: ch.name, tagline: ch.tagline ?? "" }))
+    semesters: chapters.map((ch) => ({
+      number: ch.sort_order,
+      chapterName: ch.name,
+      name: ch.name,
+      tagline: ch.tagline ?? ""
+    }))
   });
 });
 
-/** Single lesson detail — server enforces access, never trusts the client. */
 lessonRoutes.get("/:number", async (c) => {
   const lessonNumber = Number(c.req.param("number"));
   if (!Number.isInteger(lessonNumber) || lessonNumber < 1) {
     return c.json({ error: "not_found" }, 404);
   }
 
-  const lesson = await c.env.DB.prepare(
-    "SELECT * FROM lessons WHERE lesson_number = ? AND is_active = 1"
-  )
+  const lesson = await c.env.DB.prepare("SELECT * FROM lessons WHERE lesson_number = ? AND is_active = 1")
     .bind(lessonNumber)
     .first<LessonRow>();
 
@@ -119,15 +114,6 @@ lessonRoutes.get("/:number", async (c) => {
 
   const lockReason = lockReasonForLesson({ lessonNumber, currentLesson, courseStatus, freeLessonCount });
 
-  // Every lesson's page is openable — including ones the learner can't
-  // watch yet — so the outline can link straight to it, with the class's
-  // thumbnail and title visible and a locked overlay explaining why (finish
-  // the previous class, or unlock the mentorship). No real video content
-  // (embedUrl, signed token) or lesson description is ever included here
-  // when locked — those still require canAccessLesson to pass, re-checked
-  // independently by /video-token and /complete-video below. Nothing here
-  // is more than what the public outline (GET /) already exposes for every
-  // lesson regardless of lock state.
   if (lockReason) {
     return c.json({
       lessonNumber: lesson.lesson_number,
@@ -172,20 +158,6 @@ lessonRoutes.get("/:number", async (c) => {
   });
 });
 
-/**
- * Issues a short-lived, signed Bunny Stream embed URL for `lessonNumber`.
- *
- * The client sends a lesson number, never a raw Bunny video ID — so there
- * is nothing here for a caller to probe for someone else's video ID. This
- * route re-runs the exact same `canAccessLesson` check as GET /:number
- * independently (it does not trust that the client already saw the video
- * through that route), so a signed link can never be minted for a lesson
- * the requesting user isn't actually allowed to watch. Rate-limited per
- * user on top of that as defense in depth. The security key itself never
- * enters the response, is never logged, and — on any signing failure — the
- * client gets a generic "video_unavailable" error rather than a hint about
- * what went wrong.
- */
 lessonRoutes.post("/:number/video-token", requireAuth, async (c) => {
   const lessonNumber = Number(c.req.param("number"));
   if (!Number.isInteger(lessonNumber) || lessonNumber < 1) {
@@ -194,12 +166,7 @@ lessonRoutes.post("/:number/video-token", requireAuth, async (c) => {
 
   const user = c.get("user")!;
 
-  const rate = await checkRateLimit(
-    c.env,
-    `video_token:user:${user.id}`,
-    RATE_LIMITS.videoTokenPerUserPerHour,
-    3600
-  );
+  const rate = await checkRateLimit(c.env, `video_token:user:${user.id}`, RATE_LIMITS.videoTokenPerUserPerHour, 3600);
   if (!rate.allowed) {
     return c.json({ error: "rate_limited", message: "Too many requests. Please try again shortly." }, 429);
   }
@@ -221,10 +188,6 @@ lessonRoutes.post("/:number/video-token", requireAuth, async (c) => {
   if (!allowed) return c.json({ error: "locked", message: "This lesson isn't unlocked yet." }, 403);
 
   if (!lesson.video_embed_url || !isBunnyEmbedUrl(lesson.video_embed_url)) {
-    // Not every lesson is Bunny-hosted (some use YouTube) — the frontend
-    // should only call this endpoint for lessons whose embedUrl is a Bunny
-    // URL, so reaching this branch means something upstream is confused,
-    // not a security issue.
     return c.json({ error: "not_bunny_video", message: "This lesson doesn't use a signed video." }, 400);
   }
 
@@ -240,17 +203,6 @@ lessonRoutes.post("/:number/video-token", requireAuth, async (c) => {
   return c.json({ embedUrl: signedEmbedUrl, expiresInSeconds: VIDEO_TOKEN_TTL_SECONDS });
 });
 
-/**
- * Marks the video for `lessonNumber` as watched to the end, and — this is
- * the entire "must finish this video before moving on" mechanism — is the
- * ONLY thing that advances `users.current_lesson`. The client only calls
- * this once its player actually reports the video ended (YouTube's IFrame
- * API "ended" state, or Bunny.net's player.js "ended" event — see
- * Lesson.tsx), never on page load. As with every other lesson route, the
- * server still re-checks `canAccessLesson` itself — a client that calls
- * this out of turn cannot unlock anything it wasn't already allowed to
- * reach.
- */
 lessonRoutes.post("/:number/complete-video", requireAuth, async (c) => {
   const lessonNumber = Number(c.req.param("number"));
   const user = c.get("user")!;

@@ -8,9 +8,6 @@ import type { Env } from "../src/worker/lib/config";
 async function call(env: Env, path: string, init: RequestInit & { cookie?: string } = {}) {
   const headers = new Headers(init.headers);
   if (init.cookie) headers.set("cookie", init.cookie);
-  // FormData bodies must NOT get a manual content-type — Request sets its
-  // own multipart/form-data boundary automatically, and overriding it here
-  // would break form parsing on the receiving end.
   if (init.body && !(init.body instanceof FormData) && !headers.has("content-type")) {
     headers.set("content-type", "application/json");
   }
@@ -20,7 +17,7 @@ async function call(env: Env, path: string, init: RequestInit & { cookie?: strin
 
 function extractCookie(res: Response): string {
   const setCookie = res.headers.get("set-cookie") ?? "";
-  return setCookie.split(";")[0]; // "em_session=..."
+  return setCookie.split(";")[0];
 }
 
 async function loginNewUser(env: Env, email: string) {
@@ -69,8 +66,6 @@ describe("Lesson access rules (HTTP)", () => {
     const { user, cookie } = await loginNewUser(env, "nina@example.com");
     await call(env, "/api/lessons/1/complete-video", { method: "POST", cookie, body: "{}" });
     await call(env, "/api/lessons/2/complete-video", { method: "POST", cookie, body: "{}" });
-    // Re-complete lesson 1 (e.g. the learner re-watched it) — must not undo
-    // the fact that they've already reached lesson 3.
     await call(env, "/api/lessons/1/complete-video", { method: "POST", cookie, body: "{}" });
 
     const updated = await env.DB.prepare("SELECT current_lesson FROM users WHERE id = ?").bind(user.id).first<{
@@ -82,7 +77,6 @@ describe("Lesson access rules (HTTP)", () => {
   it("lesson 6, once sequentially reached without payment, is a navigable but locked preview (not a 403)", async () => {
     const { cookie } = await loginNewUser(env, "dave@example.com");
 
-    // Walk through lessons 1-5 to reach the premium boundary.
     let lastGate = false;
     for (let n = 1; n <= 5; n++) {
       const complete = await call(env, `/api/lessons/${n}/complete-video`, { method: "POST", cookie, body: "{}" });
@@ -116,7 +110,6 @@ describe("Lesson access rules (HTTP)", () => {
       await call(env, `/api/lessons/${n}/complete-video`, { method: "POST", cookie, body: "{}" });
     }
 
-    // Simulate a confirmed payment the way the webhook handler would.
     await env.DB.prepare("UPDATE users SET course_status = 'paid' WHERE id = ?").bind(user.id).run();
 
     const res = await call(env, "/api/lessons/6", { cookie });
@@ -131,12 +124,8 @@ describe("Lesson access rules (HTTP)", () => {
       await call(env, `/api/lessons/${n}/complete-video`, { method: "POST", cookie, body: "{}" });
     }
     await env.DB.prepare("UPDATE users SET course_status = 'paid' WHERE id = ?").bind(user.id).run();
-    // Lesson 8 is seeded as inactive placeholder content — activate it for
-    // this test so the sequence-lock check is exercised against a real row.
     await env.DB.prepare("UPDATE lessons SET is_active = 1 WHERE lesson_number = 8").run();
 
-    // Still on lesson 6 (current_lesson) — lesson 8 hasn't been reached yet
-    // even though the account is paid.
     const res = await call(env, "/api/lessons/8", { cookie });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { isLocked: boolean; lockReason: string | null };
@@ -146,7 +135,6 @@ describe("Lesson access rules (HTTP)", () => {
 
   it("a locked class can't be completed early to skip ahead", async () => {
     const { cookie } = await loginNewUser(env, "grace2@example.com");
-    // Never watched lesson 1 — trying to complete lesson 2 directly must fail.
     const res = await call(env, "/api/lessons/2/complete-video", { method: "POST", cookie, body: "{}" });
     expect(res.status).toBe(403);
   });
@@ -167,8 +155,6 @@ describe("Admin-editable free-lesson-count changes access immediately (HTTP)", (
     const { cookie } = await loginNewUser(env, "yara@example.com");
     await env.DB.prepare("INSERT INTO site_settings (key, value) VALUES ('free_lesson_count', '2')").run();
 
-    // current_lesson is 1 by default, so lesson 3 is out of sequence too —
-    // advance them there first via the normal video-completion path.
     await call(env, "/api/lessons/1/complete-video", { method: "POST", cookie, body: "{}" });
     await call(env, "/api/lessons/2/complete-video", { method: "POST", cookie, body: "{}" });
 
@@ -211,18 +197,16 @@ describe("Session lifecycle (HTTP)", () => {
   });
 
   it("enforces a single active session per account over HTTP: a second login logs the first device out", async () => {
-    // Same account logging in from a "first device" and then a "second
-    // device" (createSession is called for the same user twice, exactly
-    // what happens on two independent OTP/Google logins).
     const { user, cookie: firstDeviceCookie } = await loginNewUser(env, "ivan@example.com");
-    expect((await call(env, "/api/auth/me", { cookie: firstDeviceCookie }).then((r) => r.json())) as {
-      authenticated: boolean;
-    }).toMatchObject({ authenticated: true });
+    expect(
+      (await call(env, "/api/auth/me", { cookie: firstDeviceCookie }).then((r) => r.json())) as {
+        authenticated: boolean;
+      }
+    ).toMatchObject({ authenticated: true });
 
     const secondToken = await createSession(env, user.id);
     const secondDeviceCookie = `em_session=${secondToken}`;
 
-    // The first device's cookie no longer authenticates anything...
     const firstAfter = await call(env, "/api/auth/me", { cookie: firstDeviceCookie });
     const firstAfterBody = (await firstAfter.json()) as { authenticated: boolean };
     expect(firstAfterBody.authenticated).toBe(false);
@@ -233,7 +217,6 @@ describe("Session lifecycle (HTTP)", () => {
     });
     expect(firstProtected.status).toBe(401);
 
-    // ...while the second device is still fully authenticated.
     const secondAfter = await call(env, "/api/auth/me", { cookie: secondDeviceCookie });
     const secondAfterBody = (await secondAfter.json()) as { authenticated: boolean };
     expect(secondAfterBody.authenticated).toBe(true);
@@ -245,7 +228,7 @@ describe("OTP request/verify over HTTP (dev-mode email fallback)", () => {
   let logSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(async () => {
-    env = await createTestEnv(); // no RESEND_API_KEY -> email service logs the code instead of sending
+    env = await createTestEnv();
     logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
   });
   afterEach(() => {
@@ -298,14 +281,6 @@ describe("Payment order creation + NOWPayments webhook (HTTP)", () => {
   });
 
   it("reopening checkout (reusing an existing order) never consumes rate-limit quota", async () => {
-    // Regression test: /create-order used to run the per-user rate check
-    // BEFORE checking for a reusable existing order, so merely reopening the
-    // checkout popup several times (e.g. closing and re-opening the modal)
-    // would silently burn through the 5-per-hour quota with no new payment
-    // ever being created, eventually surfacing "Please wait before creating
-    // another payment attempt." to a user who never actually created 5
-    // payments. Reuse must be free — only real NOWPayments order creation
-    // should count against the limit.
     const { cookie } = await loginNewUser(env, "olive@example.com");
 
     fetchSpy.mockResolvedValueOnce(
@@ -325,9 +300,6 @@ describe("Payment order creation + NOWPayments webhook (HTTP)", () => {
     expect(first.status).toBe(200);
     const { orderId } = (await first.json()) as { orderId: string };
 
-    // Reopen the checkout far more than the 5/hour limit would allow if it
-    // were (incorrectly) charged against reuse. Only the first call above
-    // should ever have hit the NOWPayments API (fetchSpy is mocked once).
     for (let i = 0; i < 10; i++) {
       const res = await call(env, "/api/payments/create-order", { method: "POST", cookie, body: "{}" });
       expect(res.status).toBe(200);
@@ -337,14 +309,9 @@ describe("Payment order creation + NOWPayments webhook (HTTP)", () => {
   });
 
   it("does NOT reuse a still-'waiting' order once its expires_at has passed, and generates a fresh one instead", async () => {
-    // NOWPayments doesn't reliably send an IPN purely for a timeout, so a
-    // stale order can be stuck 'waiting' in our DB long after NOWPayments
-    // stopped watching that address. This is what powers the client's
-    // "Generate New Address" button: calling create-order again after the
-    // window passes must return a brand-new address, not the dead one.
     const { cookie } = await loginNewUser(env, "nadia@example.com");
 
-    const pastExpiry = new Date(Date.now() - 60_000).toISOString(); // 1 min ago
+    const pastExpiry = new Date(Date.now() - 60_000).toISOString();
     fetchSpy.mockResolvedValueOnce(
       new Response(
         JSON.stringify({
@@ -404,7 +371,6 @@ describe("Payment order creation + NOWPayments webhook (HTTP)", () => {
       )
     );
 
-    // Attempting to smuggle a custom amount — the route accepts no body fields for amount at all.
     const res = await call(env, "/api/payments/create-order", {
       method: "POST",
       cookie,
@@ -414,7 +380,7 @@ describe("Payment order creation + NOWPayments webhook (HTTP)", () => {
 
     const [, requestInit] = fetchSpy.mock.calls[0] as [string, RequestInit];
     const sentBody = JSON.parse(requestInit.body as string);
-    expect(sentBody.price_amount).toBe(39); // server-side ENROLLMENT_PRICE_USDT, not the client's "1"
+    expect(sentBody.price_amount).toBe(39);
   });
 
   it("processes a validly signed webhook and marks the user paid", async () => {
@@ -532,8 +498,6 @@ describe("Payment order creation + NOWPayments webhook (HTTP)", () => {
     const { orderId } = (await createRes.json()) as { orderId: string };
 
     const { createHmac } = await import("node:crypto");
-    // Buyer sent 37.2 instead of 39 — a 1.8 USDT shortfall, within the
-    // default 2 USDT tolerance — so this should still unlock access.
     const payload = {
       actually_paid: 37.2,
       order_id: orderId,
@@ -583,8 +547,6 @@ describe("Payment order creation + NOWPayments webhook (HTTP)", () => {
     const { orderId } = (await createRes.json()) as { orderId: string };
 
     const { createHmac } = await import("node:crypto");
-    // 10 USDT short — well beyond tolerance, so this stays unpaid for
-    // manual review rather than being silently unlocked.
     const payload = {
       actually_paid: 29,
       order_id: orderId,

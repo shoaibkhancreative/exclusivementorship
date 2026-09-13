@@ -1,25 +1,20 @@
-/** @type {import('tailwindcss').Config} */
 export default {
   content: ["./src/client/**/*.{ts,tsx,html}"],
   theme: {
     extend: {
       colors: {
-        // Surfaces & borders — warm cream scale built from the brand background (#f8efce)
         base: {
-          950: "#f8efce", // page background (brand)
-          900: "#fdf8e9", // elevated card / panel background
-          800: "#f0e3b8", // hover surface, dividers, avatar bg
-          700: "#e4d39c", // default border
-          600: "#cdb877"  // hover / emphasis border
+          950: "#f8efce",
+          900: "#fdf8e9",
+          800: "#f0e3b8",
+          700: "#e4d39c",
+          600: "#cdb877"
         },
-        // Primary brand accent — warm red (#e63946)
         accent: {
-          500: "#e63946", // fills, buttons, icons (brand)
-          400: "#ef4f5b", // hover state
-          300: "#b71c2c"  // text on light accent-tinted chips
+          500: "#e63946",
+          400: "#ef4f5b",
+          300: "#b71c2c"
         },
-        // Warm neutral text scale tuned for the cream background,
-        // anchored on the brand text color (#252525)
         zinc: {
           50: "#1c1b17",
           100: "#252525",
@@ -32,7 +27,6 @@ export default {
           800: "#dcd3b4",
           900: "#ede4c4"
         },
-        // Secondary brand accent — muted bronze/gold for focus states & subtle highlights
         highlight: {
           500: "#b8862e",
           400: "#c99a49"
@@ -42,32 +36,24 @@ export default {
         sans: ["Plus Jakarta Sans", "Inter", "ui-sans-serif", "system-ui", "sans-serif"],
         serif: ["Fraunces", "ui-serif", "Georgia", "serif"]
       },
-      // A couple of named display sizes on top of Tailwind's default scale —
-      // fluid-ish via clamp so the hero headline doesn't just jump between
-      // two fixed breakpoints, and carries its own tracking/leading so
-      // callers don't have to remember the pairing every time.
       fontSize: {
         display: ["clamp(2.25rem, 1.85rem + 1.8vw, 3.25rem)", { lineHeight: "1.08", letterSpacing: "-0.02em" }]
       },
       keyframes: {
-        // Subtle "alive" breathing loop for hero illustrations — kept small
-        // (2% scale) so it reads as warmth, not a distracting wobble.
         "gentle-breathe": {
           "0%, 100%": { transform: "scale(1)" },
           "50%": { transform: "scale(1.045)" }
         },
-        // One-shot soft pop for the payment-confirmed badge.
         "gentle-pop": {
           "0%": { transform: "scale(0.85)", opacity: "0" },
           "60%": { transform: "scale(1.06)", opacity: "1" },
           "100%": { transform: "scale(1)", opacity: "1" }
         },
-        // Friendly three-dot loader, used instead of a technical spinner ring.
         "dot-bounce": {
           "0%, 80%, 100%": { transform: "translateY(0)", opacity: "0.5" },
           "40%": { transform: "translateY(-6px)", opacity: "1" }
         }
-      },
+      }
     }
   },
   plugins: []

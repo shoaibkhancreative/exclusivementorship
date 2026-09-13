@@ -17,9 +17,8 @@ async function call(env: Env, path: string, init: RequestInit & { cookie?: strin
 }
 
 function extractCookie(res: Response, name: string): string | null {
-  // Test envs only ever set one Set-Cookie header per response here, so
-  // getSetCookie() (when available) or a single header read both work.
-  const all = typeof res.headers.getSetCookie === "function" ? res.headers.getSetCookie() : [res.headers.get("set-cookie") ?? ""];
+  const all =
+    typeof res.headers.getSetCookie === "function" ? res.headers.getSetCookie() : [res.headers.get("set-cookie") ?? ""];
   const match = all.find((c) => c.startsWith(`${name}=`));
   if (!match) return null;
   return match.split(";")[0];
@@ -47,7 +46,6 @@ async function loginAdmin(env: Env, email: string, password: string): Promise<st
   return cookie;
 }
 
-/** A tiny (well under the 1.5MB cap) valid base64 PNG data URL, for attachment happy-path tests. */
 const TINY_PNG_DATA_URL =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
 
@@ -68,7 +66,6 @@ describe("Support inbox (HTTP)", () => {
     expect(first.status).toBe(201);
     const { ticket: firstTicket } = await first.json<{ ticket: { id: string } }>();
 
-    // A second ticket while the first is still open/visible is rejected.
     const blocked = await call(env, "/api/support/tickets", {
       method: "POST",
       cookie,
@@ -78,7 +75,6 @@ describe("Support inbox (HTTP)", () => {
     const blockedBody = await blocked.json<{ error: string }>();
     expect(blockedBody.error).toBe("ticket_already_open");
 
-    // But replying into the existing ticket is always fine.
     const reply = await call(env, `/api/support/tickets/${firstTicket.id}/messages`, {
       method: "POST",
       cookie,
@@ -86,7 +82,6 @@ describe("Support inbox (HTTP)", () => {
     });
     expect(reply.status).toBe(201);
 
-    // Closing it frees the identity up to open a new one.
     const close = await call(env, `/api/support/tickets/${firstTicket.id}/close`, { method: "POST", cookie });
     expect(close.status).toBe(200);
 
@@ -97,19 +92,21 @@ describe("Support inbox (HTTP)", () => {
     });
     expect(second.status).toBe(201);
 
-    // The closed ticket no longer shows up in the learner's own list...
     const list = await call(env, "/api/support/tickets", { cookie });
     const listBody = await list.json<{ tickets: { id: string }[] }>();
     expect(listBody.tickets.some((t) => t.id === firstTicket.id)).toBe(false);
 
-    // ...nor is it reachable by id anymore, even though it's still theirs.
     const closedRead = await call(env, `/api/support/tickets/${firstTicket.id}/messages`, { cookie });
     expect(closedRead.status).toBe(404);
   });
 
   it("lets an admin unhide a learner-closed ticket, putting it back in their list", async () => {
     const { cookie } = await loginNewUser(env, "learner2b@example.com");
-    const create = await call(env, "/api/support/tickets", { method: "POST", cookie, body: JSON.stringify({ body: "Hi" }) });
+    const create = await call(env, "/api/support/tickets", {
+      method: "POST",
+      cookie,
+      body: JSON.stringify({ body: "Hi" })
+    });
     const { ticket } = await create.json<{ ticket: { id: string } }>();
 
     await call(env, `/api/support/tickets/${ticket.id}/close`, { method: "POST", cookie });
@@ -117,13 +114,15 @@ describe("Support inbox (HTTP)", () => {
     expect((await list.json<{ tickets: { id: string }[] }>()).tickets.some((t) => t.id === ticket.id)).toBe(false);
 
     const adminCookie = await loginAdmin(env, "admin-unhide@example.com", "correct-horse-battery");
-    // Admin can still see it despite the learner having hidden it.
     const adminList = await call(env, "/api/admin/support/tickets", { cookie: adminCookie });
     const adminListBody = await adminList.json<{ tickets: { id: string; hiddenByUser: boolean }[] }>();
     const seen = adminListBody.tickets.find((t) => t.id === ticket.id);
     expect(seen?.hiddenByUser).toBe(true);
 
-    const unhide = await call(env, `/api/admin/support/tickets/${ticket.id}/unhide`, { method: "POST", cookie: adminCookie });
+    const unhide = await call(env, `/api/admin/support/tickets/${ticket.id}/unhide`, {
+      method: "POST",
+      cookie: adminCookie
+    });
     expect(unhide.status).toBe(200);
 
     list = await call(env, "/api/support/tickets", { cookie });
@@ -182,9 +181,6 @@ describe("Support inbox (HTTP)", () => {
     expect(ok.status).toBe(201);
     const { ticket } = await ok.json<{ ticket: { id: string } }>();
 
-    // Build an oversized (>1.5MB decoded) base64 PNG-mime data URL, sent as
-    // a follow-up message into the same ticket (a 2nd *ticket* would hit the
-    // one-active-ticket rule first and never reach the size check).
     const oversizedBinary = "A".repeat(2 * 1024 * 1024);
     const oversizedBase64 = Buffer.from(oversizedBinary).toString("base64");
     const tooBig = await call(env, `/api/support/tickets/${ticket.id}/messages`, {
@@ -202,7 +198,11 @@ describe("Support inbox (HTTP)", () => {
 
   it("lets admin delete a message from either sender; learners have no delete route at all", async () => {
     const { cookie } = await loginNewUser(env, "learner5@example.com");
-    const create = await call(env, "/api/support/tickets", { method: "POST", cookie, body: JSON.stringify({ body: "Hi" }) });
+    const create = await call(env, "/api/support/tickets", {
+      method: "POST",
+      cookie,
+      body: JSON.stringify({ body: "Hi" })
+    });
     const { ticket, message: learnerMsg } = await create.json<{ ticket: { id: string }; message: { id: string } }>();
 
     const adminCookie = await loginAdmin(env, "admin2@example.com", "correct-horse-battery");
@@ -213,14 +213,18 @@ describe("Support inbox (HTTP)", () => {
     });
     const { message: adminMsg } = await reply.json<{ message: { id: string } }>();
 
-    // Learner has no delete endpoint under /api/support/* — this must 404, not delete anything.
     const learnerAttempt = await call(env, `/api/support/messages/${learnerMsg.id}`, { method: "DELETE", cookie });
     expect(learnerAttempt.status).toBe(404);
 
-    // Admin can delete either side's message.
-    const delLearner = await call(env, `/api/admin/support/messages/${learnerMsg.id}`, { method: "DELETE", cookie: adminCookie });
+    const delLearner = await call(env, `/api/admin/support/messages/${learnerMsg.id}`, {
+      method: "DELETE",
+      cookie: adminCookie
+    });
     expect(delLearner.status).toBe(200);
-    const delAdmin = await call(env, `/api/admin/support/messages/${adminMsg.id}`, { method: "DELETE", cookie: adminCookie });
+    const delAdmin = await call(env, `/api/admin/support/messages/${adminMsg.id}`, {
+      method: "DELETE",
+      cookie: adminCookie
+    });
     expect(delAdmin.status).toBe(200);
 
     const threadAfter = await call(env, `/api/admin/support/tickets/${ticket.id}/messages`, { cookie: adminCookie });
@@ -233,15 +237,22 @@ describe("Support inbox (HTTP)", () => {
     const { cookie: cookieB } = await loginNewUser(env, "bob@example.com");
 
     const t1 = await (
-      await call(env, "/api/support/tickets", { method: "POST", cookie: cookieA, body: JSON.stringify({ body: "billing question" }) })
+      await call(env, "/api/support/tickets", {
+        method: "POST",
+        cookie: cookieA,
+        body: JSON.stringify({ body: "billing question" })
+      })
     ).json<{ ticket: { id: string } }>();
     const t2 = await (
-      await call(env, "/api/support/tickets", { method: "POST", cookie: cookieB, body: JSON.stringify({ body: "video won't play" }) })
+      await call(env, "/api/support/tickets", {
+        method: "POST",
+        cookie: cookieB,
+        body: JSON.stringify({ body: "video won't play" })
+      })
     ).json<{ ticket: { id: string } }>();
 
     const adminCookie = await loginAdmin(env, "admin3@example.com", "correct-horse-battery");
 
-    // Close t1 so status filtering has something to distinguish.
     await call(env, `/api/admin/support/tickets/${t1.ticket.id}/close`, { method: "POST", cookie: adminCookie });
 
     const openOnly = await call(env, "/api/admin/support/tickets?status=open", { cookie: adminCookie });
@@ -277,7 +288,6 @@ describe("Support inbox (HTTP)", () => {
     });
     expect(strangerReply.status).toBe(404);
 
-    // A guest with no cookie at all also can't read it.
     const guestRead = await call(env, `/api/support/tickets/${ticket.id}/messages`);
     expect(guestRead.status).toBe(404);
   });
@@ -314,19 +324,32 @@ describe("Support inbox (HTTP)", () => {
     const { cookie: freeCookie } = await loginNewUser(env, "free-learner@example.com");
 
     const paidTicket = await (
-      await call(env, "/api/support/tickets", { method: "POST", cookie: paidCookie, body: JSON.stringify({ body: "paid q" }) })
+      await call(env, "/api/support/tickets", {
+        method: "POST",
+        cookie: paidCookie,
+        body: JSON.stringify({ body: "paid q" })
+      })
     ).json<{ ticket: { id: string } }>();
     const freeTicket = await (
-      await call(env, "/api/support/tickets", { method: "POST", cookie: freeCookie, body: JSON.stringify({ body: "free q" }) })
+      await call(env, "/api/support/tickets", {
+        method: "POST",
+        cookie: freeCookie,
+        body: JSON.stringify({ body: "free q" })
+      })
     ).json<{ ticket: { id: string } }>();
     const guestTicket = await (
-      await call(env, "/api/support/tickets", { method: "POST", body: JSON.stringify({ body: "guest q", guestEmail: "g@example.com" }) })
+      await call(env, "/api/support/tickets", {
+        method: "POST",
+        body: JSON.stringify({ body: "guest q", guestEmail: "g@example.com" })
+      })
     ).json<{ ticket: { id: string } }>();
 
     const adminCookie = await loginAdmin(env, "admin-enrich@example.com", "correct-horse-battery");
 
     const paidOnly = await call(env, "/api/admin/support/tickets?user_status=paid", { cookie: adminCookie });
-    const paidBody = await paidOnly.json<{ tickets: { id: string; courseStatus: string | null; isGuest: boolean }[] }>();
+    const paidBody = await paidOnly.json<{
+      tickets: { id: string; courseStatus: string | null; isGuest: boolean }[];
+    }>();
     expect(paidBody.tickets.some((t) => t.id === paidTicket.ticket.id)).toBe(true);
     expect(paidBody.tickets.some((t) => t.id === freeTicket.ticket.id)).toBe(false);
     expect(paidBody.tickets.every((t) => t.courseStatus === "paid")).toBe(true);
@@ -362,7 +385,9 @@ describe("Support inbox (HTTP)", () => {
 
     const thread = await call(env, `/api/support/tickets/${ticket.id}/messages`, { cookie });
     const threadBody = await thread.json<{ messages: { senderType: string; body: string | null }[] }>();
-    expect(threadBody.messages.some((m) => m.senderType === "admin" && m.body?.toLowerCase().includes("shifted"))).toBe(true);
+    expect(threadBody.messages.some((m) => m.senderType === "admin" && m.body?.toLowerCase().includes("shifted"))).toBe(
+      true
+    );
   });
 
   it("lets an admin permanently delete an entire ticket, taking its messages with it", async () => {
@@ -376,25 +401,24 @@ describe("Support inbox (HTTP)", () => {
 
     const adminCookie = await loginAdmin(env, "admin-delete-ticket@example.com", "correct-horse-battery");
 
-    // Sanity check it's there first.
     const before = await call(env, "/api/admin/support/tickets", { cookie: adminCookie });
     expect((await before.json<{ tickets: { id: string }[] }>()).tickets.some((t) => t.id === ticket.id)).toBe(true);
 
     const del = await call(env, `/api/admin/support/tickets/${ticket.id}`, { method: "DELETE", cookie: adminCookie });
     expect(del.status).toBe(200);
 
-    // Gone from the admin list...
     const after = await call(env, "/api/admin/support/tickets", { cookie: adminCookie });
     expect((await after.json<{ tickets: { id: string }[] }>()).tickets.some((t) => t.id === ticket.id)).toBe(false);
 
-    // ...and unreachable both by admin and by the learner who owned it.
     const adminRead = await call(env, `/api/admin/support/tickets/${ticket.id}/messages`, { cookie: adminCookie });
     expect(adminRead.status).toBe(404);
     const learnerRead = await call(env, `/api/support/tickets/${ticket.id}/messages`, { cookie });
     expect(learnerRead.status).toBe(404);
 
-    // Deleting a ticket that doesn't exist 404s rather than silently succeeding.
-    const missing = await call(env, `/api/admin/support/tickets/does-not-exist`, { method: "DELETE", cookie: adminCookie });
+    const missing = await call(env, `/api/admin/support/tickets/does-not-exist`, {
+      method: "DELETE",
+      cookie: adminCookie
+    });
     expect(missing.status).toBe(404);
   });
 
@@ -402,14 +426,20 @@ describe("Support inbox (HTTP)", () => {
     const { user, cookie } = await loginNewUser(env, "delete-profile-learner@example.com");
 
     const first = await (
-      await call(env, "/api/support/tickets", { method: "POST", cookie, body: JSON.stringify({ body: "First question" }) })
+      await call(env, "/api/support/tickets", {
+        method: "POST",
+        cookie,
+        body: JSON.stringify({ body: "First question" })
+      })
     ).json<{ ticket: { id: string } }>();
-    // Close it (hides it, doesn't delete it) so a second ticket is allowed —
-    // "delete profile" should still catch this hidden-but-not-deleted one.
     await call(env, `/api/support/tickets/${first.ticket.id}/close`, { method: "POST", cookie });
 
     const second = await (
-      await call(env, "/api/support/tickets", { method: "POST", cookie, body: JSON.stringify({ body: "Second question" }) })
+      await call(env, "/api/support/tickets", {
+        method: "POST",
+        cookie,
+        body: JSON.stringify({ body: "Second question" })
+      })
     ).json<{ ticket: { id: string } }>();
 
     const adminCookie = await loginAdmin(env, "admin-delete-profile@example.com", "correct-horse-battery");
@@ -427,8 +457,10 @@ describe("Support inbox (HTTP)", () => {
     expect(adminListBody.tickets.some((t) => t.id === first.ticket.id)).toBe(false);
     expect(adminListBody.tickets.some((t) => t.id === second.ticket.id)).toBe(false);
 
-    // A malformed identity key is rejected rather than deleting nothing silently.
-    const badKey = await call(env, "/api/admin/support/identities/not-a-real-key", { method: "DELETE", cookie: adminCookie });
+    const badKey = await call(env, "/api/admin/support/identities/not-a-real-key", {
+      method: "DELETE",
+      cookie: adminCookie
+    });
     expect(badKey.status).toBe(400);
   });
 
@@ -441,22 +473,21 @@ describe("Support inbox (HTTP)", () => {
     });
     const { ticket } = await create.json<{ ticket: { id: string } }>();
 
-    // Visible to the learner before hiding.
     let list = await call(env, "/api/support/tickets", { cookie });
     expect((await list.json<{ tickets: { id: string }[] }>()).tickets.some((t) => t.id === ticket.id)).toBe(true);
 
     const adminCookie = await loginAdmin(env, "admin-hide@example.com", "correct-horse-battery");
-    const hide = await call(env, `/api/admin/support/tickets/${ticket.id}/hide`, { method: "POST", cookie: adminCookie });
+    const hide = await call(env, `/api/admin/support/tickets/${ticket.id}/hide`, {
+      method: "POST",
+      cookie: adminCookie
+    });
     expect(hide.status).toBe(200);
 
-    // Gone from the learner's own list...
     list = await call(env, "/api/support/tickets", { cookie });
     expect((await list.json<{ tickets: { id: string }[] }>()).tickets.some((t) => t.id === ticket.id)).toBe(false);
-    // ...and unreachable by id for the learner...
     const learnerRead = await call(env, `/api/support/tickets/${ticket.id}/messages`, { cookie });
     expect(learnerRead.status).toBe(404);
 
-    // ...but still fully visible to admin, flagged as hidden.
     const adminList = await call(env, "/api/admin/support/tickets", { cookie: adminCookie });
     const seen = (await adminList.json<{ tickets: { id: string; hiddenByUser: boolean }[] }>()).tickets.find(
       (t) => t.id === ticket.id
@@ -475,25 +506,23 @@ describe("Support inbox (HTTP)", () => {
       body: JSON.stringify({ userId: user.id, body: "Hey — just checking in on your progress!" })
     });
     expect(create.status).toBe(201);
-    const created = await create.json<{ ticket: { id: string; status: string }; message: { senderType: string; body: string } }>();
+    const created = await create.json<{
+      ticket: { id: string; status: string };
+      message: { senderType: string; body: string };
+    }>();
     expect(created.message.senderType).toBe("admin");
     expect(created.message.body).toBe("Hey — just checking in on your progress!");
 
-    // Shows up in the learner's own ticket list like any other ticket.
     const list = await call(env, "/api/support/tickets", { cookie });
     const listBody = await list.json<{ tickets: { id: string }[] }>();
     expect(listBody.tickets.some((t) => t.id === created.ticket.id)).toBe(true);
 
-    // The learner can read the thread and see the admin's opening message.
     const thread = await call(env, `/api/support/tickets/${created.ticket.id}/messages`, { cookie });
     const threadBody = await thread.json<{ messages: { senderType: string; body: string | null }[] }>();
-    expect(threadBody.messages.some((m) => m.senderType === "admin" && m.body === "Hey — just checking in on your progress!")).toBe(
-      true
-    );
+    expect(
+      threadBody.messages.some((m) => m.senderType === "admin" && m.body === "Hey — just checking in on your progress!")
+    ).toBe(true);
 
-    // Because the learner now has a visible ticket, a second admin-started
-    // conversation with them is rejected rather than bypassing the
-    // one-visible-ticket-per-identity rule.
     const second = await call(env, "/api/admin/support/tickets", {
       method: "POST",
       cookie: adminCookie,
@@ -503,7 +532,6 @@ describe("Support inbox (HTTP)", () => {
     const secondBody = await second.json<{ error: string }>();
     expect(secondBody.error).toBe("ticket_already_open");
 
-    // A non-existent user is rejected with 404.
     const badUser = await call(env, "/api/admin/support/tickets", {
       method: "POST",
       cookie: adminCookie,
@@ -511,7 +539,6 @@ describe("Support inbox (HTTP)", () => {
     });
     expect(badUser.status).toBe(404);
 
-    // A missing message body is rejected with 400.
     const { cookie: cookie2, user: user2 } = await loginNewUser(env, "new-convo-learner-2@example.com");
     void cookie2;
     const emptyBody = await call(env, "/api/admin/support/tickets", {

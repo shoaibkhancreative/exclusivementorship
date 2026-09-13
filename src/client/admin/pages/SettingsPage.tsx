@@ -174,8 +174,8 @@ export default function SettingsPage() {
         <SectionHeading icon={<BookIcon />} title="Course" />
         <Card>
           <p className="mb-4 text-sm text-zinc-400">
-            How many classes (from Class 1, in order) anyone can watch for free before enrollment is required, and
-            the homepage intro video. Both take effect immediately, site-wide — no code changes or redeploy needed.
+            How many classes (from Class 1, in order) anyone can watch for free before enrollment is required, and the
+            homepage intro video. Both take effect immediately, site-wide — no code changes or redeploy needed.
           </p>
           <form onSubmit={handleCourseSubmit} className="flex flex-col gap-4">
             <div>
@@ -206,8 +206,8 @@ export default function SettingsPage() {
                 className="focus-ring w-full rounded-lg border border-base-700 bg-base-800 px-3 py-2 text-sm text-zinc-100 outline-none"
               />
               <p className="mt-1 text-xs text-zinc-500">
-                Paste a ready-to-embed iframe URL (YouTube "Embed" share link, or a Bunny.net stream embed URL).
-                Leave blank to show a placeholder.
+                Paste a ready-to-embed iframe URL (YouTube "Embed" share link, or a Bunny.net stream embed URL). Leave
+                blank to show a placeholder.
               </p>
             </div>
             {courseError && <p className="text-sm text-red-400">{courseError}</p>}

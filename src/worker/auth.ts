@@ -14,15 +14,11 @@ import { getRawCached, putRawCached, sessionCacheKey, SESSION_CACHE_TTL_SECONDS,
 function requireSecret(env: Env): string {
   const secret = env.SESSION_SECRET;
   if (!secret) {
-    // Fail loudly in production rather than silently using a weak default.
-    throw new Error(
-      "SESSION_SECRET is not configured. Set it with `wrangler secret put SESSION_SECRET`."
-    );
+    throw new Error("SESSION_SECRET is not configured. Set it with `wrangler secret put SESSION_SECRET`.");
   }
   return secret;
 }
 
-/** Issues a fresh OTP for an email, storing only its HMAC hash. */
 export async function issueOtp(env: Env, email: string): Promise<string> {
   const secret = requireSecret(env);
   const normalized = email.toLowerCase().trim();
@@ -30,20 +26,16 @@ export async function issueOtp(env: Env, email: string): Promise<string> {
   const codeHash = await hmacSha256Hex(secret, `otp:${normalized}:${code}`);
   const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000).toISOString();
 
-  await env.DB.prepare(
-    `INSERT INTO otp_codes (id, email, code_hash, expires_at) VALUES (?, ?, ?, ?)`
-  )
+  await env.DB.prepare(`INSERT INTO otp_codes (id, email, code_hash, expires_at) VALUES (?, ?, ?, ?)`)
     .bind(randomUuid(), normalized, codeHash, expiresAt)
     .run();
 
-  return code; // returned only so the caller can email it — never logged, never returned to the HTTP client
+  return code;
 }
 
 export type OtpVerifyResult =
-  | { ok: true; user: UserRow }
-  | { ok: false; reason: "invalid" | "expired" | "too_many_attempts" };
+  { ok: true; user: UserRow } | { ok: false; reason: "invalid" | "expired" | "too_many_attempts" };
 
-/** Verifies a submitted OTP. On success, creates the user if needed and returns it. */
 export async function verifyOtp(env: Env, email: string, code: string): Promise<OtpVerifyResult> {
   const secret = requireSecret(env);
   const normalized = email.toLowerCase().trim();
@@ -71,31 +63,16 @@ export async function verifyOtp(env: Env, email: string, code: string): Promise<
   const matches = timingSafeEqual(candidateHash, row.code_hash);
 
   if (!matches) {
-    await env.DB.prepare("UPDATE otp_codes SET attempts = attempts + 1 WHERE id = ?")
-      .bind(row.id)
-      .run();
+    await env.DB.prepare("UPDATE otp_codes SET attempts = attempts + 1 WHERE id = ?").bind(row.id).run();
     return { ok: false, reason: "invalid" };
   }
 
-  await env.DB.prepare("UPDATE otp_codes SET used_at = datetime('now') WHERE id = ?")
-    .bind(row.id)
-    .run();
+  await env.DB.prepare("UPDATE otp_codes SET used_at = datetime('now') WHERE id = ?").bind(row.id).run();
 
   const user = await getOrCreateUser(env, normalized);
   return { ok: true, user };
 }
 
-/**
- * Creates a new session for a user and returns the raw token to set as a
- * cookie. Enforces "single active session per account": every other
- * non-revoked session belonging to this user is revoked as part of the same
- * login, so logging in on a second device silently signs the first one out
- * on its next request (resolveSession already rejects a revoked token — see
- * below — so no separate enforcement is needed there). This is a deterrent
- * against casual account-sharing, not a security boundary in itself: a
- * legitimate user who logs in on a new device is expected to get signed out
- * of an old one they forgot about, same as most subscription products.
- */
 export async function createSession(env: Env, userId: string): Promise<string> {
   const token = randomToken(32);
   const secret = requireSecret(env);
@@ -103,19 +80,11 @@ export async function createSession(env: Env, userId: string): Promise<string> {
   const expiresAt = new Date(Date.now() + SESSION_DURATION_DAYS * 24 * 60 * 60 * 1000).toISOString();
   const id = randomUuid();
 
-  // Revoke first, then insert the new session — so there's no window (even
-  // within this single request) where both the old and new sessions are
-  // simultaneously valid. The new row's own id excludes it from the revoke
-  // by construction (it doesn't exist yet), so ordering here is safe.
-  await env.DB.prepare(
-    `UPDATE sessions SET revoked_at = datetime('now') WHERE user_id = ? AND revoked_at IS NULL`
-  )
+  await env.DB.prepare(`UPDATE sessions SET revoked_at = datetime('now') WHERE user_id = ? AND revoked_at IS NULL`)
     .bind(userId)
     .run();
 
-  await env.DB.prepare(
-    `INSERT INTO sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)`
-  )
+  await env.DB.prepare(`INSERT INTO sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)`)
     .bind(id, userId, tokenHash, expiresAt)
     .run();
 
@@ -128,17 +97,11 @@ export async function resolveSession(env: Env, token: string | undefined | null)
   const tokenHash = await hmacSha256Hex(secret, `session:${token}`);
   const cacheKey = sessionCacheKey(tokenHash);
 
-  // Cache-aside: a hit here skips both D1 reads below entirely (session
-  // lookup + user lookup) — this runs on every single authenticated
-  // request, so it's the highest-traffic query path in the app. See
-  // lib/cache.ts for the TTL trade-off (short, so a revoked session stops
-  // working within ~45s even if this request path never touches D1 again).
   const cached = await getRawCached(env, cacheKey);
   if (cached !== null) {
     try {
       return JSON.parse(cached) as UserRow;
     } catch {
-      // Corrupt cache entry — fall through and re-resolve from D1.
     }
   }
 
@@ -165,25 +128,14 @@ export async function resolveSession(env: Env, token: string | undefined | null)
 export async function revokeSession(env: Env, token: string): Promise<void> {
   const secret = requireSecret(env);
   const tokenHash = await hmacSha256Hex(secret, `session:${token}`);
-  await env.DB.prepare("UPDATE sessions SET revoked_at = datetime('now') WHERE token_hash = ?")
-    .bind(tokenHash)
-    .run();
-  // Purge immediately so an explicit logout takes effect on the very next
-  // request, rather than waiting out the cache TTL like an implicit
-  // single-session-per-account revoke (see createSession) does.
+  await env.DB.prepare("UPDATE sessions SET revoked_at = datetime('now') WHERE token_hash = ?").bind(tokenHash).run();
   await purgeCache(env, sessionCacheKey(tokenHash));
 }
 
 export function buildSessionCookie(env: Env, token: string): string {
   const isLocal = env.APP_URL.startsWith("http://localhost") || env.APP_URL.startsWith("http://127.0.0.1");
   const maxAge = SESSION_DURATION_DAYS * 24 * 60 * 60;
-  const attrs = [
-    `${SESSION_COOKIE_NAME}=${token}`,
-    "Path=/",
-    "HttpOnly",
-    "SameSite=Lax",
-    `Max-Age=${maxAge}`
-  ];
+  const attrs = [`${SESSION_COOKIE_NAME}=${token}`, "Path=/", "HttpOnly", "SameSite=Lax", `Max-Age=${maxAge}`];
   if (!isLocal) attrs.push("Secure");
   return attrs.join("; ");
 }
@@ -195,16 +147,6 @@ export function buildLogoutCookie(env: Env): string {
   return attrs.join("; ");
 }
 
-/**
- * The support-ticket guest identity cookie (SUPPORT_GUEST_COOKIE_NAME) —
- * unlike the session cookie above, this holds a plain uuid rather than a
- * hashed/HMAC'd token: it's only ever used as a correlation id for "which
- * guest's tickets are these", never as an authentication credential (see
- * routes/support.ts, which always re-checks ticket ownership server-side
- * regardless). Still httpOnly so it can't be read/tampered with from page
- * JS, and long-lived since a guest may come back days later to check a
- * reply.
- */
 export function buildGuestIdCookie(env: Env, guestId: string): string {
   const isLocal = env.APP_URL.startsWith("http://localhost") || env.APP_URL.startsWith("http://127.0.0.1");
   const maxAge = SUPPORT_GUEST_COOKIE_DAYS * 24 * 60 * 60;

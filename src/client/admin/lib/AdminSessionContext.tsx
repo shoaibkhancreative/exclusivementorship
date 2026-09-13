@@ -18,11 +18,6 @@ const AdminSessionContext = createContext<AdminSessionContextValue>({
   refresh: async () => {}
 });
 
-/**
- * Deliberately separate from the student SessionContext — it reads
- * /api/admin/me (the em_admin_session cookie), never /api/auth/me. Never
- * nest this inside, or alongside code that assumes, the student session.
- */
 export function AdminSessionProvider({ children }: { children: React.ReactNode }) {
   const [admin, setAdmin] = useState<AdminMeResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -43,9 +38,7 @@ export function AdminSessionProvider({ children }: { children: React.ReactNode }
     refresh();
   }, [refresh]);
 
-  return (
-    <AdminSessionContext.Provider value={{ admin, loading, refresh }}>{children}</AdminSessionContext.Provider>
-  );
+  return <AdminSessionContext.Provider value={{ admin, loading, refresh }}>{children}</AdminSessionContext.Provider>;
 }
 
 export function useAdminSession() {

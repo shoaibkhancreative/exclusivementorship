@@ -10,7 +10,6 @@ interface NowPaymentsIpnPayload {
   payment_id?: string;
   payment_status?: string;
   order_id?: string;
-  /** Amount NOWPayments actually saw arrive on-chain, in `pay_currency` units. */
   actually_paid?: number;
   [key: string]: unknown;
 }
@@ -47,24 +46,13 @@ webhookRoutes.post("/nowpayments", async (c) => {
     return c.json({ error: "missing_fields" }, 400);
   }
 
-  const order = await c.env.DB.prepare("SELECT * FROM payment_orders WHERE id = ?")
-    .bind(orderId)
-    .first<OrderRow>();
+  const order = await c.env.DB.prepare("SELECT * FROM payment_orders WHERE id = ?").bind(orderId).first<OrderRow>();
 
   if (!order) {
-    // Unknown order — do not create one from an unauthenticated webhook.
     await logAuditEvent(c.env, "webhook_unknown_order", { metadata: { orderId } });
     return c.json({ error: "unknown_order" }, 404);
   }
 
-  // --- Underpayment tolerance -----------------------------------------------
-  // NOWPayments reports "partially_paid" whenever the buyer sent less than
-  // the exact quoted amount — the most common reason being that they didn't
-  // realize the BEP20 network fee is deducted separately from what they
-  // send, and end up a dollar or two short. Rather than stranding those
-  // buyers in a "failed" state, anything within getUnderpaymentToleranceUsdt
-  // is treated as paid; anything beyond it is left failed for manual review.
-  // USDT is ~1:1 with USD, so comparing the raw crypto amounts is safe.
   let effectiveNpStatus = npStatus;
   let underpaidTolerated = false;
   const actuallyPaid = typeof payload.actually_paid === "number" ? payload.actually_paid : null;
@@ -80,9 +68,6 @@ webhookRoutes.post("/nowpayments", async (c) => {
 
   const mappedStatus = mapNowPaymentsStatus(effectiveNpStatus);
 
-  // --- Idempotency guard ----------------------------------------------------
-  // If we've already recorded this order as confirmed/finished, acknowledge
-  // the (likely duplicate) webhook without doing any further work.
   if (order.confirmed_at && PAID_STATUSES.has(mappedStatus)) {
     return c.json({ ok: true, alreadyProcessed: true });
   }
@@ -121,7 +106,6 @@ webhookRoutes.post("/nowpayments", async (c) => {
   }
 
   if (isNowPaid) {
-    // Mark the user paid (idempotent — repeated UPDATEs are harmless).
     await c.env.DB.prepare(
       `UPDATE users SET course_status = 'paid', paid_at = COALESCE(paid_at, datetime('now')), updated_at = datetime('now') WHERE id = ?`
     )

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Static sitemap for the public marketing/legal pages only. The app has no
+  server-side rendering, so this is a small hand-maintained file rather than
+  something generated per-lesson — update the <lastmod> dates when copy on
+  these pages changes. Authenticated pages (/learn, /lesson/*, /access) and
+  /admin are intentionally excluded — see robots.txt.
+-->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://exclusivementorship.xyz/</loc>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>https://exclusivementorship.xyz/login</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://exclusivementorship.xyz/privacy</loc>
+    <changefreq>yearly</changefreq>
+    <priority>0.2</priority>
+  </url>
+  <url>
+    <loc>https://exclusivementorship.xyz/terms</loc>
+    <changefreq>yearly</changefreq>
+    <priority>0.2</priority>
+  </url>
+</urlset>

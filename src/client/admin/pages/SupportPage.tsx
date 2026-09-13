@@ -34,7 +34,12 @@ interface Identity {
 }
 
 function formatDateTime(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  return new Date(iso).toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
+  });
 }
 
 function identityKeyOf(t: AdminSupportTicket): string {
@@ -84,10 +89,6 @@ export default function SupportPage() {
     return () => clearInterval(id);
   }, [loadTickets]);
 
-  // Groups the (already-filtered) ticket list by owner, one row per unique
-  // user/guest — this is the "Users" column. Deliberately client-side
-  // rather than a second endpoint: it's the exact same filtered result set
-  // just re-shaped, so there's no way for the two views to disagree.
   const identities = useMemo<Identity[]>(() => {
     if (!tickets) return [];
     const map = new Map<string, Identity>();
@@ -102,7 +103,7 @@ export default function SupportPage() {
         map.set(key, {
           key,
           isGuest: t.isGuest,
-          label: t.isGuest ? t.guestEmail ?? "Guest (no email)" : t.userName || t.userEmail || "Learner",
+          label: t.isGuest ? (t.guestEmail ?? "Guest (no email)") : t.userName || t.userEmail || "Learner",
           email: t.isGuest ? t.guestEmail : t.userEmail,
           courseStatus: t.courseStatus,
           currentLesson: t.currentLesson,
@@ -124,7 +125,6 @@ export default function SupportPage() {
       .get<{ messages: SupportMessage[] }>(`/admin/support/tickets/${id}/messages`)
       .then((res) => setMessages(res.messages))
       .catch(() => {
-        // Silent — keep whatever's already rendered.
       });
   }, []);
 
@@ -262,7 +262,8 @@ export default function SupportPage() {
 
   async function deleteIdentity(identity: Identity) {
     const ticketWord = identity.tickets.length === 1 ? "ticket" : "tickets";
-    if (!confirm(`Delete all ${identity.tickets.length} ${ticketWord} for ${identity.label}? This cannot be undone.`)) return;
+    if (!confirm(`Delete all ${identity.tickets.length} ${ticketWord} for ${identity.label}? This cannot be undone.`))
+      return;
     try {
       await api.delete(`/admin/support/identities/${encodeURIComponent(identity.key)}`);
       if (selectedIdentityKey === identity.key) {
@@ -278,10 +279,6 @@ export default function SupportPage() {
 
   function handleConversationCreated(ticketId: string, userId: string) {
     setShowNewConversation(false);
-    // Jump straight into the new thread. The Users/Tickets columns
-    // themselves catch up on the next loadTickets() poll — selectedId
-    // driving loadThread() doesn't depend on the ticket already being in
-    // `tickets`, so the conversation still loads immediately.
     setSelectedIdentityKey(`user:${userId}`);
     setSelectedId(ticketId);
     setMessages(null);
@@ -303,7 +300,11 @@ export default function SupportPage() {
         <NewConversationModal onClose={() => setShowNewConversation(false)} onCreated={handleConversationCreated} />
       )}
 
-      {error && <div className="rounded-md border border-accent-500/40 bg-accent-500/10 px-3 py-2 text-sm text-accent-300">{error}</div>}
+      {error && (
+        <div className="rounded-md border border-accent-500/40 bg-accent-500/10 px-3 py-2 text-sm text-accent-300">
+          {error}
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative w-full max-w-xs">
@@ -361,7 +362,6 @@ export default function SupportPage() {
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[260px_260px_1fr]">
-        {/* Users column */}
         <div className="max-h-[70vh] overflow-y-auto rounded-md border border-base-800 bg-base-900/40">
           {tickets === null ? (
             <div className="p-4 text-center text-sm text-zinc-500">Loading…</div>
@@ -392,13 +392,17 @@ export default function SupportPage() {
                       ) : (
                         <span
                           className={`rounded-full border px-1.5 py-[1px] ${
-                            identity.courseStatus === "paid" ? "border-accent-500/40 text-accent-400" : "border-base-700"
+                            identity.courseStatus === "paid"
+                              ? "border-accent-500/40 text-accent-400"
+                              : "border-base-700"
                           }`}
                         >
                           {identity.courseStatus === "paid" ? "Paid" : "Free"}
                         </span>
                       )}
-                      <span>{identity.tickets.length} ticket{identity.tickets.length === 1 ? "" : "s"}</span>
+                      <span>
+                        {identity.tickets.length} ticket{identity.tickets.length === 1 ? "" : "s"}
+                      </span>
                     </div>
                   </button>
                   <button
@@ -416,7 +420,6 @@ export default function SupportPage() {
           )}
         </div>
 
-        {/* Tickets for the selected user */}
         <div className="max-h-[70vh] overflow-y-auto rounded-md border border-base-800 bg-base-900/40">
           {!selectedIdentity ? (
             <div className="flex h-full items-center justify-center p-4 text-center text-sm text-zinc-500">
@@ -437,7 +440,9 @@ export default function SupportPage() {
                       }`}
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <span className="truncate text-[12.5px] font-medium text-zinc-100">{t.subject || "New ticket"}</span>
+                        <span className="truncate text-[12.5px] font-medium text-zinc-100">
+                          {t.subject || "New ticket"}
+                        </span>
                         {t.unreadCount > 0 && (
                           <span className="flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-accent-500 px-1 text-[9.5px] font-bold text-base-950">
                             {t.unreadCount}
@@ -445,11 +450,17 @@ export default function SupportPage() {
                         )}
                       </div>
                       <div className="flex flex-wrap items-center gap-1.5 text-[10.5px] text-zinc-500">
-                        <span className="rounded-full border border-base-700 px-1.5 py-[1px]">{t.agentDisplayName}</span>
-                        <span className={`rounded-full border px-1.5 py-[1px] ${t.status === "open" ? "border-accent-500/40 text-accent-400" : "border-base-700"}`}>
+                        <span className="rounded-full border border-base-700 px-1.5 py-[1px]">
+                          {t.agentDisplayName}
+                        </span>
+                        <span
+                          className={`rounded-full border px-1.5 py-[1px] ${t.status === "open" ? "border-accent-500/40 text-accent-400" : "border-base-700"}`}
+                        >
                           {t.status}
                         </span>
-                        {t.hiddenByUser && <span className="rounded-full border border-base-700 px-1.5 py-[1px]">Hidden from user</span>}
+                        {t.hiddenByUser && (
+                          <span className="rounded-full border border-base-700 px-1.5 py-[1px]">Hidden from user</span>
+                        )}
                         <span>{formatDateTime(t.lastMessageAt)}</span>
                       </div>
                       <div className="truncate text-[11.5px] text-zinc-500">{t.lastMessagePreview || "—"}</div>
@@ -460,17 +471,20 @@ export default function SupportPage() {
           )}
         </div>
 
-        {/* Conversation */}
         <div className="flex min-h-[70vh] flex-col rounded-md border border-base-800 bg-base-900/40">
           {!selectedTicket ? (
-            <div className="flex flex-1 items-center justify-center text-sm text-zinc-500">Select a ticket to view the conversation.</div>
+            <div className="flex flex-1 items-center justify-center text-sm text-zinc-500">
+              Select a ticket to view the conversation.
+            </div>
           ) : (
             <>
               <div className="flex flex-col gap-2 border-b border-base-800 px-4 py-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="min-w-0">
                     <div className="truncate text-sm font-medium text-zinc-100">
-                      {selectedTicket.isGuest ? `Guest — ${selectedTicket.guestEmail ?? "no email"}` : selectedTicket.userName || selectedTicket.userEmail}
+                      {selectedTicket.isGuest
+                        ? `Guest — ${selectedTicket.guestEmail ?? "no email"}`
+                        : selectedTicket.userName || selectedTicket.userEmail}
                     </div>
                     <div className="text-[11.5px] text-zinc-500">{selectedTicket.subject}</div>
                   </div>
@@ -487,15 +501,30 @@ export default function SupportPage() {
                         </option>
                       ))}
                     </select>
-                    <Button variant="secondary" onClick={toggleStatus} disabled={busy} className="!px-3 !py-1.5 text-xs">
+                    <Button
+                      variant="secondary"
+                      onClick={toggleStatus}
+                      disabled={busy}
+                      className="!px-3 !py-1.5 text-xs"
+                    >
                       {selectedTicket.status === "open" ? "Close" : "Reopen"}
                     </Button>
                     {selectedTicket.hiddenByUser ? (
-                      <Button variant="secondary" onClick={unhideTicket} disabled={busy} className="!px-3 !py-1.5 text-xs">
+                      <Button
+                        variant="secondary"
+                        onClick={unhideTicket}
+                        disabled={busy}
+                        className="!px-3 !py-1.5 text-xs"
+                      >
                         Unhide for user
                       </Button>
                     ) : (
-                      <Button variant="secondary" onClick={hideTicket} disabled={busy} className="!px-3 !py-1.5 text-xs">
+                      <Button
+                        variant="secondary"
+                        onClick={hideTicket}
+                        disabled={busy}
+                        className="!px-3 !py-1.5 text-xs"
+                      >
                         Hide from user
                       </Button>
                     )}
@@ -510,13 +539,14 @@ export default function SupportPage() {
                   </div>
                 </div>
 
-                {/* Learner status strip — login state, paid/free, lesson progress, and where they were when the ticket was opened. */}
                 <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-zinc-500">
                   <span className="rounded-full border border-base-700 px-2 py-0.5">
                     {selectedTicket.isGuest ? "Not logged in" : "Logged in"}
                   </span>
                   {!selectedTicket.isGuest && (
-                    <span className={`rounded-full border px-2 py-0.5 ${selectedTicket.courseStatus === "paid" ? "border-accent-500/40 text-accent-400" : "border-base-700"}`}>
+                    <span
+                      className={`rounded-full border px-2 py-0.5 ${selectedTicket.courseStatus === "paid" ? "border-accent-500/40 text-accent-400" : "border-base-700"}`}
+                    >
                       {selectedTicket.courseStatus === "paid" ? "Paid student" : "Free student"}
                     </span>
                   )}
@@ -527,9 +557,15 @@ export default function SupportPage() {
                     </span>
                   )}
                   {!selectedTicket.isGuest && selectedTicket.completedLessons !== null && (
-                    <span className="rounded-full border border-base-700 px-2 py-0.5">{selectedTicket.completedLessons} completed</span>
+                    <span className="rounded-full border border-base-700 px-2 py-0.5">
+                      {selectedTicket.completedLessons} completed
+                    </span>
                   )}
-                  {selectedTicket.originPath && <span className="rounded-full border border-base-700 px-2 py-0.5">Opened from {selectedTicket.originPath}</span>}
+                  {selectedTicket.originPath && (
+                    <span className="rounded-full border border-base-700 px-2 py-0.5">
+                      Opened from {selectedTicket.originPath}
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -542,7 +578,9 @@ export default function SupportPage() {
                       <div className="group max-w-[75%]">
                         <div
                           className={`rounded-lg px-3 py-2 text-[13px] ${
-                            m.senderType === "admin" ? "bg-accent-500 text-base-950" : "border border-base-700 bg-base-950 text-zinc-100"
+                            m.senderType === "admin"
+                              ? "bg-accent-500 text-base-950"
+                              : "border border-base-700 bg-base-950 text-zinc-100"
                           }`}
                         >
                           {m.body && <p className="whitespace-pre-wrap break-words">{m.body}</p>}
@@ -556,7 +594,9 @@ export default function SupportPage() {
                             </a>
                           )}
                         </div>
-                        <div className={`mt-1 flex items-center gap-2 text-[10.5px] text-zinc-500 ${m.senderType === "admin" ? "justify-end" : ""}`}>
+                        <div
+                          className={`mt-1 flex items-center gap-2 text-[10.5px] text-zinc-500 ${m.senderType === "admin" ? "justify-end" : ""}`}
+                        >
                           <span>{formatDateTime(m.createdAt)}</span>
                           <button
                             type="button"
@@ -577,9 +617,17 @@ export default function SupportPage() {
               <div className="border-t border-base-800 p-3">
                 {pendingAttachment && (
                   <div className="mb-2 flex items-center gap-2 rounded-md border border-base-700 bg-base-950 p-1.5">
-                    <img src={pendingAttachment.dataUrl} alt="Attachment preview" className="h-10 w-10 rounded object-cover" />
+                    <img
+                      src={pendingAttachment.dataUrl}
+                      alt="Attachment preview"
+                      className="h-10 w-10 rounded object-cover"
+                    />
                     <span className="flex-1 truncate text-xs text-zinc-500">{pendingAttachment.filename}</span>
-                    <button type="button" onClick={() => setPendingAttachment(null)} className="focus-ring rounded p-1 text-zinc-500 hover:text-zinc-200">
+                    <button
+                      type="button"
+                      onClick={() => setPendingAttachment(null)}
+                      className="focus-ring rounded p-1 text-zinc-500 hover:text-zinc-200"
+                    >
                       ✕
                     </button>
                   </div>
@@ -607,7 +655,11 @@ export default function SupportPage() {
                     rows={1}
                     className="focus-ring max-h-24 flex-1 resize-none rounded-md border border-base-700 bg-base-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500"
                   />
-                  <Button onClick={sendReply} disabled={sending || (!replyText.trim() && !pendingAttachment)} className="!px-3 !py-2">
+                  <Button
+                    onClick={sendReply}
+                    disabled={sending || (!replyText.trim() && !pendingAttachment)}
+                    className="!px-3 !py-2"
+                  >
                     {sending ? "…" : "Send"}
                   </Button>
                 </div>

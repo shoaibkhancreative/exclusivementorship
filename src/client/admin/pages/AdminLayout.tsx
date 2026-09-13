@@ -1,8 +1,19 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../../lib/api";
 import { useAdminSession } from "../lib/AdminSessionContext";
-import { GridIcon, UsersIcon, BookIcon, GearIcon, LogoutIcon, DocumentIcon, LayersIcon, ChatIcon, TrendUpIcon } from "../components/icons";
+import { useDialogA11y } from "../../lib/useDialogA11y";
+import {
+  GridIcon,
+  UsersIcon,
+  BookIcon,
+  GearIcon,
+  LogoutIcon,
+  DocumentIcon,
+  LayersIcon,
+  ChatIcon,
+  TrendUpIcon
+} from "../components/icons";
 
 const NAV_ITEMS = [
   { to: "/admin/dashboard", label: "Dashboard", icon: <GridIcon /> },
@@ -33,6 +44,8 @@ export default function AdminLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const drawerPanelRef = useRef<HTMLElement>(null);
+  useDialogA11y(drawerPanelRef, { active: drawerOpen, onClose: () => setDrawerOpen(false) });
 
   const activeItem = NAV_ITEMS.find((item) => location.pathname.startsWith(item.to));
 
@@ -59,7 +72,9 @@ export default function AdminLayout() {
         >
           {({ isActive }) => (
             <>
-              <span className={isActive ? "text-accent-500" : "text-zinc-600 group-hover:text-zinc-400"}>{item.icon}</span>
+              <span className={isActive ? "text-accent-500" : "text-zinc-600 group-hover:text-zinc-400"}>
+                {item.icon}
+              </span>
               {item.label}
             </>
           )}
@@ -89,7 +104,6 @@ export default function AdminLayout() {
 
   return (
     <div className="min-h-screen bg-base-950 lg:flex">
-      {/* Desktop sidebar */}
       <aside className="hidden w-60 shrink-0 border-r border-base-700/60 bg-base-950 lg:flex lg:flex-col">
         <div className="flex items-center gap-2.5 px-5 py-5">
           <AdminBadge />
@@ -102,11 +116,14 @@ export default function AdminLayout() {
         {accountBlock}
       </aside>
 
-      {/* Mobile drawer + overlay */}
       {drawerOpen && (
         <div className="fixed inset-0 z-40 lg:hidden">
+          {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setDrawerOpen(false)} />
-          <aside className="absolute inset-y-0 left-0 flex w-64 flex-col border-r border-base-700/60 bg-base-950 shadow-2xl">
+          <aside
+            ref={drawerPanelRef}
+            className="absolute inset-y-0 left-0 flex w-64 flex-col border-r border-base-700/60 bg-base-950 shadow-2xl"
+          >
             <div className="flex items-center justify-between px-5 py-5">
               <div className="flex items-center gap-2.5">
                 <AdminBadge />
@@ -129,7 +146,6 @@ export default function AdminLayout() {
         </div>
       )}
 
-      {/* Main column */}
       <div className="flex min-h-screen flex-1 flex-col">
         <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-base-700/60 bg-base-950/95 px-5 py-4 backdrop-blur lg:px-8">
           <button

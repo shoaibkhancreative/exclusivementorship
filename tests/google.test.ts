@@ -36,7 +36,6 @@ describe("verifyGoogleIdToken", () => {
   it("returns not_configured when GOOGLE_CLIENT_ID is unset", async () => {
     const result = await verifyGoogleIdToken({ ...env, GOOGLE_CLIENT_ID: "" }, "whatever");
     expect(result).toEqual({ ok: false, reason: "not_configured" });
-    // Never even attempts signature verification without a configured client id.
     expect(jwtVerify).not.toHaveBeenCalled();
   });
 

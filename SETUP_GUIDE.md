@@ -301,15 +301,16 @@ as the only method for everyone else.
 needed for this).
 
 **STEP 2.** **Create Credentials** → **OAuth client ID**.
-   - If prompted, configure the **OAuth consent screen** first: External,
-     app name "Exclusive Mentorship", your support email — the rest can be
-     left default.
-   - Application type: **Web application**.
-   - Name: anything, e.g. "Exclusive Mentorship Web".
-   - **Authorized JavaScript origins** — add both:
-     - `https://exclusivementorship.xyz`
-     - `http://localhost:5173` (for local dev, if you use the Vite dev server)
-   - Leave **Authorized redirect URIs** empty — this flow doesn't use redirects.
+
+- If prompted, configure the **OAuth consent screen** first: External,
+  app name "Exclusive Mentorship", your support email — the rest can be
+  left default.
+- Application type: **Web application**.
+- Name: anything, e.g. "Exclusive Mentorship Web".
+- **Authorized JavaScript origins** — add both:
+  - `https://exclusivementorship.xyz`
+  - `http://localhost:5173` (for local dev, if you use the Vite dev server)
+- Leave **Authorized redirect URIs** empty — this flow doesn't use redirects.
 
 **STEP 3.** Copy the **Client ID** (looks like
 `123456789-abc123.apps.googleusercontent.com`). This is **not a secret** —
@@ -329,7 +330,7 @@ if you want to try it locally.)
 That's it — the "Continue with Google" button appears on the login page
 automatically once `GOOGLE_CLIENT_ID` is set, and stays hidden if it's left
 empty. If someone already has an account from email-OTP login, signing in
-with Google using the *same* email links to that same account automatically
+with Google using the _same_ email links to that same account automatically
 — no duplicate accounts, no lost progress.
 
 ---

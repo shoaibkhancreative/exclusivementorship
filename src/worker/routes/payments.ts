@@ -22,10 +22,6 @@ interface OrderRow {
   created_at: string;
 }
 
-/**
- * Creates a new payment order. The amount is ALWAYS the server-configured
- * enrollment price — the client cannot influence it in any way.
- */
 paymentRoutes.post("/create-order", requireAuth, async (c) => {
   const user = c.get("user")!;
 
@@ -33,23 +29,6 @@ paymentRoutes.post("/create-order", requireAuth, async (c) => {
     return c.json({ error: "already_paid", message: "You're already enrolled." }, 400);
   }
 
-  // Reuse an existing non-terminal order if one already exists, so we don't
-  // spam NOWPayments with duplicate active payments for the same user.
-  // IMPORTANT: this check happens BEFORE the rate limit below, and does not
-  // consume any of the rate limit's quota — merely reopening the checkout
-  // popup (which re-calls this endpoint) must never count against the
-  // limit, or a user who opens/closes it a handful of times in an hour
-  // would get wrongly rate-limited even though no new payment was ever
-  // created. The rate limit only protects genuine new-order creation
-  // (the actual call to the NOWPayments API) below.
-  //
-  // NOTE: NOWPayments does not reliably send an IPN purely for a timeout
-  // (only for actual on-chain activity), so a stale order can sit in
-  // 'waiting' in our DB long after NOWPayments itself has stopped watching
-  // that address. We treat an order whose `expires_at` has already passed
-  // as NOT reusable — we mark it 'expired' ourselves and fall through to
-  // creating a genuinely new one. This is what powers the "Generate New
-  // Address" button once the client-side countdown hits zero.
   const existing = await c.env.DB.prepare(
     `SELECT * FROM payment_orders WHERE user_id = ? AND status IN ('created','waiting','confirming') ORDER BY created_at DESC LIMIT 1`
   )
@@ -128,7 +107,6 @@ paymentRoutes.post("/create-order", requireAuth, async (c) => {
   }
 });
 
-/** Lets the checkout popup poll for confirmation without hitting NOWPayments directly. */
 paymentRoutes.get("/status/:orderId", requireAuth, async (c) => {
   const user = c.get("user")!;
   const orderId = c.req.param("orderId");

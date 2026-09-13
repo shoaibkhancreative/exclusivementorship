@@ -12,12 +12,6 @@ export interface UserRow {
   course_status: "free" | "paid";
   paid_at: string | null;
   google_sub: string | null;
-  // NOTE: the `users` table also has a nullable `name` column (see
-  // migrations/0002_add_user_name.sql). It's intentionally omitted here —
-  // nothing reads or writes it; the UI's display name is derived from the
-  // email instead (deriveDisplayName in routes/auth.ts). Left undocumented
-  // no longer — this is deliberate, not an oversight, and the column is
-  // safe to ignore unless/until someone decides to actually wire it up.
 }
 
 export async function findUserByEmail(env: Env, email: string): Promise<UserRow | null> {
@@ -35,9 +29,7 @@ export async function findUserById(env: Env, id: string): Promise<UserRow | null
 export async function createUser(env: Env, email: string): Promise<UserRow> {
   const id = randomUuid();
   const normalized = email.toLowerCase().trim();
-  await env.DB.prepare(
-    `INSERT INTO users (id, email, current_lesson, course_status) VALUES (?, ?, 1, 'free')`
-  )
+  await env.DB.prepare(`INSERT INTO users (id, email, current_lesson, course_status) VALUES (?, ?, 1, 'free')`)
     .bind(id, normalized)
     .run();
   const user = await findUserById(env, id);
@@ -62,17 +54,6 @@ export async function linkGoogleSub(env: Env, userId: string, sub: string): Prom
     .run();
 }
 
-/**
- * Resolves (or creates) a user for a verified Google identity.
- *
- * Lookup order matters:
- * 1. By google_sub first — stable even if the person's Google email changes later.
- * 2. By email second — so someone who already has a course account from the
- *    email-OTP flow gets linked to that SAME account (and keeps their
- *    progress) the first time they use "Continue with Google", instead of a
- *    confusing duplicate account.
- * 3. Otherwise create a brand new account, same as OTP's getOrCreateUser.
- */
 export async function getOrCreateUserByGoogle(env: Env, sub: string, email: string): Promise<UserRow> {
   const bySub = await findUserByGoogleSub(env, sub);
   if (bySub) return bySub;
@@ -85,16 +66,9 @@ export async function getOrCreateUserByGoogle(env: Env, sub: string, email: stri
   return linked ?? base;
 }
 
-/**
- * Seconds elapsed since the most recent otp_codes row was created for this
- * email, or null if no OTP has ever been requested for it. Used to enforce
- * OTP_RESEND_COOLDOWN_SECONDS in the /request-otp route.
- */
 export async function secondsSinceLastOtpRequest(env: Env, email: string): Promise<number | null> {
   const normalized = email.toLowerCase().trim();
-  const row = await env.DB.prepare(
-    `SELECT created_at FROM otp_codes WHERE email = ? ORDER BY created_at DESC LIMIT 1`
-  )
+  const row = await env.DB.prepare(`SELECT created_at FROM otp_codes WHERE email = ? ORDER BY created_at DESC LIMIT 1`)
     .bind(normalized)
     .first<{ created_at: string }>();
 
@@ -104,25 +78,6 @@ export async function secondsSinceLastOtpRequest(env: Env, email: string): Promi
   return (Date.now() - createdAt.getTime()) / 1000;
 }
 
-/**
- * Fixed-window rate limiter backed by D1.
- *
- * A single atomic UPSERT (INSERT ... ON CONFLICT DO UPDATE ... RETURNING)
- * rather than a separate SELECT-then-INSERT/UPDATE — the previous version
- * read the row, decided in JS whether to reset/increment, then wrote it
- * back in a second statement, leaving a window where two concurrent
- * requests for the same bucket could both read the same `count` and both
- * proceed, letting a burst slip a couple of requests past the limit. SQLite
- * (and D1) executes one statement as a single atomic step even with
- * concurrent callers, so folding the read-decide-write into one statement
- * closes that race. `bucket_key` is the table's PRIMARY KEY, which is what
- * makes ON CONFLICT well-defined here.
- *
- * window_start is stored as the same ISO-8601 string format as before
- * (readable, matches every other timestamp column in this schema);
- * strftime('%s', ...) converts both it and 'now' to Unix seconds for the
- * comparison, which SQLite parses correctly including the trailing 'Z'.
- */
 export async function checkRateLimit(
   env: Env,
   bucketKey: string,
@@ -149,9 +104,6 @@ export async function checkRateLimit(
     .bind(bucketKey, nowIso, nowIso, windowSeconds, nowIso, windowSeconds)
     .first<{ count: number }>();
 
-  // The RETURNING row always comes back (insert or update path) — this null
-  // check is just to satisfy the type checker / fail closed on a driver
-  // that somehow doesn't support RETURNING.
   if (!row) return { allowed: false, remaining: 0 };
 
   if (row.count > maxCount) {
@@ -160,17 +112,7 @@ export async function checkRateLimit(
   return { allowed: true, remaining: maxCount - row.count };
 }
 
-// ---------------------------------------------------------------------------
-// site_settings — admin-editable key/value config (see lib/config.ts for the
-// price-related keys and their env-var fallbacks).
-// ---------------------------------------------------------------------------
-
-/** Reads a setting, falling back to `fallback` (usually a wrangler.jsonc env var) if no row exists yet. */
-export async function getSetting(
-  env: Env,
-  key: string,
-  fallback?: string | null
-): Promise<string | null> {
+export async function getSetting(env: Env, key: string, fallback?: string | null): Promise<string | null> {
   const row = await env.DB.prepare("SELECT value FROM site_settings WHERE key = ?")
     .bind(key)
     .first<{ value: string }>();
@@ -178,12 +120,7 @@ export async function getSetting(
   return fallback ?? null;
 }
 
-export async function setSetting(
-  env: Env,
-  key: string,
-  value: string,
-  updatedByAdminId: string | null
-): Promise<void> {
+export async function setSetting(env: Env, key: string, value: string, updatedByAdminId: string | null): Promise<void> {
   await env.DB.prepare(
     `INSERT INTO site_settings (key, value, updated_at, updated_by) VALUES (?, ?, datetime('now'), ?)
      ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now'), updated_by = excluded.updated_by`
@@ -192,14 +129,6 @@ export async function setSetting(
     .run();
 }
 
-// ---------------------------------------------------------------------------
-// site_content — admin-editable page copy (migrations/0013). Every key's
-// default lives in worker/lib/content.ts (CONTENT_DEFAULTS) — that's the
-// single source of truth for "what keys exist" and "what do they say until
-// an admin changes them". A row only exists here once an admin has actually
-// looked at (via listContentAdmin/upsert) or overridden a key; getContentMap
-// falls back to CONTENT_DEFAULTS for anything with no row, or a NULL value.
-// ---------------------------------------------------------------------------
 export interface ContentRow {
   key: string;
   value: string | null;
@@ -208,9 +137,11 @@ export interface ContentRow {
   updated_by: string | null;
 }
 
-/** Public/runtime read path: key -> effective value (override, or the built-in default). Never 500s on a missing table row. */
 export async function getContentMap(env: Env, defaults: Record<string, string>): Promise<Record<string, string>> {
-  const result = await env.DB.prepare(`SELECT key, value FROM site_content`).all<{ key: string; value: string | null }>();
+  const result = await env.DB.prepare(`SELECT key, value FROM site_content`).all<{
+    key: string;
+    value: string | null;
+  }>();
   const overrides = new Map(result.results.map((r) => [r.key, r.value]));
   const map: Record<string, string> = {};
   for (const [key, fallback] of Object.entries(defaults)) {
@@ -220,7 +151,6 @@ export async function getContentMap(env: Env, defaults: Record<string, string>):
   return map;
 }
 
-/** Admin read path: every known key, its current override (if any) and its default, so the Content page can show both and offer "reset to default". */
 export async function listContentAdmin(env: Env, defs: { key: string; defaultValue: string }[]): Promise<ContentRow[]> {
   const result = await env.DB.prepare(`SELECT key, value, updated_at, updated_by FROM site_content`).all<{
     key: string;
@@ -241,7 +171,6 @@ export async function listContentAdmin(env: Env, defs: { key: string; defaultVal
   });
 }
 
-/** Sets (or clears, when value is null/empty) one content override. Mirrors setSetting's upsert shape. */
 export async function setContentValue(
   env: Env,
   key: string,
@@ -257,18 +186,15 @@ export async function setContentValue(
     .run();
 }
 
-/** "Reset to default" — clears the override (value = NULL) rather than deleting the row, so updated_at/updated_by still reflect the reset. */
-export async function resetContentValue(env: Env, key: string, defaultValue: string, updatedByAdminId: string | null): Promise<void> {
+export async function resetContentValue(
+  env: Env,
+  key: string,
+  defaultValue: string,
+  updatedByAdminId: string | null
+): Promise<void> {
   await setContentValue(env, key, null, defaultValue, updatedByAdminId);
 }
 
-// ---------------------------------------------------------------------------
-// site_layout — per-page block order/visibility (migrations/0014, Phase 3).
-// PAGE_BLOCKS (worker/lib/layout.ts) is the source of truth for which block
-// ids exist per page; this table only ever stores an order/visibility over
-// that fixed set — see reconcileLayout for how a stored row is protected
-// against drifting out of sync with the registry.
-// ---------------------------------------------------------------------------
 interface LayoutRow {
   page_key: string;
   blocks: string;
@@ -276,10 +202,11 @@ interface LayoutRow {
   updated_by: string | null;
 }
 
-/** Public/runtime read path for one page: reconciled, ordered block list. Falls back to the full default order on any DB error or missing row. */
 export async function getLayout(env: Env, pageKey: string): Promise<LayoutBlockState[]> {
   try {
-    const row = await env.DB.prepare(`SELECT blocks FROM site_layout WHERE page_key = ?`).bind(pageKey).first<{ blocks: string }>();
+    const row = await env.DB.prepare(`SELECT blocks FROM site_layout WHERE page_key = ?`)
+      .bind(pageKey)
+      .first<{ blocks: string }>();
     if (!row) return defaultLayout(pageKey);
     const parsed = JSON.parse(row.blocks) as LayoutBlockState[];
     return reconcileLayout(pageKey, parsed);
@@ -288,7 +215,6 @@ export async function getLayout(env: Env, pageKey: string): Promise<LayoutBlockS
   }
 }
 
-/** Public/runtime read path for every registered page at once (used by the single /config/layout fetch). */
 export async function getAllLayouts(env: Env, pageKeys: string[]): Promise<Record<string, LayoutBlockState[]>> {
   const result = await env.DB.prepare(`SELECT page_key, blocks FROM site_layout`).all<LayoutRow>();
   const rows = new Map(result.results.map((r) => [r.page_key, r.blocks]));
@@ -308,12 +234,16 @@ export async function getAllLayouts(env: Env, pageKeys: string[]): Promise<Recor
   return layouts;
 }
 
-/** Admin read path: every registered page's current (reconciled) block order. */
 export async function listLayoutsAdmin(env: Env, pageKeys: string[]): Promise<Record<string, LayoutBlockState[]>> {
   return getAllLayouts(env, pageKeys);
 }
 
-export async function setLayout(env: Env, pageKey: string, blocks: LayoutBlockState[], updatedByAdminId: string | null): Promise<void> {
+export async function setLayout(
+  env: Env,
+  pageKey: string,
+  blocks: LayoutBlockState[],
+  updatedByAdminId: string | null
+): Promise<void> {
   await env.DB.prepare(
     `INSERT INTO site_layout (page_key, blocks, updated_at, updated_by) VALUES (?, ?, datetime('now'), ?)
      ON CONFLICT(page_key) DO UPDATE SET blocks = excluded.blocks, updated_at = datetime('now'), updated_by = excluded.updated_by`
@@ -322,9 +252,6 @@ export async function setLayout(env: Env, pageKey: string, blocks: LayoutBlockSt
     .run();
 }
 
-// ---------------------------------------------------------------------------
-// admins (separate identity from `users`/students — see migrations/0008)
-// ---------------------------------------------------------------------------
 export interface AdminRow {
   id: string;
   email: string;
@@ -349,9 +276,6 @@ export async function touchAdminLastLogin(env: Env, adminId: string): Promise<vo
   await env.DB.prepare("UPDATE admins SET last_login_at = datetime('now') WHERE id = ?").bind(adminId).run();
 }
 
-// ---------------------------------------------------------------------------
-// Student directory (admin panel)
-// ---------------------------------------------------------------------------
 export interface StudentDirectoryRow {
   id: string;
   email: string;
@@ -365,14 +289,6 @@ export interface StudentDirectoryRow {
   latest_payment_status: string | null;
 }
 
-/**
- * One row per user with everything the admin directory needs to show at a
- * glance: progress (against real, active lessons only), and the most
- * recent payment order's status (NULL for a user who has never started a
- * checkout). "Completed" is now driven by finishing the video
- * (lesson_progress.video_completed) — the assignment system has been
- * removed from the product.
- */
 export async function listStudents(env: Env): Promise<StudentDirectoryRow[]> {
   const result = await env.DB.prepare(
     `SELECT
@@ -395,13 +311,6 @@ export async function listStudents(env: Env): Promise<StudentDirectoryRow[]> {
   return result.results;
 }
 
-/**
- * Manually grants (or revokes) paid access from the admin panel — e.g. for
- * a student who paid outside NOWPayments (bank transfer, in person, etc).
- * Mirrors exactly what the NOWPayments webhook does on a confirmed payment
- * (see routes/webhooks.ts), so a manually-granted student is
- * indistinguishable from one who paid through checkout.
- */
 export async function setUserCourseStatus(env: Env, userId: string, status: "free" | "paid"): Promise<void> {
   if (status === "paid") {
     await env.DB.prepare(
@@ -410,26 +319,12 @@ export async function setUserCourseStatus(env: Env, userId: string, status: "fre
       .bind(userId)
       .run();
   } else {
-    await env.DB.prepare(
-      `UPDATE users SET course_status = 'free', updated_at = datetime('now') WHERE id = ?`
-    )
+    await env.DB.prepare(`UPDATE users SET course_status = 'free', updated_at = datetime('now') WHERE id = ?`)
       .bind(userId)
       .run();
   }
 }
 
-/**
- * Permanently deletes one student's account and every row that hangs off
- * it. We rely on the schema's `ON DELETE CASCADE` (sessions, lesson_progress,
- * assignments, payment_orders, notifications, support_messages all
- * reference users(id) that way — see migrations/0001 and 0008), so a single
- * DELETE on `users` is enough as long as foreign_keys is ON for this
- * connection. `audit_events.user_id` is `ON DELETE SET NULL`, so the audit
- * trail survives the deletion instead of vanishing with it.
- *
- * Throws "not_found" if the id doesn't match an existing user, same
- * convention as deleteLesson/deleteChapter below.
- */
 export async function deleteUser(env: Env, userId: string): Promise<void> {
   await env.DB.prepare("PRAGMA foreign_keys = ON").run();
   const existing = await env.DB.prepare("SELECT id FROM users WHERE id = ?").bind(userId).first<{ id: string }>();
@@ -437,15 +332,6 @@ export async function deleteUser(env: Env, userId: string): Promise<void> {
   await env.DB.prepare("DELETE FROM users WHERE id = ?").bind(userId).run();
 }
 
-/**
- * Wipes EVERY student's account and everything that cascades from it
- * (sessions, progress, assignments, payment history, notifications,
- * support messages) — course content (lessons/chapters), admin accounts,
- * and site settings are untouched. Irreversible; the caller (route) is
- * responsible for requiring an explicit typed confirmation before this is
- * ever invoked. Returns how many accounts were removed, for the confirmation
- * screen / audit log.
- */
 export async function wipeAllUsers(env: Env): Promise<number> {
   await env.DB.prepare("PRAGMA foreign_keys = ON").run();
   const countRow = await env.DB.prepare("SELECT COUNT(*) as n FROM users").first<{ n: number }>();
@@ -454,11 +340,6 @@ export async function wipeAllUsers(env: Env): Promise<number> {
   return count;
 }
 
-// ---------------------------------------------------------------------------
-// Chapters — admin-manageable groupings (replaces the old static, hardcoded
-// semester array this project used to ship). `name` is the join key against
-// lessons.chapter_name.
-// ---------------------------------------------------------------------------
 export interface ChapterRow {
   id: number;
   name: string;
@@ -484,11 +365,6 @@ export async function createChapter(env: Env, name: string, tagline: string | nu
   return row;
 }
 
-/**
- * Renames a chapter and cascades the rename onto every lesson currently
- * grouped under the old name, so lessons never end up pointing at a
- * chapter name that no longer exists in the `chapters` table.
- */
 export async function updateChapter(
   env: Env,
   id: number,
@@ -500,9 +376,7 @@ export async function updateChapter(
   const nextName = fields.name?.trim() || existing.name;
   const nextTagline = fields.tagline !== undefined ? fields.tagline : existing.tagline;
 
-  await env.DB.prepare(`UPDATE chapters SET name = ?, tagline = ? WHERE id = ?`)
-    .bind(nextName, nextTagline, id)
-    .run();
+  await env.DB.prepare(`UPDATE chapters SET name = ?, tagline = ? WHERE id = ?`).bind(nextName, nextTagline, id).run();
 
   if (nextName !== existing.name) {
     await env.DB.prepare(`UPDATE lessons SET chapter_name = ? WHERE chapter_name = ?`)
@@ -511,13 +385,6 @@ export async function updateChapter(
   }
 }
 
-/**
- * Deletes a chapter outright. Refuses (throws "chapter_not_empty") while any
- * lesson still points at it — silently cascading the delete onto those
- * lessons would destroy real content (and, transitively, any student
- * progress against them) with no confirmation of what's being removed. The
- * admin must move or delete those lessons first, then the chapter itself.
- */
 export async function deleteChapter(env: Env, id: number): Promise<void> {
   const chapter = await env.DB.prepare(`SELECT * FROM chapters WHERE id = ?`).bind(id).first<ChapterRow>();
   if (!chapter) throw new Error("not_found");
@@ -531,11 +398,11 @@ export async function deleteChapter(env: Env, id: number): Promise<void> {
 
   await env.DB.prepare(`DELETE FROM chapters WHERE id = ?`).bind(id).run();
 
-  // Close the gap the delete leaves in sort_order, so the remaining chapters
-  // stay a clean 1..N sequence — same invariant reorderChapters maintains.
   const remaining = await listChapters(env);
   for (let i = 0; i < remaining.length; i++) {
-    await env.DB.prepare(`UPDATE chapters SET sort_order = ? WHERE id = ?`).bind(i + 1, remaining[i].id).run();
+    await env.DB.prepare(`UPDATE chapters SET sort_order = ? WHERE id = ?`)
+      .bind(i + 1, remaining[i].id)
+      .run();
   }
 }
 
@@ -546,21 +413,9 @@ export async function reorderChapters(env: Env, orderedIds: number[]): Promise<v
       .run();
   }
 
-  // The public course page (routes/lessons.ts + OutlineList.tsx) walks
-  // lessons in their own sort_order and starts a new chapter section purely
-  // by noticing chapter_name changed — it never looks at chapters.sort_order
-  // directly. Without this, moving a chapter here only changes its header
-  // number/name while its lessons stay wherever they physically were,
-  // silently desyncing the admin's intended order from what students see.
   await resequenceLessonsByChapterOrder(env);
 }
 
-// ---------------------------------------------------------------------------
-// Lessons — full admin CRUD. Content that is NOT editable from the admin
-// panel (per product spec) stays out of the update whitelist entirely:
-// only title, tagline, description, chapterName, videoEmbedUrl,
-// thumbnailUrl and isActive can ever be changed here.
-// ---------------------------------------------------------------------------
 export interface AdminLessonRow {
   id: number;
   lesson_number: number;
@@ -574,23 +429,16 @@ export interface AdminLessonRow {
   is_active: number;
   sort_order: number;
   watermark_enabled: number;
-  /** Admin-entered display label like "12:45" — see migration 0018. Never auto-detected. */
   duration_label: string | null;
 }
 
 export async function listAdminLessons(env: Env): Promise<AdminLessonRow[]> {
-  const result = await env.DB.prepare(`SELECT * FROM lessons ORDER BY sort_order ASC, lesson_number ASC`).all<AdminLessonRow>();
+  const result = await env.DB.prepare(
+    `SELECT * FROM lessons ORDER BY sort_order ASC, lesson_number ASC`
+  ).all<AdminLessonRow>();
   return result.results;
 }
 
-/**
- * Creates a new lesson at the end of the course (highest lesson_number +
- * sort_order + 1). Free/paid status is never set per-lesson here — it's
- * derived entirely from the lesson's position vs the admin-editable
- * free-lesson-count setting (see lib/config.ts getFreeLessonCount), so
- * `is_free` is left at its default (0) and unused for access decisions;
- * it's kept only for backward-compatible display purposes.
- */
 export async function createLesson(
   env: Env,
   fields: {
@@ -629,12 +477,6 @@ export async function createLesson(
     .run();
   const id = insert.meta.last_row_id as number;
 
-  // A brand-new lesson always lands with the highest lesson_number/sort_order
-  // above, i.e. at the very end of the WHOLE course — even when its chapter
-  // isn't the last one. Left alone, that splits the chapter's classes apart
-  // in the public sequence (routes/lessons.ts + OutlineList.tsx both assume
-  // same-chapter lessons are contiguous). Resequence so it lands right after
-  // that chapter's existing lessons instead.
   await resequenceLessonsByChapterOrder(env);
 
   const row = await env.DB.prepare(`SELECT * FROM lessons WHERE id = ?`).bind(id).first<AdminLessonRow>();
@@ -681,30 +523,12 @@ export async function updateLesson(
     )
     .run();
 
-  // Re-assigning a lesson to a different chapter (the Edit-lesson form's
-  // Chapter dropdown) doesn't move its lesson_number/sort_order — without
-  // resequencing it stays wherever it physically was, splitting either its
-  // old or new chapter apart on the public course page.
   if (nextChapterName !== existing.chapter_name) {
     await resequenceLessonsByChapterOrder(env);
   }
 }
 
-/**
- * Reorders lessons AND renumbers them 1..N to match the new order —
- * lesson_number doubles as every learner's progress pointer
- * (`users.current_lesson`), so a reorder that didn't renumber would silently
- * desync existing learners' progress from the new sequence. This is safe
- * for content nobody has started yet; reordering classes that students are
- * actively partway through will shift what "Class N" means for them too,
- * same as it would on any sequentially-numbered course.
- */
 export async function reorderLessons(env: Env, orderedIds: number[]): Promise<void> {
-  // Two-pass renumber: lesson_number is UNIQUE, so writing final numbers
-  // directly in id order can collide with another row that still holds its
-  // old number (e.g. swapping two adjacent lessons). A negative-offset
-  // placeholder pass avoids the collision, then the second pass writes the
-  // real 1..N numbers.
   for (let i = 0; i < orderedIds.length; i++) {
     await env.DB.prepare(`UPDATE lessons SET lesson_number = ? WHERE id = ?`)
       .bind(-(i + 1), orderedIds[i])
@@ -717,15 +541,6 @@ export async function reorderLessons(env: Env, orderedIds: number[]): Promise<vo
   }
 }
 
-/**
- * Same-shape reorder as reorderLessons, but each entry may also carry the
- * lesson's new chapter — this is what powers the admin drag-and-drop (a
- * lesson dragged into a different chapter's section needs its chapter_name
- * updated, not just its position). Chapter changes are applied first so the
- * subsequent renumber/resequence sees the final chapter_name for every row.
- * Ordinary same-chapter reorders (the old up/down arrows) simply pass the
- * same chapterName back and this collapses to a no-op update.
- */
 export async function reorderLessonsWithChapters(
   env: Env,
   orderedLessons: { id: number; chapterName: string }[]
@@ -735,43 +550,26 @@ export async function reorderLessonsWithChapters(
       .bind(item.chapterName, item.id, item.chapterName)
       .run();
   }
-  await reorderLessons(env, orderedLessons.map((item) => item.id));
+  await reorderLessons(
+    env,
+    orderedLessons.map((item) => item.id)
+  );
 }
 
-/**
- * Deletes a lesson row outright (unlike archiveLesson, which only hides it).
- * lesson_progress rows for it cascade-delete via the FK (migrations/0001),
- * so this permanently discards any student's completion state for this
- * specific lesson — the caller-facing confirm dialog should say so.
- */
 export async function deleteLesson(env: Env, id: number): Promise<void> {
   const existing = await env.DB.prepare(`SELECT id FROM lessons WHERE id = ?`).bind(id).first<{ id: number }>();
   if (!existing) throw new Error("not_found");
 
   await env.DB.prepare(`DELETE FROM lessons WHERE id = ?`).bind(id).run();
 
-  // Deleting a row leaves a gap in lesson_number/sort_order — resequence
-  // everything that remains so numbering stays a clean, chapter-contiguous
-  // 1..N sequence (same helper createLesson/updateLesson/reorderChapters use).
   await resequenceLessonsByChapterOrder(env);
 }
 
-/**
- * Re-sorts every lesson so that lessons belonging to the same chapter are
- * always contiguous, grouped in chapters.sort_order, with each chapter's own
- * lessons keeping their existing relative order. Several admin actions can
- * otherwise leave a chapter's classes split apart in lesson_number/sort_order
- * (a new lesson always inserts at the very end of the whole course, editing
- * a lesson's chapter doesn't move it, reordering chapters doesn't move their
- * lessons) — see createLesson, updateLesson, and reorderChapters, which all
- * call this afterward. The public course page (routes/lessons.ts) and its
- * outline (OutlineList.tsx) both assume a chapter's lessons are contiguous,
- * so any split shows up there as a duplicated/misnumbered chapter section.
- */
 async function resequenceLessonsByChapterOrder(env: Env): Promise<void> {
-  const chapters = await listChapters(env); // already ordered by sort_order
-  const lessons = await env.DB.prepare(`SELECT id, chapter_name FROM lessons ORDER BY sort_order ASC, lesson_number ASC`)
-    .all<{ id: number; chapter_name: string }>();
+  const chapters = await listChapters(env);
+  const lessons = await env.DB.prepare(
+    `SELECT id, chapter_name FROM lessons ORDER BY sort_order ASC, lesson_number ASC`
+  ).all<{ id: number; chapter_name: string }>();
 
   const byChapter = new Map<string, number[]>();
   for (const lesson of lessons.results) {
@@ -785,8 +583,6 @@ async function resequenceLessonsByChapterOrder(env: Env): Promise<void> {
     const ids = byChapter.get(chapter.name);
     if (ids) orderedIds.push(...ids);
   }
-  // Defensive: a lesson whose chapter_name doesn't match any current chapter
-  // (shouldn't normally happen) keeps a place rather than being dropped.
   const placed = new Set(orderedIds);
   for (const lesson of lessons.results) {
     if (!placed.has(lesson.id)) orderedIds.push(lesson.id);
@@ -797,20 +593,10 @@ async function resequenceLessonsByChapterOrder(env: Env): Promise<void> {
   }
 }
 
-/** Soft-delete: hides a lesson from the public course without destroying any student progress rows tied to it. */
 export async function archiveLesson(env: Env, id: number): Promise<void> {
   await env.DB.prepare(`UPDATE lessons SET is_active = 0 WHERE id = ?`).bind(id).run();
 }
 
-/**
- * Clones a lesson (title gets a " (copy)" suffix) into the SAME chapter. The
- * clone is always created hidden (is_active = 0) regardless of the source's
- * state — same "review before publishing" rule as a brand-new lesson (see
- * createLesson) — and never copies watch progress, since it's a distinct
- * lesson row. Lands at the end of its chapter, exactly like createLesson,
- * via the same resequence helper. Throws "not_found" if the source lesson
- * doesn't exist.
- */
 export async function duplicateLesson(env: Env, id: number): Promise<AdminLessonRow> {
   const source = await env.DB.prepare(`SELECT * FROM lessons WHERE id = ?`).bind(id).first<AdminLessonRow>();
   if (!source) throw new Error("not_found");
@@ -847,13 +633,6 @@ export async function duplicateLesson(env: Env, id: number): Promise<AdminLesson
   return row;
 }
 
-/**
- * Applies one action to many lessons at once (the Lessons page's bulk
- * toolbar). "delete" reuses deleteLesson's resequence-after so the numbering
- * stays clean even when several lessons vanish in one go. Returns how many
- * rows were actually affected (skips ids that don't exist rather than
- * throwing, since a bulk action should apply to what's still there).
- */
 export async function bulkUpdateLessons(
   env: Env,
   ids: number[],
@@ -881,23 +660,16 @@ export async function bulkUpdateLessons(
   return result.meta.changes ?? 0;
 }
 
-// ---------------------------------------------------------------------------
-// Revenue / signup analytics (Dashboard). Read-only aggregation queries over
-// payment_orders and users — no new tables. "Revenue" only ever counts
-// orders in a PAID_STATUSES-equivalent terminal state ('confirmed' or
-// 'finished' — see services/nowpayments.ts PAID_STATUSES), so pending/failed
-// checkouts never inflate the numbers.
-// ---------------------------------------------------------------------------
 const REVENUE_PAID_STATUSES = ["confirmed", "finished"] as const;
 
 export interface DailyPoint {
-  date: string; // YYYY-MM-DD
+  date: string;
   amount: number;
   count: number;
 }
 
 export interface SignupPoint {
-  date: string; // YYYY-MM-DD
+  date: string;
   count: number;
 }
 
@@ -913,8 +685,8 @@ export interface RevenueAnalytics {
   revenueLast30Days: number;
   revenueThisMonth: number;
   revenuePrevMonth: number;
-  dailyRevenue: DailyPoint[]; // last 30 days, always 30 entries (0-filled)
-  dailySignups: SignupPoint[]; // last 30 days, always 30 entries (0-filled)
+  dailyRevenue: DailyPoint[];
+  dailySignups: SignupPoint[];
   statusBreakdown: StatusBreakdownRow[];
 }
 
@@ -1008,17 +780,6 @@ export async function getRevenueAnalytics(env: Env): Promise<RevenueAnalytics> {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Advanced analytics (admin panel's Analytics page — GET
-// /admin/analytics/advanced). A deeper, filterable sibling to
-// getRevenueAnalytics above: same read-only aggregation style and the same
-// REVENUE_PAID_STATUSES convention for what counts as "revenue", but
-// filterable by date range / granularity / cohort (course_status) /
-// currency / order status, and covering signups, funnel, lesson &
-// chapter completion, and support on top of revenue.
-// ---------------------------------------------------------------------------
-
-/** Mirrors payment_orders' CHECK(status IN (...)) constraint — see migrations/0005. Hardcoded rather than a DISTINCT query so every possible status always shows up as a filter option, even ones with zero rows yet. */
 export const ORDER_STATUSES = [
   "created",
   "waiting",
@@ -1031,12 +792,12 @@ export const ORDER_STATUSES = [
 ] as const;
 
 export interface AdvancedAnalyticsFilters {
-  dateFrom: string; // YYYY-MM-DD, inclusive
-  dateTo: string; // YYYY-MM-DD, inclusive
+  dateFrom: string;
+  dateTo: string;
   granularity: "day" | "week" | "month";
   courseStatus: "all" | "free" | "paid";
-  currency: string; // "all" or an exact payment_orders.currency value
-  paymentStatuses: string[]; // empty = every status
+  currency: string;
+  paymentStatuses: string[];
 }
 
 export interface AdvancedTrendPoint {
@@ -1103,15 +864,6 @@ export interface AdvancedAnalytics {
   filterOptions: { currencies: string[]; chapters: string[]; statuses: string[] };
 }
 
-/**
- * Builds the `date(...)` SQL fragment used to bucket a timestamp column
- * into a trend period. `granularity` is always one of the three literal
- * values the route handler validates before this is ever called — never
- * raw request input — so splicing it into the SQL string here (SQLite has
- * no way to bind a function's date-modifier argument as a parameter) can't
- * be used for injection. Week buckets start on Sunday (`strftime('%w', …)`
- * is 0 for Sunday); month buckets use SQLite's built-in 'start of month'.
- */
 function periodExprFor(column: string, granularity: AdvancedAnalyticsFilters["granularity"]): string {
   switch (granularity) {
     case "week":
@@ -1127,8 +879,6 @@ function periodExprFor(column: string, granularity: AdvancedAnalyticsFilters["gr
 export async function getAdvancedAnalytics(env: Env, filters: AdvancedAnalyticsFilters): Promise<AdvancedAnalytics> {
   const { dateFrom, dateTo, granularity, courseStatus, currency, paymentStatuses } = filters;
 
-  // Cohort (course_status) filter — two variants, since some queries below
-  // hit `users` bare and others join it in as `u`.
   const cohortClause = courseStatus !== "all" ? "AND course_status = ?" : "";
   const cohortClauseU = courseStatus !== "all" ? "AND u.course_status = ?" : "";
   const cohortParam = courseStatus !== "all" ? [courseStatus] : [];
@@ -1136,15 +886,11 @@ export async function getAdvancedAnalytics(env: Env, filters: AdvancedAnalyticsF
   const currencyClause = currency !== "all" ? "AND currency = ?" : "";
   const currencyParam = currency !== "all" ? [currency] : [];
 
-  // Which statuses count as "revenue" for the breakdown/trend queries that
-  // respect the order-status filter — the admin's selection if they made
-  // one, otherwise the same paid/finished pair getRevenueAnalytics uses.
   const filterableRevenueStatuses = paymentStatuses.length > 0 ? paymentStatuses : [...REVENUE_PAID_STATUSES];
 
   const revenuePeriod = periodExprFor("confirmed_at", granularity);
   const signupPeriod = periodExprFor("created_at", granularity);
 
-  // ---- Student KPIs ---------------------------------------------------------
   const totalStudentsRow = await env.DB.prepare(`SELECT COUNT(*) as cnt FROM users WHERE 1=1 ${cohortClause}`)
     .bind(...cohortParam)
     .first<{ cnt: number }>();
@@ -1155,9 +901,6 @@ export async function getAdvancedAnalytics(env: Env, filters: AdvancedAnalyticsF
     .bind(dateFrom, dateTo, ...cohortParam)
     .first<{ cnt: number }>();
 
-  // Intersected with the cohort filter (not just "paid") so that, e.g.,
-  // filtering to the "free" cohort correctly shows 0 paid students in
-  // range rather than every paid student site-wide.
   const paidInRangeRow = await env.DB.prepare(
     `SELECT COUNT(*) as cnt FROM users WHERE date(created_at) BETWEEN ? AND ? AND course_status = 'paid' ${cohortClause}`
   )
@@ -1169,9 +912,6 @@ export async function getAdvancedAnalytics(env: Env, filters: AdvancedAnalyticsF
   const freeStudents = Math.max(0, newStudentsInRange - paidStudents);
   const conversionRate = newStudentsInRange > 0 ? Math.round((paidStudents / newStudentsInRange) * 100) : 0;
 
-  // ---- Revenue KPIs — always the paid/finished statuses, regardless of
-  // the order-status filter (a "Revenue in range" number that changes
-  // meaning when someone ticks "failed" would be actively misleading). ----
   const revenuePaidPlaceholders = REVENUE_PAID_STATUSES.map(() => "?").join(",");
   const revenueKpiRow = await env.DB.prepare(
     `SELECT COALESCE(SUM(amount), 0) as total, COUNT(*) as cnt
@@ -1193,7 +933,6 @@ export async function getAdvancedAnalytics(env: Env, filters: AdvancedAnalyticsF
     .first<{ avg_days: number | null }>();
   const avgDaysToConvert = convertRow?.avg_days != null ? Math.round(convertRow.avg_days * 10) / 10 : null;
 
-  // ---- Trends -----------------------------------------------------------
   const revenueTrendRows = await env.DB.prepare(
     `SELECT ${revenuePeriod} as period, COALESCE(SUM(amount), 0) as total, COUNT(*) as cnt
      FROM payment_orders
@@ -1223,9 +962,6 @@ export async function getAdvancedAnalytics(env: Env, filters: AdvancedAnalyticsF
     count: r.cnt
   }));
 
-  // ---- Breakdowns ---------------------------------------------------------
-  // Status breakdown deliberately ignores the order-status filter — showing
-  // the distribution ACROSS statuses is the whole point of this panel.
   const statusBreakdownRows = await env.DB.prepare(
     `SELECT status, COUNT(*) as cnt, COALESCE(SUM(amount), 0) as total
      FROM payment_orders
@@ -1235,8 +971,6 @@ export async function getAdvancedAnalytics(env: Env, filters: AdvancedAnalyticsF
     .bind(dateFrom, dateTo, ...currencyParam)
     .all<{ status: string; cnt: number; total: number }>();
 
-  // Currency breakdown, conversely, respects the order-status filter (it's
-  // not the axis being broken down) but ignores the currency filter itself.
   const filterableStatusPlaceholders = filterableRevenueStatuses.map(() => "?").join(",");
   const currencyBreakdownRows = await env.DB.prepare(
     `SELECT currency, COUNT(*) as cnt, COALESCE(SUM(amount), 0) as total
@@ -1265,7 +999,6 @@ export async function getAdvancedAnalytics(env: Env, filters: AdvancedAnalyticsF
     .bind(dateFrom, dateTo, ...currencyParam)
     .first<{ cnt: number }>();
 
-  // ---- Funnel -------------------------------------------------------------
   const startedRow = await env.DB.prepare(
     `SELECT COUNT(*) as cnt FROM users u
      WHERE date(u.created_at) BETWEEN ? AND ? ${cohortClauseU}
@@ -1289,15 +1022,15 @@ export async function getAdvancedAnalytics(env: Env, filters: AdvancedAnalyticsF
     { stage: "Paid", count: paidStudents }
   ];
 
-  // ---- Lesson / chapter completion — cohort-filtered but NOT date-range
-  // limited (progress isn't naturally bound to a signup window). ----------
   const freeLessonCount = await getFreeLessonCount(env);
 
   const lessonsResult = await env.DB.prepare(
     `SELECT id, lesson_number, title, chapter_name FROM lessons WHERE is_active = 1 ORDER BY sort_order ASC, lesson_number ASC`
   ).all<{ id: number; lesson_number: number; title: string; chapter_name: string }>();
 
-  const paidTotalRow = await env.DB.prepare(`SELECT COUNT(*) as cnt FROM users WHERE course_status = 'paid' ${cohortClause}`)
+  const paidTotalRow = await env.DB.prepare(
+    `SELECT COUNT(*) as cnt FROM users WHERE course_status = 'paid' ${cohortClause}`
+  )
     .bind(...cohortParam)
     .first<{ cnt: number }>();
 
@@ -1349,7 +1082,6 @@ export async function getAdvancedAnalytics(env: Env, filters: AdvancedAnalyticsF
       ? Math.round(lessonCompletion.reduce((sum, l) => sum + l.completionRate, 0) / lessonCompletion.length)
       : 0;
 
-  // ---- Support ------------------------------------------------------------
   const supportRow = await env.DB.prepare(
     `SELECT
        SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END) as open_cnt,
@@ -1360,11 +1092,14 @@ export async function getAdvancedAnalytics(env: Env, filters: AdvancedAnalyticsF
     .bind(dateFrom, dateTo)
     .first<{ open_cnt: number | null; closed_cnt: number | null; total: number }>();
 
-  // ---- Filter options -------------------------------------------------------
-  const currenciesResult = await env.DB.prepare(`SELECT DISTINCT currency FROM payment_orders ORDER BY currency ASC`).all<{
+  const currenciesResult = await env.DB.prepare(
+    `SELECT DISTINCT currency FROM payment_orders ORDER BY currency ASC`
+  ).all<{
     currency: string;
   }>();
-  const chaptersResult = await env.DB.prepare(`SELECT name FROM chapters ORDER BY sort_order ASC`).all<{ name: string }>();
+  const chaptersResult = await env.DB.prepare(`SELECT name FROM chapters ORDER BY sort_order ASC`).all<{
+    name: string;
+  }>();
 
   return {
     range: { from: dateFrom, to: dateTo },
@@ -1406,9 +1141,7 @@ export async function logAuditEvent(
   eventType: string,
   opts: { userId?: string | null; ipHash?: string | null; metadata?: Record<string, unknown> } = {}
 ): Promise<void> {
-  await env.DB.prepare(
-    `INSERT INTO audit_events (id, user_id, event_type, metadata, ip_hash) VALUES (?, ?, ?, ?, ?)`
-  )
+  await env.DB.prepare(`INSERT INTO audit_events (id, user_id, event_type, metadata, ip_hash) VALUES (?, ?, ?, ?, ?)`)
     .bind(
       randomUuid(),
       opts.userId ?? null,
@@ -1418,15 +1151,6 @@ export async function logAuditEvent(
     )
     .run();
 }
-
-// ---------------------------------------------------------------------------
-// Support inbox (migrations/0016, 0017) — in-site ticket/thread system that
-// replaces the Telegram support button. See routes/support.ts (learner) and
-// routes/admin-support.ts (admin). "Identity" for a ticket is either a
-// logged-in user_id or a guest_id from the support_guest_id cookie — never
-// both, and every helper below that takes an identity expects exactly one
-// of the two to be set.
-// ---------------------------------------------------------------------------
 
 export interface SupportIdentity {
   userId: string | null;
@@ -1456,7 +1180,7 @@ export interface SupportMessageRow {
   ticket_id: string;
   sender_type: "user" | "admin";
   body: string | null;
-  has_attachment: number; // 0/1 — derived, blob bytes are never selected here
+  has_attachment: number;
   attachment_mime: string | null;
   attachment_filename: string | null;
   attachment_size: number | null;
@@ -1471,23 +1195,12 @@ export interface SupportAttachment {
   ticket_id: string;
 }
 
-/** True if this ticket belongs to the given identity (user OR guest, never both). Used by every learner-facing route to gate access before returning/mutating anything. */
 export function supportTicketBelongsTo(ticket: SupportTicketRow, identity: SupportIdentity): boolean {
   if (identity.userId) return ticket.user_id === identity.userId;
   if (identity.guestId) return ticket.guest_id === identity.guestId;
   return false;
 }
 
-/**
- * True if this identity already has a ticket that's still visible to them
- * (hidden_by_user_at IS NULL). A learner may only have ONE ticket open at a
- * time — see routes/support.ts' create-ticket handler — closing
- * ("Close conversation", which sets hidden_by_user_at) is what frees them up
- * to start a new one. This intentionally ignores admin open/closed
- * `status`: an admin-closed-but-not-hidden ticket still counts as "theirs"
- * until the learner themselves closes it, since they can still see and
- * reply into it.
- */
 export async function hasVisibleSupportTicket(env: Env, identity: SupportIdentity): Promise<boolean> {
   const column = identity.userId ? "user_id" : "guest_id";
   const value = identity.userId ?? identity.guestId;
@@ -1528,8 +1241,10 @@ export async function getSupportTicket(env: Env, id: string): Promise<SupportTic
   return row ?? null;
 }
 
-/** Lists one identity's VISIBLE tickets (hidden_by_user_at IS NULL — see hideSupportTicketForUser), newest activity first, with an unread count (admin messages the learner hasn't read yet) per ticket. */
-export async function listSupportTicketsForIdentity(env: Env, identity: SupportIdentity): Promise<SupportTicketListItem[]> {
+export async function listSupportTicketsForIdentity(
+  env: Env,
+  identity: SupportIdentity
+): Promise<SupportTicketListItem[]> {
   const column = identity.userId ? "user_id" : "guest_id";
   const value = identity.userId ?? identity.guestId;
   if (!value) return [];
@@ -1545,7 +1260,6 @@ export async function listSupportTicketsForIdentity(env: Env, identity: SupportI
   return result.results;
 }
 
-/** Full thread for one ticket, oldest first. Never selects attachment_blob — see SupportAttachment / getSupportMessageAttachment for that. */
 export async function listSupportMessages(env: Env, ticketId: string): Promise<SupportMessageRow[]> {
   const result = await env.DB.prepare(
     `SELECT id, ticket_id, sender_type, body,
@@ -1559,13 +1273,6 @@ export async function listSupportMessages(env: Env, ticketId: string): Promise<S
   return result.results;
 }
 
-/**
- * Sends a message into a ticket. Reopens a closed ticket (status -> 'open')
- * and always bumps last_message_at, whichever side sent it — this is the
- * only place either of those change outside the explicit close/reopen
- * actions. Attachment bytes (if any) are bound as a raw Uint8Array, never
- * base64 text.
- */
 export async function createSupportMessage(
   env: Env,
   fields: {
@@ -1592,9 +1299,7 @@ export async function createSupportMessage(
     )
     .run();
 
-  await env.DB.prepare(
-    `UPDATE support_tickets SET status = 'open', last_message_at = datetime('now') WHERE id = ?`
-  )
+  await env.DB.prepare(`UPDATE support_tickets SET status = 'open', last_message_at = datetime('now') WHERE id = ?`)
     .bind(fields.ticketId)
     .run();
 
@@ -1608,8 +1313,11 @@ export async function createSupportMessage(
   return row;
 }
 
-/** Marks every message from `unreadSenderType` in this ticket as read — called when the OTHER side opens the thread (learner reading marks admin messages read, and vice versa). */
-export async function markSupportMessagesRead(env: Env, ticketId: string, unreadSenderType: "user" | "admin"): Promise<void> {
+export async function markSupportMessagesRead(
+  env: Env,
+  ticketId: string,
+  unreadSenderType: "user" | "admin"
+): Promise<void> {
   await env.DB.prepare(
     `UPDATE support_messages SET read_at = datetime('now') WHERE ticket_id = ? AND sender_type = ? AND read_at IS NULL`
   )
@@ -1617,19 +1325,27 @@ export async function markSupportMessagesRead(env: Env, ticketId: string, unread
     .run();
 }
 
-/** Reads one message's attachment bytes for streaming — the caller is responsible for the ownership/auth check (join against support_tickets first). */
 export async function getSupportMessageAttachment(env: Env, messageId: string): Promise<SupportAttachment | null> {
   const row = await env.DB.prepare(
     `SELECT ticket_id, attachment_blob, attachment_mime, attachment_filename FROM support_messages WHERE id = ? AND attachment_blob IS NOT NULL`
   )
     .bind(messageId)
-    .first<{ ticket_id: string; attachment_blob: Uint8Array | ArrayBuffer; attachment_mime: string; attachment_filename: string }>();
+    .first<{
+      ticket_id: string;
+      attachment_blob: Uint8Array | ArrayBuffer;
+      attachment_mime: string;
+      attachment_filename: string;
+    }>();
   if (!row) return null;
   const bytes = row.attachment_blob instanceof Uint8Array ? row.attachment_blob : new Uint8Array(row.attachment_blob);
   return { bytes, mime: row.attachment_mime, filename: row.attachment_filename, ticket_id: row.ticket_id };
 }
 
-export async function shiftSupportTicketProfile(env: Env, ticketId: string, agentProfile: SupportAgentProfile): Promise<void> {
+export async function shiftSupportTicketProfile(
+  env: Env,
+  ticketId: string,
+  agentProfile: SupportAgentProfile
+): Promise<void> {
   await env.DB.prepare(`UPDATE support_tickets SET agent_profile = ? WHERE id = ?`).bind(agentProfile, ticketId).run();
 }
 
@@ -1637,39 +1353,24 @@ export async function setSupportTicketStatus(env: Env, ticketId: string, status:
   await env.DB.prepare(`UPDATE support_tickets SET status = ? WHERE id = ?`).bind(status, ticketId).run();
 }
 
-/** Learner-side "Close conversation" — hides the ticket from their own list (see listSupportTicketsForIdentity) without touching admin-controlled `status`. Also frees the identity up to start a new ticket (see hasVisibleSupportTicket). */
 export async function hideSupportTicketForUser(env: Env, ticketId: string): Promise<void> {
-  await env.DB.prepare(`UPDATE support_tickets SET hidden_by_user_at = datetime('now') WHERE id = ?`).bind(ticketId).run();
+  await env.DB.prepare(`UPDATE support_tickets SET hidden_by_user_at = datetime('now') WHERE id = ?`)
+    .bind(ticketId)
+    .run();
 }
 
-/** Admin action — puts a learner-hidden ticket back into their ticket list. */
 export async function unhideSupportTicket(env: Env, ticketId: string): Promise<void> {
   await env.DB.prepare(`UPDATE support_tickets SET hidden_by_user_at = NULL WHERE id = ?`).bind(ticketId).run();
 }
 
-/** Deletes one message (either sender). No ownership check here — admin-only route, gated by requireAdmin at the router level. */
 export async function deleteSupportMessage(env: Env, messageId: string): Promise<void> {
   await env.DB.prepare(`DELETE FROM support_messages WHERE id = ?`).bind(messageId).run();
 }
 
-/**
- * Permanently deletes an entire ticket and everything in it. support_messages
- * has ON DELETE CASCADE on ticket_id (migrations/0016), so deleting the
- * support_tickets row is enough to take the messages (and any attachment
- * blobs) with it. No ownership check here — admin-only route, gated by
- * requireAdmin at the router level.
- */
 export async function deleteSupportTicket(env: Env, ticketId: string): Promise<void> {
   await env.DB.prepare(`DELETE FROM support_tickets WHERE id = ?`).bind(ticketId).run();
 }
 
-/**
- * Deletes every ticket (and, via cascade, every message) belonging to one
- * identity — the admin "delete profile" action in SupportPage.tsx's Users
- * column. Unlike listSupportTicketsAdmin's list, this ignores any active
- * admin filters and always deletes ALL of that identity's tickets, not just
- * the ones currently shown. Returns how many tickets were deleted.
- */
 export async function deleteSupportTicketsForIdentity(env: Env, identity: SupportIdentity): Promise<number> {
   const column = identity.userId ? "user_id" : "guest_id";
   const value = identity.userId ?? identity.guestId;
@@ -1692,22 +1393,16 @@ export interface SupportTicketAdminRow extends SupportTicketRow {
 export interface SupportTicketAdminFilters {
   status?: "open" | "closed";
   agentProfile?: SupportAgentProfile;
-  dateFrom?: string; // YYYY-MM-DD
-  dateTo?: string; // YYYY-MM-DD
+  dateFrom?: string;
+  dateTo?: string;
   search?: string;
-  /** "paid"/"free" filter by the ticket owner's real course_status; "guest" means never-logged-in (user_id IS NULL). */
   userStatus?: "paid" | "free" | "guest";
 }
 
-/**
- * Admin inbox list — filterable, sorted by most recent activity. Unread
- * here means a learner message the admin hasn't read yet. Enriched with
- * enough about the ticket owner (login/paid-free status, lesson progress)
- * that the admin panel can show "who is this" without a second round trip
- * — see SupportPage.tsx's Users column, which groups this same result set
- * by identity rather than calling a separate endpoint.
- */
-export async function listSupportTicketsAdmin(env: Env, filters: SupportTicketAdminFilters): Promise<SupportTicketAdminRow[]> {
+export async function listSupportTicketsAdmin(
+  env: Env,
+  filters: SupportTicketAdminFilters
+): Promise<SupportTicketAdminRow[]> {
   const clauses: string[] = [];
   const params: unknown[] = [];
 
@@ -1760,15 +1455,6 @@ export async function listSupportTicketsAdmin(env: Env, filters: SupportTicketAd
   return result.results;
 }
 
-// ---------------------------------------------------------------------------
-// Notifications (migrations/0008) — the single in-site notification stream
-// the schema comment describes as shared by assignment approve/reject
-// (future session's work — the review UI itself doesn't exist yet, see
-// migrations/0008's comment on the `assignments` columns) and support-inbox
-// replies (wired up here). See routes/notifications.ts (learner-facing) and
-// admin-support.ts (where 'support_reply' rows are actually created).
-// ---------------------------------------------------------------------------
-
 export interface NotificationRow {
   id: string;
   user_id: string;
@@ -1778,13 +1464,6 @@ export interface NotificationRow {
   created_at: string;
 }
 
-/** * Cap for notifications.message, mirroring how createSupportTicket already
- * truncates `subject` to 80 chars. Notifications render as a one-line badge
- * on the support chat button (see SupportButton.tsx), so this is a bit more
- * generous than the ticket subject cap to keep a short reply readable in
- * full via the unread count / future list view while still bounding
- * pathological input.
- */
 const NOTIFICATION_MESSAGE_MAX_LENGTH = 140;
 
 export async function createNotification(
@@ -1813,12 +1492,6 @@ export interface NotificationListResult {
   unreadCount: number;
 }
 
-/**
- * Lists a user's notifications, newest first (capped at `limit`), alongside
- * their TOTAL unread count — not just the unread count within this page —
- * so the bell badge stays accurate even once someone has more than `limit`
- * notifications.
- */
 export async function listNotifications(env: Env, userId: string, limit = 30): Promise<NotificationListResult> {
   const [listResult, unreadRow] = await Promise.all([
     env.DB.prepare(`SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT ?`)
@@ -1831,9 +1504,10 @@ export async function listNotifications(env: Env, userId: string, limit = 30): P
   return { notifications: listResult.results, unreadCount: unreadRow?.cnt ?? 0 };
 }
 
-/** Marks one notification read. Caller must check ownership first (see routes/notifications.ts) — no ownership check here, same convention as markSupportMessagesRead taking a pre-validated ticketId. */
 export async function markNotificationRead(env: Env, id: string): Promise<void> {
-  await env.DB.prepare(`UPDATE notifications SET read_at = datetime('now') WHERE id = ? AND read_at IS NULL`).bind(id).run();
+  await env.DB.prepare(`UPDATE notifications SET read_at = datetime('now') WHERE id = ? AND read_at IS NULL`)
+    .bind(id)
+    .run();
 }
 
 export async function markAllNotificationsRead(env: Env, userId: string): Promise<void> {

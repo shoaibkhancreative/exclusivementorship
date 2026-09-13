@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError } from "../../lib/api";
 import { Button } from "../../components/ui";
+import { useDialogA11y } from "../../lib/useDialogA11y";
 import { SearchIcon } from "./icons";
 
-/** Subset of GET /admin/students' response — reuses the existing student directory (see StudentsPage.tsx) rather than a second endpoint just for this picker. */
 interface StudentOption {
   id: string;
   email: string;
@@ -11,13 +11,6 @@ interface StudentOption {
   courseStatus: "free" | "paid";
 }
 
-/**
- * Lets an admin proactively open a brand-new ticket addressed to a specific
- * existing user — picking from the same student directory StudentsPage.tsx
- * uses, then writing the first message. Mirrors UnlockModal.tsx's overlay
- * shape/conventions (backdrop click + Escape to close, body scroll lock)
- * since that's the only other modal in this codebase.
- */
 export function NewConversationModal({
   onClose,
   onCreated
@@ -29,6 +22,11 @@ export function NewConversationModal({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<StudentOption | null>(null);
+  const messageInputRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (selected) messageInputRef.current?.focus();
+  }, [selected]);
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -40,17 +38,8 @@ export function NewConversationModal({
       .catch(() => setLoadError("Couldn't load the student list."));
   }, []);
 
-  useEffect(() => {
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    document.addEventListener("keydown", handleKeyDown);
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", handleKeyDown);
-      document.body.style.overflow = "";
-    };
-  }, [onClose]);
+  const panelRef = useRef<HTMLDivElement>(null);
+  useDialogA11y(panelRef, { onClose });
 
   const filtered = useMemo(() => {
     if (!students) return [];
@@ -81,6 +70,7 @@ export function NewConversationModal({
   }
 
   return (
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions
     <div
       className="animate-fade-in fixed inset-0 z-[100] flex items-end justify-center bg-black/70 backdrop-blur-sm sm:items-center"
       onClick={handleOverlayClick}
@@ -88,7 +78,10 @@ export function NewConversationModal({
       aria-modal="true"
       aria-label="Start a new conversation"
     >
-      <div className="animate-slide-up flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-xl border border-base-800 bg-base-900 sm:max-w-md sm:rounded-xl">
+      <div
+        className="animate-slide-up flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-xl border border-base-800 bg-base-900 sm:max-w-md sm:rounded-xl"
+        ref={panelRef}
+      >
         <div className="flex items-center justify-between gap-3 border-b border-base-800 px-5 py-4">
           <div className="text-sm font-medium text-zinc-100">New conversation</div>
           <button
@@ -102,14 +95,17 @@ export function NewConversationModal({
         </div>
 
         <div className="flex-1 space-y-3 overflow-y-auto p-5">
-          {error && <div className="rounded-md border border-accent-500/40 bg-accent-500/10 px-3 py-2 text-sm text-accent-300">{error}</div>}
+          {error && (
+            <div className="rounded-md border border-accent-500/40 bg-accent-500/10 px-3 py-2 text-sm text-accent-300">
+              {error}
+            </div>
+          )}
 
           {!selected ? (
             <>
               <div className="relative">
                 <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
                 <input
-                  autoFocus
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="Search learners by name or email…"
@@ -168,7 +164,7 @@ export function NewConversationModal({
               </div>
 
               <textarea
-                autoFocus
+                ref={messageInputRef}
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
                 placeholder="Write the first message…"

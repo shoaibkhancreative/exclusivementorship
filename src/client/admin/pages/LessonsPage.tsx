@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { api, ApiError } from "../../lib/api";
 import { Button, Card } from "../../components/ui";
 import { ImageUrlPreview } from "../../components/ImageUrlPreview";
@@ -17,7 +17,6 @@ interface AdminLesson {
   isFree: boolean;
   isActive: boolean;
   watermarkEnabled: boolean;
-  /** Admin-entered display label like "12:45" — shown as a badge on the thumbnail wherever it renders. Never auto-detected from the video. */
   durationLabel: string | null;
 }
 
@@ -32,26 +31,15 @@ const inputClass =
   "focus-ring w-full rounded-lg border border-base-700 bg-base-800 px-3 py-2 text-sm text-zinc-100 outline-none";
 const textareaClass = `${inputClass} min-h-[70px] resize-y`;
 
-/**
- * Replaces the old "paste a thumbnail URL" text field with a real file
- * picker. The chosen image is resized/compressed client-side to a small
- * `data:image/...;base64,...` URL (see fileToCompressedDataUrl — same
- * helper the support-chat attach flow uses) and that data URL becomes the
- * form's `thumbnailUrl` value, exactly like a pasted URL would — the server
- * re-validates and caps it independently (see normalizeLessonThumbnail /
- * LESSON_THUMBNAIL_MAX_BYTES in worker/lib/config.ts), never trusting this
- * client-side resize. Existing lessons that still point at an external
- * http(s) thumbnail keep previewing fine here too; picking a new file just
- * replaces it.
- */
 function ThumbnailField({ value, onChange }: { value: string; onChange: (dataUrl: string) => void }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const fieldId = useId();
 
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    e.target.value = ""; // allow re-picking the same file later
+    e.target.value = "";
     if (!file) return;
     setError(null);
     setBusy(true);
@@ -60,8 +48,6 @@ function ThumbnailField({ value, onChange }: { value: string; onChange: (dataUrl
       onChange(dataUrl);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Couldn't read that image.";
-      // fileToCompressedDataUrl prefixes some errors with "unsupported_format:" for
-      // programmatic handling elsewhere — strip that prefix for display here.
       setError(msg.includes(":") ? msg.slice(msg.indexOf(":") + 1) : msg);
     } finally {
       setBusy(false);
@@ -70,10 +56,13 @@ function ThumbnailField({ value, onChange }: { value: string; onChange: (dataUrl
 
   return (
     <div>
-      <label className="mb-1 block text-xs text-zinc-400">Thumbnail (optional)</label>
+      <label htmlFor={fieldId} className="mb-1 block text-xs text-zinc-400">
+        Thumbnail (optional)
+      </label>
       <div className="flex items-center gap-2">
         <input
           ref={inputRef}
+          id={fieldId}
           type="file"
           accept="image/jpeg,image/png,image/webp,image/gif"
           onChange={handleFile}
@@ -93,8 +82,8 @@ function ThumbnailField({ value, onChange }: { value: string; onChange: (dataUrl
         )}
       </div>
       <p className="mt-1 text-xs text-zinc-500">
-        JPEG, PNG, WebP, or GIF. Resized automatically — under 1MB. Leave blank for a Bunny-hosted lesson to use
-        Bunny's own thumbnail automatically.
+        JPEG, PNG, WebP, or GIF. Resized automatically — under 1MB. Leave blank for a Bunny-hosted lesson to use Bunny's
+        own thumbnail automatically.
       </p>
       {error && <p className="mt-1 text-xs text-red-400">{error}</p>}
       <ImageUrlPreview url={value} />
@@ -102,19 +91,15 @@ function ThumbnailField({ value, onChange }: { value: string; onChange: (dataUrl
   );
 }
 
-/**
- * Plain text input for the manual, admin-entered "12:45"-style duration
- * label shown as a badge on the class's thumbnail (Learn page grid, Lesson
- * page sidebar, and the Lesson page's own cover thumbnail). Deliberately
- * NOT auto-detected from the video file — nothing on this site probes a
- * YouTube or Bunny embed for its runtime, so this stays a manual field the
- * admin fills in themselves. Left blank, no badge renders at all.
- */
 function DurationField({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const fieldId = useId();
   return (
     <div>
-      <label className="mb-1 block text-xs text-zinc-400">Duration (optional)</label>
+      <label htmlFor={fieldId} className="mb-1 block text-xs text-zinc-400">
+        Duration (optional)
+      </label>
       <input
+        id={fieldId}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder="e.g. 12:45"
@@ -134,18 +119,6 @@ interface LessonGroup {
   lessons: AdminLesson[];
 }
 
-/**
- * Groups lessons by chapter, in the CHAPTERS' own order (not the order
- * chapter names happen to first appear in `lessons`) — and always keeps
- * each chapter's lessons together as one contiguous block. This is what the
- * public course page assumes too (a chapter's lessons must be contiguous in
- * lesson_number/sort_order — see OutlineList.tsx), so both the display here
- * and the order we send back on reorder rely on this same grouping.
- *
- * Every known chapter gets a group even when it currently has zero lessons
- * (e.g. right after creating it, or after dragging every lesson out of it) —
- * an empty chapter still needs to render as a drop target for drag-and-drop.
- */
 function groupLessonsByChapterOrder(lessons: AdminLesson[], chapters: AdminChapter[]): LessonGroup[] {
   const byChapter = new Map<string, AdminLesson[]>();
   for (const lesson of lessons) {
@@ -157,8 +130,6 @@ function groupLessonsByChapterOrder(lessons: AdminLesson[], chapters: AdminChapt
     chapterName: chapter.name,
     lessons: byChapter.get(chapter.name) ?? []
   }));
-  // Defensive: a lesson whose chapterName doesn't match any known chapter
-  // (shouldn't normally happen) still gets shown, grouped at the end.
   const known = new Set(chapters.map((c) => c.name));
   for (const [name, list] of byChapter) {
     if (!known.has(name)) groups.push({ chapterName: name, lessons: list });
@@ -196,24 +167,13 @@ export default function LessonsPage() {
   const [showAddChapter, setShowAddChapter] = useState(false);
   const [editingChapterId, setEditingChapterId] = useState<number | null>(null);
 
-  // Search + status filter for the Lessons list. Filtering only changes
-  // which classes are VISIBLE — it never reorders or renumbers anything.
-  // Drag-and-drop and the up/down arrows are disabled while a filter is
-  // active (see isFiltering below), since moving a class while some of its
-  // chapter-mates are hidden from view could silently misplace it relative
-  // to classes you can't currently see.
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<LessonStatusFilter>("all");
   const isFiltering = search.trim().length > 0 || statusFilter !== "all";
 
-  // Bulk selection — checkboxes on each visible lesson row, acted on via
-  // the toolbar that appears once at least one is selected.
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
 
-  // Drag-and-drop state for reordering lessons (and moving them between
-  // chapters). `dragOverChapter` is purely visual — it highlights whichever
-  // chapter section is currently a valid drop target.
   const [draggingId, setDraggingId] = useState<number | null>(null);
   const [dragOverChapter, setDragOverChapter] = useState<string | null>(null);
 
@@ -242,12 +202,6 @@ export default function LessonsPage() {
   async function moveLesson(lessonId: number, direction: -1 | 1) {
     if (!lessons || !chapters) return;
 
-    // Arrow buttons move only within the lesson's own chapter. Swapping
-    // across a chapter boundary (which the old global-index swap allowed)
-    // would silently renumber a lesson into a different chapter's position —
-    // desyncing the free/paid class boundary (lesson_number-based) and
-    // splitting chapters apart on the public course page. Use drag-and-drop
-    // (dragLesson/dropLesson below) to move a lesson to another chapter.
     const groups = groupLessonsByChapterOrder(lessons, chapters);
     let groupIndex = -1;
     let indexInGroup = -1;
@@ -266,7 +220,7 @@ export default function LessonsPage() {
 
     [group[indexInGroup], group[targetIndex]] = [group[targetIndex], group[indexInGroup]];
     const reordered = groups.flatMap((g) => g.lessons);
-    setLessons(reordered); // optimistic
+    setLessons(reordered);
     setBusy(true);
     try {
       await api.post("/admin/lessons/reorder", { orderedIds: reordered.map((l) => l.id) });
@@ -279,15 +233,6 @@ export default function LessonsPage() {
     }
   }
 
-  /**
-   * Moves the currently-dragged lesson to just before `targetLessonId`
-   * inside `targetChapterName` (or to the end of that chapter's list if
-   * `targetLessonId` is null — dropping on the chapter's empty space). This
-   * is the one place a lesson can cross a chapter boundary: the lesson's
-   * chapterName is updated to match wherever it was dropped, and every
-   * class's "Class N" number is recomputed from the resulting top-to-bottom
-   * order, exactly like the backend already does for any reorder.
-   */
   async function dropLesson(targetChapterName: string, targetLessonId: number | null) {
     const draggedId = draggingId;
     setDraggingId(null);
@@ -316,7 +261,7 @@ export default function LessonsPage() {
     }
 
     const reordered = groups.flatMap((g) => g.lessons);
-    setLessons(reordered); // optimistic
+    setLessons(reordered);
     setBusy(true);
     try {
       await api.post("/admin/lessons/reorder", {
@@ -348,7 +293,7 @@ export default function LessonsPage() {
     if (
       !confirm(
         "Permanently delete this class? This cannot be undone, and any student's saved progress on it will be lost too. " +
-          "If you just want to hide it, use \"Hide\" instead."
+          'If you just want to hide it, use "Hide" instead.'
       )
     )
       return;
@@ -456,10 +401,6 @@ export default function LessonsPage() {
   if (error && !lessons) return <p className="text-sm text-red-400">{error}</p>;
   if (!lessons || !chapters) return <p className="text-sm text-zinc-500">Loading…</p>;
 
-  // Grouped by the chapters' own order (see groupLessonsByChapterOrder) so
-  // this section always matches both the Chapters list above and the public
-  // course page — not whichever chapter a lesson happens to appear under
-  // first in the raw (lesson_number-ordered) list.
   const lessonGroups = groupLessonsByChapterOrder(lessons, chapters);
 
   const q = search.trim().toLowerCase();
@@ -523,7 +464,10 @@ export default function LessonsPage() {
           {chapters.map((chapter, i) => {
             const lessonCount = lessons.filter((l) => l.chapterName === chapter.name).length;
             return (
-              <div key={chapter.id} className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-base-800/30">
+              <div
+                key={chapter.id}
+                className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-base-800/30"
+              >
                 <div className="flex flex-col">
                   <button
                     disabled={busy || i === 0}
@@ -597,8 +541,8 @@ export default function LessonsPage() {
               <h1 className="text-xl text-zinc-100">Lessons</h1>
             </div>
             <p className="mt-1 text-xs text-zinc-500">
-              First {freeLessonCount} class{freeLessonCount === 1 ? "" : "es"} (in this order) are free — change that
-              in Settings → Course.
+              First {freeLessonCount} class{freeLessonCount === 1 ? "" : "es"} (in this order) are free — change that in
+              Settings → Course.
             </p>
           </div>
           <Button variant="secondary" disabled={chapters.length === 0} onClick={() => setShowAddLesson((v) => !v)}>
@@ -906,6 +850,8 @@ function AddChapterForm({ onCreated, onError }: { onCreated: () => void; onError
   const [name, setName] = useState("");
   const [tagline, setTagline] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const nameId = useId();
+  const taglineId = useId();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -924,12 +870,16 @@ function AddChapterForm({ onCreated, onError }: { onCreated: () => void; onError
     <Card className="mb-2 max-w-md">
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
         <div>
-          <label className="mb-1 block text-xs text-zinc-400">Chapter name</label>
-          <input value={name} onChange={(e) => setName(e.target.value)} required className={inputClass} />
+          <label htmlFor={nameId} className="mb-1 block text-xs text-zinc-400">
+            Chapter name
+          </label>
+          <input id={nameId} value={name} onChange={(e) => setName(e.target.value)} required className={inputClass} />
         </div>
         <div>
-          <label className="mb-1 block text-xs text-zinc-400">Tagline (optional)</label>
-          <input value={tagline} onChange={(e) => setTagline(e.target.value)} className={inputClass} />
+          <label htmlFor={taglineId} className="mb-1 block text-xs text-zinc-400">
+            Tagline (optional)
+          </label>
+          <input id={taglineId} value={tagline} onChange={(e) => setTagline(e.target.value)} className={inputClass} />
         </div>
         <Button type="submit" disabled={submitting} className="self-start">
           {submitting ? "Adding…" : "Add chapter"}
@@ -951,6 +901,8 @@ function EditChapterForm({
   const [name, setName] = useState(chapter.name);
   const [tagline, setTagline] = useState(chapter.tagline ?? "");
   const [submitting, setSubmitting] = useState(false);
+  const nameId = useId();
+  const taglineId = useId();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -967,8 +919,15 @@ function EditChapterForm({
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-2">
-      <input value={name} onChange={(e) => setName(e.target.value)} required className={inputClass} />
+      <label htmlFor={nameId} className="sr-only">
+        Chapter name
+      </label>
+      <input id={nameId} value={name} onChange={(e) => setName(e.target.value)} required className={inputClass} />
+      <label htmlFor={taglineId} className="sr-only">
+        Tagline
+      </label>
       <input
+        id={taglineId}
         value={tagline}
         onChange={(e) => setTagline(e.target.value)}
         placeholder="Tagline"
@@ -1004,6 +963,11 @@ function AddLessonForm({
   const [durationLabel, setDurationLabel] = useState("");
   const [watermarkEnabled, setWatermarkEnabled] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const titleId = useId();
+  const chapterId = useId();
+  const taglineId = useId();
+  const descriptionId = useId();
+  const videoUrlId = useId();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -1031,12 +995,27 @@ function AddLessonForm({
     <Card className="mb-2 max-w-xl">
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
         <div>
-          <label className="mb-1 block text-xs text-zinc-400">Title</label>
-          <input value={title} onChange={(e) => setTitle(e.target.value)} required className={inputClass} />
+          <label htmlFor={titleId} className="mb-1 block text-xs text-zinc-400">
+            Title
+          </label>
+          <input
+            id={titleId}
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            required
+            className={inputClass}
+          />
         </div>
         <div>
-          <label className="mb-1 block text-xs text-zinc-400">Chapter</label>
-          <select value={chapterName} onChange={(e) => setChapterName(e.target.value)} className={inputClass}>
+          <label htmlFor={chapterId} className="mb-1 block text-xs text-zinc-400">
+            Chapter
+          </label>
+          <select
+            id={chapterId}
+            value={chapterName}
+            onChange={(e) => setChapterName(e.target.value)}
+            className={inputClass}
+          >
             {chapters.map((c) => (
               <option key={c.id} value={c.name}>
                 {c.name}
@@ -1045,16 +1024,28 @@ function AddLessonForm({
           </select>
         </div>
         <div>
-          <label className="mb-1 block text-xs text-zinc-400">Tagline</label>
-          <input value={tagline} onChange={(e) => setTagline(e.target.value)} className={inputClass} />
+          <label htmlFor={taglineId} className="mb-1 block text-xs text-zinc-400">
+            Tagline
+          </label>
+          <input id={taglineId} value={tagline} onChange={(e) => setTagline(e.target.value)} className={inputClass} />
         </div>
         <div>
-          <label className="mb-1 block text-xs text-zinc-400">Description</label>
-          <textarea value={description} onChange={(e) => setDescription(e.target.value)} className={textareaClass} />
+          <label htmlFor={descriptionId} className="mb-1 block text-xs text-zinc-400">
+            Description
+          </label>
+          <textarea
+            id={descriptionId}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            className={textareaClass}
+          />
         </div>
         <div>
-          <label className="mb-1 block text-xs text-zinc-400">Video embed link</label>
+          <label htmlFor={videoUrlId} className="mb-1 block text-xs text-zinc-400">
+            Video embed link
+          </label>
           <input
+            id={videoUrlId}
             value={videoEmbedUrl}
             onChange={(e) => setVideoEmbedUrl(e.target.value)}
             placeholder="https://www.youtube-nocookie.com/embed/... or Bunny.net embed URL"
@@ -1103,6 +1094,11 @@ function EditLessonForm({
   const [durationLabel, setDurationLabel] = useState(lesson.durationLabel ?? "");
   const [watermarkEnabled, setWatermarkEnabled] = useState(lesson.watermarkEnabled);
   const [submitting, setSubmitting] = useState(false);
+  const titleId = useId();
+  const chapterId = useId();
+  const taglineId = useId();
+  const descriptionId = useId();
+  const videoUrlId = useId();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -1129,12 +1125,21 @@ function EditLessonForm({
   return (
     <form onSubmit={handleSubmit} className="mt-2 flex flex-col gap-3">
       <div>
-        <label className="mb-1 block text-xs text-zinc-400">Title</label>
-        <input value={title} onChange={(e) => setTitle(e.target.value)} required className={inputClass} />
+        <label htmlFor={titleId} className="mb-1 block text-xs text-zinc-400">
+          Title
+        </label>
+        <input id={titleId} value={title} onChange={(e) => setTitle(e.target.value)} required className={inputClass} />
       </div>
       <div>
-        <label className="mb-1 block text-xs text-zinc-400">Chapter</label>
-        <select value={chapterName} onChange={(e) => setChapterName(e.target.value)} className={inputClass}>
+        <label htmlFor={chapterId} className="mb-1 block text-xs text-zinc-400">
+          Chapter
+        </label>
+        <select
+          id={chapterId}
+          value={chapterName}
+          onChange={(e) => setChapterName(e.target.value)}
+          className={inputClass}
+        >
           {chapters.map((c) => (
             <option key={c.id} value={c.name}>
               {c.name}
@@ -1143,16 +1148,28 @@ function EditLessonForm({
         </select>
       </div>
       <div>
-        <label className="mb-1 block text-xs text-zinc-400">Tagline</label>
-        <input value={tagline} onChange={(e) => setTagline(e.target.value)} className={inputClass} />
+        <label htmlFor={taglineId} className="mb-1 block text-xs text-zinc-400">
+          Tagline
+        </label>
+        <input id={taglineId} value={tagline} onChange={(e) => setTagline(e.target.value)} className={inputClass} />
       </div>
       <div>
-        <label className="mb-1 block text-xs text-zinc-400">Description</label>
-        <textarea value={description} onChange={(e) => setDescription(e.target.value)} className={textareaClass} />
+        <label htmlFor={descriptionId} className="mb-1 block text-xs text-zinc-400">
+          Description
+        </label>
+        <textarea
+          id={descriptionId}
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          className={textareaClass}
+        />
       </div>
       <div>
-        <label className="mb-1 block text-xs text-zinc-400">Video embed link</label>
+        <label htmlFor={videoUrlId} className="mb-1 block text-xs text-zinc-400">
+          Video embed link
+        </label>
         <input
+          id={videoUrlId}
           value={videoEmbedUrl}
           onChange={(e) => setVideoEmbedUrl(e.target.value)}
           placeholder="https://www.youtube-nocookie.com/embed/... or Bunny.net embed URL"

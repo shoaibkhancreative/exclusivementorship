@@ -2,7 +2,6 @@ import type { Env } from "../lib/config";
 import { getContentMap } from "../db";
 import { CONTENT_DEFAULTS } from "../lib/content";
 
-/** Escapes the handful of characters that matter for a raw HTML text node — this template never accepts user-controlled admin content elsewhere, but the OTP code itself is untrusted input. */
 function escapeHtml(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
@@ -33,7 +32,6 @@ function otpEmailHtml(code: string, content: Record<string, string>): string {
 </html>`;
 }
 
-/** Same layout as the OTP email (kicker/brand/body/footer), swapped for a plain text body and a button-style link instead of a code block. */
 function abandonedCheckoutEmailHtml(unlockUrl: string, content: Record<string, string>): string {
   return `<!doctype html>
 <html>
@@ -59,13 +57,6 @@ function abandonedCheckoutEmailHtml(unlockUrl: string, content: Record<string, s
 </html>`;
 }
 
-/**
- * Sends a one-time reminder for a checkout that was started but never
- * completed (see scheduled.ts / sendAbandonedCheckoutReminders — the caller
- * already guarantees this fires at most once per order). Fails loudly
- * (throws) rather than swallowing errors, same as sendOtpEmail, so the
- * caller can skip setting reminder_sent_at and retry on the next run.
- */
 export async function sendAbandonedCheckoutEmail(env: Env, toEmail: string): Promise<void> {
   if (!env.RESEND_API_KEY) {
     // eslint-disable-next-line no-console
@@ -74,9 +65,6 @@ export async function sendAbandonedCheckoutEmail(env: Env, toEmail: string): Pro
   }
 
   const content = await getContentMap(env, CONTENT_DEFAULTS).catch(() => CONTENT_DEFAULTS);
-  // There's no standalone /unlock page anymore — the Dashboard itself shows
-  // the same state-driven "Unlock Mentorship" CTA (see pages/Learn.tsx),
-  // which opens the checkout popup directly once tapped.
   const unlockUrl = `${env.APP_URL.replace(/\/$/, "")}/learn`;
 
   const res = await fetch("https://api.resend.com/emails", {
@@ -99,7 +87,6 @@ export async function sendAbandonedCheckoutEmail(env: Env, toEmail: string): Pro
   }
 }
 
-/** Same kicker/brand/body/footer layout as the other transactional emails, for the support inbox. */
 function supportEmailHtml(opts: { kicker: string; body: string; ctaLabel: string; ctaUrl: string }): string {
   return `<!doctype html>
 <html>
@@ -124,12 +111,6 @@ function supportEmailHtml(opts: { kicker: string; body: string; ctaLabel: string
 </html>`;
 }
 
-/**
- * Notifies the admin support inbox (SUPPORT_NOTIFY_EMAIL) of a new ticket or
- * a new learner message. Silently no-ops if SUPPORT_NOTIFY_EMAIL isn't
- * configured — this is a nice-to-have alert, not something that should ever
- * fail a learner-facing request.
- */
 export async function sendSupportAdminNotificationEmail(
   env: Env,
   opts: { preview: string; ticketId: string }
@@ -166,7 +147,6 @@ export async function sendSupportAdminNotificationEmail(
   }
 }
 
-/** Notifies a learner (account email or guest_email) that an agent replied to their support ticket. */
 export async function sendSupportReplyEmail(
   env: Env,
   toEmail: string,
@@ -202,11 +182,6 @@ export async function sendSupportReplyEmail(
   }
 }
 
-/**
- * Sends the OTP email via Resend. In local development, if RESEND_API_KEY is
- * absent, the code is logged to the console instead of failing the request
- * so the flow can still be tested end-to-end.
- */
 export async function sendOtpEmail(env: Env, toEmail: string, code: string): Promise<void> {
   if (!env.RESEND_API_KEY) {
     // eslint-disable-next-line no-console
@@ -214,9 +189,6 @@ export async function sendOtpEmail(env: Env, toEmail: string, code: string): Pro
     return;
   }
 
-  // Falls back to CONTENT_DEFAULTS wholesale (never a partial/broken map) if
-  // the DB read fails for any reason — an OTP email must never fail to send
-  // just because site_content is briefly unavailable.
   const content = await getContentMap(env, CONTENT_DEFAULTS).catch(() => CONTENT_DEFAULTS);
 
   const res = await fetch("https://api.resend.com/emails", {

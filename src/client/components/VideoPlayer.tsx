@@ -4,41 +4,9 @@ interface VideoPlayerProps {
   embedUrl: string;
   title: string;
   onEnded: () => void;
-  /**
-   * Fires with the player's real play/pause state whenever it changes
-   * (true = actively playing). Only ever reflects a genuine player event —
-   * never a guess — so the watermark overlay (see VideoStage.tsx) can be
-   * driven by it and look like it's baked into the video itself: still
-   * before playback starts, moving while playing, frozen the instant the
-   * viewer pauses. Optional — callers that don't care about this can omit
-   * it, and hosts we can't introspect (see "Any other embed host" below)
-   * simply never call it.
-   */
   onPlayingChange?: (playing: boolean) => void;
 }
 
-/**
- * Renders a lesson's embedded video and calls `onEnded` exactly once the
- * player reports the video actually finished — this, not page load, is
- * what triggers POST /lessons/:number/complete-video (see Lesson.tsx). Two
- * embed sources are supported, auto-detected from the URL's host:
- *
- *  - YouTube (youtube.com / youtube-nocookie.com): uses the official
- *    IFrame Player API (`enablejsapi=1` + the youtube.com/iframe_api
- *    script) and listens for the "ended" player state, plus PLAYING/PAUSED
- *    for onPlayingChange.
- *  - Bunny.net (mediadelivery.net / b-cdn.net iframe embeds): loads Bunny's
- *    official player.js library (assets.mediadelivery.net) and uses it to
- *    listen for the "ended", "play", and "pause" events — a raw postMessage
- *    listener without this library never receives anything, since Bunny's
- *    player only starts emitting events after player.js completes its
- *    handshake with the iframe (https://github.com/embedly/player.js).
- *
- * Any other embed host still plays fine but can't be auto-detected as
- * "finished" or introspected for play/pause — the fallback "I've finished
- * this video" button covers completion (see Lesson.tsx), and
- * onPlayingChange is simply never called for these.
- */
 export function VideoPlayer({ embedUrl, title, onEnded, onPlayingChange }: VideoPlayerProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const onEndedRef = useRef(onEnded);
@@ -49,7 +17,6 @@ export function VideoPlayer({ embedUrl, title, onEnded, onPlayingChange }: Video
   const isYouTube = /(^|\.)youtube(-nocookie)?\.com$/.test(safeHost(embedUrl));
   const isBunny = /(^|\.)(mediadelivery\.net|b-cdn\.net)$/.test(safeHost(embedUrl));
 
-  // --- YouTube: official IFrame Player API ---------------------------------
   useEffect(() => {
     if (!isYouTube) return;
     let destroyed = false;
@@ -62,10 +29,6 @@ export function VideoPlayer({ embedUrl, title, onEnded, onPlayingChange }: Video
       player = new YT.Player(iframeRef.current, {
         events: {
           onStateChange: (event: { data: number }) => {
-            // YT.PlayerState: ENDED=0, PLAYING=1, PAUSED=2, BUFFERING=3,
-            // CUED=5, and -1 (UNSTARTED). Only PLAYING counts as "playing"
-            // for the watermark — buffering/cued/unstarted should all read
-            // as "not moving yet", same as paused.
             if (event.data === 0) {
               onEndedRef.current();
               onPlayingChangeRef.current?.(false);
@@ -95,26 +58,13 @@ export function VideoPlayer({ embedUrl, title, onEnded, onPlayingChange }: Video
 
     return () => {
       destroyed = true;
-      // Defensive: YT's destroy() actively removes the <iframe> from the
-      // DOM. With the VideoPlayer now fully remounted per lesson (see the
-      // `key` on VideoPlayer in Lesson.tsx), React is already discarding
-      // this exact node, so this is a no-op in practice — the try/catch is
-      // just a safety net against any third-party quirks so it can never
-      // take the whole app down with it.
       try {
         player?.destroy?.();
       } catch {
-        // ignore
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [embedUrl, isYouTube]);
 
-  // --- Bunny.net: official player.js library --------------------------------
-  // Bunny's player only starts emitting events once a player.js client has
-  // performed the library's handshake with the iframe — a raw postMessage
-  // listener alone (without loading player.js and instantiating
-  // playerjs.Player) never receives anything from Bunny's player.
   useEffect(() => {
     if (!isBunny) return;
     let destroyed = false;
@@ -153,29 +103,15 @@ export function VideoPlayer({ embedUrl, title, onEnded, onPlayingChange }: Video
 
     return () => {
       destroyed = true;
-      // Same defensive reasoning as the YouTube branch above: this player
-      // instance's iframe is being fully discarded by React on unmount
-      // anyway (per-lesson `key`), so this cleanup is just a safety net.
       try {
         player?.off?.("ended");
       } catch {
-        // ignore
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [embedUrl, isBunny]);
 
   const src = isYouTube ? withYouTubeParams(embedUrl) : embedUrl;
 
-  // Bunny's iframe deliberately does NOT get fullscreen permission. Its own
-  // in-player fullscreen button would otherwise make the iframe itself (not
-  // our wrapping container) the native fullscreen element, which is what
-  // caused the watermark to disappear in fullscreen — see the long comment
-  // in VideoStage.tsx. Without `allow="fullscreen"`/`allowFullScreen`,
-  // browsers refuse any fullscreen request from inside the iframe, so
-  // Bunny's button becomes inert and our own fullscreen toggle in
-  // VideoStage.tsx is the only way to go fullscreen. YouTube keeps its
-  // normal fullscreen permission since that path isn't affected.
   const allowAttr = isYouTube
     ? "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
     : "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture";
@@ -230,10 +166,7 @@ interface PlayerJsPlayer {
 declare global {
   interface Window {
     YT?: {
-      Player: new (
-        el: HTMLElement,
-        opts: { events: { onStateChange: (event: { data: number }) => void } }
-      ) => YTPlayer;
+      Player: new (el: HTMLElement, opts: { events: { onStateChange: (event: { data: number }) => void } }) => YTPlayer;
     };
     onYouTubeIframeAPIReady?: () => void;
     playerjs?: {

@@ -3,22 +3,32 @@ import { useNavigate } from "react-router-dom";
 import { api, ApiError, type PublicConfig } from "../lib/api";
 import { useSession } from "../lib/SessionContext";
 import { useContent } from "../lib/useContent";
+import { useDocumentMeta } from "../lib/useDocumentMeta";
 import { Button, Card } from "../components/ui";
 import { IllustrationBadge } from "../components/IllustrationBadge";
 
-// Same illustration language as the checkout popup (UnlockModal): one soft
-// round badge, flat two/three-tone shapes, built only from brand colors —
-// swapped per step so the page still reads as "just one friendly picture",
-// never two competing for attention. Envelope while an address is being
-// collected, a little padlock once a code has actually been sent.
 function EnvelopeBadge() {
   return (
     <IllustrationBadge size={60} bg="linear-gradient(180deg, rgba(230,57,70,0.14), rgba(184,134,46,0.12))" breathe>
       <svg viewBox="0 0 80 80" width={36} height={36} aria-hidden="true">
         <rect x="12" y="24" width="56" height="38" rx="8" fill="#e63946" />
-        <path d="M12 28 L40 50 L68 28" fill="none" stroke="#fdf8e9" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round" />
+        <path
+          d="M12 28 L40 50 L68 28"
+          fill="none"
+          stroke="#fdf8e9"
+          strokeWidth="4.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
         <circle cx="60" cy="24" r="7" fill="#c99a49" />
-        <path d="M57 24l2 2 3.5-4" fill="none" stroke="#fdf8e9" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        <path
+          d="M57 24l2 2 3.5-4"
+          fill="none"
+          stroke="#fdf8e9"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
       </svg>
     </IllustrationBadge>
   );
@@ -49,10 +59,7 @@ declare global {
     google?: {
       accounts: {
         id: {
-          initialize: (config: {
-            client_id: string;
-            callback: (response: { credential: string }) => void;
-          }) => void;
+          initialize: (config: { client_id: string; callback: (response: { credential: string }) => void }) => void;
           renderButton: (
             container: HTMLElement,
             options: { theme?: string; size?: string; width?: number; text?: string; shape?: string }
@@ -70,6 +77,12 @@ export default function Login() {
   const { refresh } = useSession();
   const { t } = useContent();
 
+  useDocumentMeta({
+    title: "Log in",
+    description: "Log in with a one-time email code or Google to access your mentorship lessons.",
+    path: "/login"
+  });
+
   const [step, setStep] = useState<Step>("email");
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
@@ -84,7 +97,10 @@ export default function Login() {
   const googleButtonRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    api.get<PublicConfig>("/config/public").then(setConfig).catch(() => {});
+    api
+      .get<PublicConfig>("/config/public")
+      .then(setConfig)
+      .catch(() => {});
   }, []);
 
   async function handleGoogleCredential(response: { credential: string }) {
@@ -114,13 +130,6 @@ export default function Login() {
       document.head.appendChild(script);
     }
 
-    // Google's button has no "100% width" option of its own — it only takes
-    // a fixed pixel width (200–400) — so instead of the old hardcoded 320,
-    // measure the form's actual content width and render at that size. That
-    // keeps the button lined up with the email input directly below it
-    // (same left/right edges) on every screen, instead of floating at a
-    // fixed width that could overflow a narrow phone or look undersized
-    // inside a wider card.
     function renderGoogleButton() {
       const container = googleButtonRef.current;
       if (!container || !window.google?.accounts?.id) return;
@@ -160,16 +169,6 @@ export default function Login() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config, step]);
 
-  // Mounted once, for the lifetime of the whole login flow — NOT gated on
-  // `step`. Turnstile tokens are single-use: verifying one against
-  // /request-otp permanently spends it. If this widget only existed while
-  // step === "email" (as it originally did), it would unmount the moment the
-  // user moved to the OTP screen, leaving "Resend code" with no way to fetch
-  // a fresh token — it would keep resubmitting the same already-spent one,
-  // which Cloudflare always rejects. Keeping the widget alive (see the
-  // always-rendered container below, hidden via CSS during the OTP step) and
-  // calling turnstile.reset() after every send (see handleSendOtp) keeps a
-  // valid, unused token ready at all times.
   useEffect(() => {
     if (!config?.turnstileSiteKey) return;
     const scriptId = "turnstile-script";
@@ -185,12 +184,6 @@ export default function Login() {
       if (window.turnstile && turnstileContainerRef.current && !turnstileContainerRef.current.hasChildNodes()) {
         turnstileWidgetIdRef.current = window.turnstile.render(turnstileContainerRef.current, {
           sitekey: config.turnstileSiteKey,
-          // "interaction-only": renders nothing at all unless Cloudflare
-          // actually needs the visitor to prove they're human — in the
-          // common case (silent pass) the widget takes up zero visible
-          // space instead of showing its checkbox box above the form.
-          // "flexible" lets it fill the card's width instead of forcing
-          // its own fixed 300px box.
           appearance: "interaction-only",
           size: "flexible",
           callback: (token) => {
@@ -221,10 +214,6 @@ export default function Login() {
       setError(err instanceof ApiError ? err.message : "Something went wrong.");
     } finally {
       setSubmitting(false);
-      // The token we just sent (whether it was accepted or not) is spent —
-      // Turnstile tokens are single-use. Reset now so a fresh token is ready
-      // by the time the user can click "Resend code" (cooldown is 60s,
-      // comfortably more than Turnstile needs to silently re-verify).
       turnstileTokenRef.current = "";
       if (turnstileWidgetIdRef.current !== undefined) {
         window.turnstile?.reset(turnstileWidgetIdRef.current);
@@ -248,17 +237,7 @@ export default function Login() {
   }
 
   return (
-    // relative + overflow-hidden so the soft brand-color glow behind the
-    // card can bleed off the viewport edge; min-h-screen (rather than a
-    // fixed vh) keeps the card vertically centered the same way on a small
-    // phone and a tall ultrawide monitor instead of drifting to the top on
-    // very tall screens.
     <div className="page-enter relative flex min-h-screen flex-col items-center justify-center overflow-hidden px-5 py-10 sm:px-6">
-      {/* Purely decorative — ONE small, low-opacity glow so the page still
-          feels considered on a wide desktop viewport instead of a lone
-          narrow card floating in empty cream space. Kept to a single blob
-          and turned down further than the admin login's version so it
-          reads as a whisper of warmth, not a second thing to look at. */}
       <div
         aria-hidden="true"
         className="pointer-events-none absolute -top-28 left-1/2 h-72 w-72 -translate-x-1/2 rounded-full bg-accent-500/[0.08] blur-3xl"
@@ -275,7 +254,7 @@ export default function Login() {
               </div>
               {config?.googleClientId && (
                 <>
-                <div ref={googleButtonRef} className="flex justify-center" />
+                  <div ref={googleButtonRef} className="flex justify-center" />
                   <div className="flex items-center gap-3 text-xs text-zinc-600">
                     <div className="h-px flex-1 bg-base-800" />
                     <span>{t("login.google_divider")}</span>
@@ -308,8 +287,6 @@ export default function Login() {
                 <LockBadge />
                 <h1 className="mt-3 text-xl text-zinc-50">{t("login.otp_title")}</h1>
                 <p className="mt-1 text-sm text-zinc-400">
-                  {/* {email} in the admin-edited copy renders as JSX (not a plain string
-                      interpolation) so the address itself keeps its own styling. */}
                   {t("login.otp_subtitle").split("{email}")[0]}
                   <span className="text-zinc-200">{email}</span>
                   {t("login.otp_subtitle").split("{email}")[1]}
@@ -339,16 +316,6 @@ export default function Login() {
               </button>
             </form>
           )}
-          {/* ONE persistent node, kept as a sibling of both forms (never
-              inside the ternary above) so it's never unmounted when `step`
-              changes — Turnstile tokens are single-use, and "Resend code"
-              on the OTP step needs this exact same widget instance to still
-              be alive to hand back a fresh one. Placed at the very bottom of
-              the card, out of the way of the actual form fields, and hidden
-              outright on the OTP step since there's nothing left to verify
-              there. In the common case (no challenge needed) "interaction-
-              only" appearance (see the render call above) means this
-              renders at zero height even while visible. */}
           <div ref={turnstileContainerRef} className={step === "otp" ? "hidden" : "mt-1"} />
         </Card>
       </div>

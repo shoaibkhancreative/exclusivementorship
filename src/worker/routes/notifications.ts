@@ -12,9 +12,6 @@ import {
 
 export const notificationRoutes = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
-// Notifications only ever exist for logged-in users (notifications.user_id
-// is NOT NULL — see migrations/0008_admin_panel.sql) — there's no guest
-// concept here, unlike the support inbox.
 notificationRoutes.use("/*", requireAuth);
 
 function serializeNotification(n: NotificationRow) {
@@ -27,14 +24,12 @@ function serializeNotification(n: NotificationRow) {
   };
 }
 
-/** GET /notifications — the caller's own notifications, newest first, plus their total unread count (see listNotifications for why that count isn't just the page's). */
 notificationRoutes.get("/", async (c) => {
   const user = c.get("user")!;
   const { notifications, unreadCount } = await listNotifications(c.env, user.id);
   return c.json({ notifications: notifications.map(serializeNotification), unreadCount });
 });
 
-/** POST /notifications/:id/read — marks one of the caller's own notifications read. 404s (rather than 403) for a notification that exists but belongs to someone else, so existence isn't leaked. */
 notificationRoutes.post("/:id/read", async (c) => {
   const user = c.get("user")!;
   const notification = await getNotification(c.env, c.req.param("id"));
@@ -45,7 +40,6 @@ notificationRoutes.post("/:id/read", async (c) => {
   return c.json({ ok: true });
 });
 
-/** POST /notifications/read-all — marks every one of the caller's own notifications read. */
 notificationRoutes.post("/read-all", async (c) => {
   const user = c.get("user")!;
   await markAllNotificationsRead(c.env, user.id);

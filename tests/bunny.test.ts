@@ -47,10 +47,6 @@ describe("signBunnyEmbedUrl", () => {
     expect(expires).toBeGreaterThanOrEqual(before + VIDEO_TOKEN_TTL_SECONDS);
     expect(expires).toBeLessThanOrEqual(before + VIDEO_TOKEN_TTL_SECONDS + 5);
 
-    // token = SHA256_HEX(security_key + video_id + expires), plain
-    // concatenation — recomputed independently here against the same
-    // helper used elsewhere (sha256Hex), not against signBunnyEmbedUrl
-    // itself, so this actually checks the algorithm/ordering.
     const expected = await sha256Hex(env.BUNNY_TOKEN_AUTH_KEY! + "abc-123-def" + String(expires));
     expect(url.searchParams.get("token")).toBe(expected);
   });
@@ -77,8 +73,6 @@ describe("signBunnyEmbedUrl", () => {
     expect(signed).not.toContain(env.BUNNY_TOKEN_AUTH_KEY);
   });
 });
-
-// --- HTTP route: POST /api/lessons/:number/video-token ---------------------
 
 async function call(env: Env, path: string, init: RequestInit & { cookie?: string } = {}) {
   const headers = new Headers(init.headers);
@@ -136,14 +130,12 @@ describe("POST /api/lessons/:number/video-token", () => {
     await setLessonEmbedUrl(env, 2, BUNNY_URL);
     const { cookie } = await loginNewUser(env, "frank@example.com");
 
-    // Lesson 2 is locked for a brand-new user until lesson 1's video is finished.
     const res = await call(env, "/api/lessons/2/video-token", { method: "POST", cookie, body: "{}" });
     expect(res.status).toBe(403);
   });
 
   it("rejects lessons that aren't Bunny-hosted", async () => {
     const { cookie } = await loginNewUser(env, "grace@example.com");
-    // Lesson 1 is seeded with a YouTube embed URL by default.
     const res = await call(env, "/api/lessons/1/video-token", { method: "POST", cookie, body: "{}" });
     expect(res.status).toBe(400);
   });
@@ -155,17 +147,6 @@ describe("POST /api/lessons/:number/video-token", () => {
   });
 });
 
-// --- GET /lessons endpoints stay open for free lessons ---------------------
-//
-// These two GET routes are metadata reads (title, thumbnail, embed URL,
-// outline state) and were never gated by auth for free lessons, independent
-// of how the video itself gets played. That's still true: a logged-out
-// visitor can read a free lesson's plain, unsigned embed URL here with no
-// 401/403. Whether that raw URL is actually playable against Bunny is a
-// separate concern handled client-side by VideoStage, which now signs every
-// Bunny-hosted embed (free or paid) via POST /video-token before rendering
-// it — see VideoStage.tsx's `needsToken` comment for why an unsigned
-// "free" Bunny embed 403s just like an unsigned paid one would.
 describe("Free Bunny-hosted lessons are accessible to logged-out visitors", () => {
   let env: Env;
   beforeEach(async () => {
@@ -173,15 +154,12 @@ describe("Free Bunny-hosted lessons are accessible to logged-out visitors", () =
   });
 
   it("GET /api/lessons/:number succeeds for a logged-out visitor on a free Bunny lesson, with the plain embed URL", async () => {
-    // Lesson 1 is free by default (freeLessonCount defaults to 5) — point
-    // it at a Bunny embed URL to simulate free content now hosted there too.
     await setLessonEmbedUrl(env, 1, BUNNY_URL);
 
     const res = await call(env, "/api/lessons/1", { method: "GET" });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { videoEmbedUrl: string; isLocked: boolean };
     expect(body.isLocked).toBe(false);
-    // Unsigned — no token/expires query params, exactly the raw Bunny URL.
     expect(body.videoEmbedUrl).toBe(BUNNY_URL);
   });
 

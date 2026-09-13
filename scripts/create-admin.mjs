@@ -1,19 +1,4 @@
 #!/usr/bin/env node
-// Bootstraps an admin account. There is no admin sign-up route on purpose —
-// this script is the only way an `admins` row is ever created.
-//
-// Usage:
-//   node scripts/create-admin.mjs you@example.com "a strong password" --local
-//   node scripts/create-admin.mjs you@example.com "a strong password" --remote
-//
-// --local (default)  -> writes to the local D1 (wrangler dev) database
-// --remote            -> writes to the REAL production D1 database
-//
-// The password hash format produced here (`pbkdf2:<iterations>:<saltHex>:<hashHex>`)
-// is byte-for-byte compatible with src/worker/lib/crypto.ts's hashPassword/
-// verifyPassword, since both use PBKDF2-SHA256 via Web Crypto
-// (`crypto.subtle`) — this script just imports it from Node's
-// `node:crypto` webcrypto implementation instead of the Workers runtime.
 
 import { webcrypto as crypto } from "node:crypto";
 import { randomUUID } from "node:crypto";
@@ -79,30 +64,16 @@ async function main() {
 
   console.log(`Creating/updating admin '${normalizedEmail}' in the ${target.slice(2)} database...`);
 
-  // Written to a temp .sql file and run via `--file=` (same as db:seed:*)
-  // instead of passing the SQL inline via `--command`. This sidesteps a
-  // real-world Windows footgun: `npx`/`wrangler` are .cmd files there, so
-  // Node has to relaunch them through cmd.exe, and cmd.exe's own argument
-  // parsing can mangle a long inline SQL string (parentheses, quotes,
-  // etc. from ON CONFLICT(...) or a password's derived hash). A bare file
-  // path has none of that risk on any OS.
   const tempFile = join(tmpdir(), `create-admin-${id}.sql`);
   writeFileSync(tempFile, sql, "utf-8");
 
   try {
-    // Windows needs the .cmd extension named explicitly to launch npx
-    // (batch files aren't directly executable there) — Node then wraps it
-    // through cmd.exe internally with correct argument escaping on its
-    // own, so no shell:true / DEP0190 warning is needed. macOS/Linux just
-    // use the plain "npx" binary, spawned directly with no shell at all.
     const npxCommand = process.platform === "win32" ? "npx.cmd" : "npx";
-    execFileSync(
-      npxCommand,
-      ["wrangler", "d1", "execute", "exclusive-mentorship-db", target, "--file", tempFile],
-      { stdio: "inherit" }
-    );
+    execFileSync(npxCommand, ["wrangler", "d1", "execute", "exclusive-mentorship-db", target, "--file", tempFile], {
+      stdio: "inherit"
+    });
     console.log(`\nDone. You can now log in at /admin/login with:\n  email: ${normalizedEmail}`);
-  } catch (err) {
+  } catch {
     console.error("\nwrangler d1 execute failed. If you'd rather run it yourself, here's the SQL:\n");
     console.error(sql);
     process.exit(1);
@@ -110,7 +81,6 @@ async function main() {
     try {
       unlinkSync(tempFile);
     } catch {
-      // best-effort cleanup only
     }
   }
 }

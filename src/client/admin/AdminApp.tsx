@@ -19,12 +19,6 @@ function RequireAdmin({ children }: { children: JSX.Element }) {
   return children;
 }
 
-/**
- * Completely separate app tree from the student-facing App.tsx: its own
- * session provider (AdminSessionProvider, reading /api/admin/me — the
- * em_admin_session cookie), no TopBar, no SupportButton, no student
- * SessionProvider anywhere in this tree.
- */
 export default function AdminApp() {
   return (
     <AdminSessionProvider>

@@ -5,19 +5,16 @@ import { api, ApiError, type CreateOrderResponse, type PaymentStatusResponse } f
 import { useConfig } from "../lib/useConfig";
 import { useContent } from "../lib/useContent";
 import { useSession } from "../lib/SessionContext";
+import { useDialogA11y } from "../lib/useDialogA11y";
 import { IllustrationBadge } from "./IllustrationBadge";
 
 const POLL_INTERVAL_MS = 5000;
-const MAX_POLLS = 240; // ~20 minutes at the interval above — matches the address window itself
+const MAX_POLLS = 240;
 
-// NOWPayments' non-hosted "payment" endpoint locks the exchange rate for a
-// fixed ~20-minute window per order (see createNowPaymentsPayment). Used
-// only to size the ring timer — the real deadline is always `expiresAt`.
 const WINDOW_SECONDS = 20 * 60;
 
 type Order = CreateOrderResponse | PaymentStatusResponse;
 
-/** Ticks every second; returns seconds remaining until `expiresAt` (never negative). */
 function useSecondsLeft(expiresAt: string | null | undefined): number | null {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -29,7 +26,6 @@ function useSecondsLeft(expiresAt: string | null | undefined): number | null {
   return Math.max(0, Math.floor((new Date(expiresAt).getTime() - now) / 1000));
 }
 
-/** Offer step hero — a friendly open-gift-box badge. Warm, round, one shape doing all the work. */
 function GiftBadge() {
   return (
     <IllustrationBadge size={92} bg="linear-gradient(180deg, rgba(184,134,46,0.18), rgba(230,57,70,0.14))" breathe>
@@ -44,36 +40,43 @@ function GiftBadge() {
   );
 }
 
-/** Payment-confirmed hero — bookends the padlock with a matching check badge. */
 function CheckBadge() {
   return (
-    <IllustrationBadge size={92} bg="rgba(230,57,70,0.14)" >
+    <IllustrationBadge size={92} bg="rgba(230,57,70,0.14)">
       <svg viewBox="0 0 80 80" width={56} height={56} className="animate-[gentle-pop_0.5s_ease-out]" aria-hidden="true">
         <circle cx="40" cy="40" r="25" fill="#e63946" />
-        <path d="M28 41l8 8 16-18" fill="none" stroke="#fdf8e9" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
+        <path
+          d="M28 41l8 8 16-18"
+          fill="none"
+          stroke="#fdf8e9"
+          strokeWidth="5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
       </svg>
     </IllustrationBadge>
   );
 }
 
-/** Expired-address hero — soft and sleepy, not alarming. */
 function ClockBadge() {
   return (
     <IllustrationBadge size={76} bg="var(--tw-base-800, #f0e3b8)">
       <svg viewBox="0 0 64 64" width={40} height={40} aria-hidden="true">
         <circle cx="32" cy="34" r="18" fill="none" stroke="#a69f89" strokeWidth="4" />
-        <path d="M32 25v9l6 6" fill="none" stroke="#a69f89" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+        <path
+          d="M32 25v9l6 6"
+          fill="none"
+          stroke="#a69f89"
+          strokeWidth="4"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
         <rect x="27" y="9" width="10" height="5" rx="2.5" fill="#a69f89" />
       </svg>
     </IllustrationBadge>
   );
 }
 
-/**
- * Slim inline countdown — sits directly under the QR sticker instead of
- * floating on top of it, so it never covers a corner of the code. One
- * thin bar + one small mm:ss label, same warm palette as everything else.
- */
 function SlimTimer({ percent, urgent, mm, ss }: { percent: number; urgent: boolean; mm: number; ss: number }) {
   return (
     <div className="mx-auto flex w-36 flex-col items-center gap-1.5 pt-1">
@@ -83,7 +86,9 @@ function SlimTimer({ percent, urgent, mm, ss }: { percent: number; urgent: boole
           style={{ width: `${Math.max(0, Math.min(100, percent))}%` }}
         />
       </div>
-      <span className={`font-mono text-[11px] font-semibold tabular-nums ${urgent ? "text-accent-500" : "text-zinc-500"}`}>
+      <span
+        className={`font-mono text-[11px] font-semibold tabular-nums ${urgent ? "text-accent-500" : "text-zinc-500"}`}
+      >
         {mm}:{String(ss).padStart(2, "0")}
       </span>
     </div>
@@ -107,7 +112,13 @@ function CopyPill({ copied, onCopy }: { copied: boolean; onCopy: () => void }) {
       {copied ? (
         <>
           <svg width="11" height="11" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-            <path d="M4 10.5l3.8 3.8L16 6" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+            <path
+              d="M4 10.5l3.8 3.8L16 6"
+              stroke="currentColor"
+              strokeWidth="2.4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
           </svg>
           Copied
         </>
@@ -118,7 +129,6 @@ function CopyPill({ copied, onCopy }: { copied: boolean; onCopy: () => void }) {
   );
 }
 
-/** Amount + address in a single soft card with one internal divider — the only "form-like" element in the whole popup. */
 function PaymentDetailsCard({
   amount,
   address,
@@ -150,7 +160,6 @@ function PaymentDetailsCard({
   );
 }
 
-/** Warm three-dot loader instead of a technical spinner ring. */
 function FriendlyLoader() {
   return (
     <div className="flex items-center justify-center gap-1.5" role="status" aria-label="Loading">
@@ -165,13 +174,6 @@ function FriendlyLoader() {
   );
 }
 
-/**
- * The in-site checkout flow, rebuilt around one rule: at most one
- * illustration, one heading, and one supporting line per screen — plus
- * whatever functional pieces (QR, amount/address, timer) the payment
- * itself actually needs. No step counters, no duplicate price rows, no
- * standalone network badges, no footer copy.
- */
 export function UnlockModal({ onClose }: { onClose: () => void }) {
   const config = useConfig();
   const { t } = useContent();
@@ -209,14 +211,14 @@ export function UnlockModal({ onClose }: { onClose: () => void }) {
           }, 1600);
         }
       } catch {
-        // transient network hiccup — keep polling
       }
     },
     [navigate, onClose, refresh]
   );
 
   const beginCheckout = useCallback(async (isRegenerate: boolean) => {
-    isRegenerate ? setRegenerating(true) : setLoading(true);
+    if (isRegenerate) setRegenerating(true);
+    else setLoading(true);
     setError(null);
     try {
       const result = await api.post<CreateOrderResponse>("/payments/create-order");
@@ -224,7 +226,8 @@ export function UnlockModal({ onClose }: { onClose: () => void }) {
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't start the payment. Please try again.");
     } finally {
-      isRegenerate ? setRegenerating(false) : setLoading(false);
+      if (isRegenerate) setRegenerating(false);
+      else setLoading(false);
     }
   }, []);
 
@@ -247,7 +250,7 @@ export function UnlockModal({ onClose }: { onClose: () => void }) {
       poll(order.orderId);
     }, POLL_INTERVAL_MS);
     return () => clearInterval(id);
-  }, [order?.orderId, poll]);
+  }, [step, order?.orderId, poll]);
 
   useEffect(() => {
     if (!order?.payAddress || timeExpired) {
@@ -279,17 +282,8 @@ export function UnlockModal({ onClose }: { onClose: () => void }) {
     if (e.target === e.currentTarget) onClose();
   }
 
-  useEffect(() => {
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    document.addEventListener("keydown", handleKeyDown);
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", handleKeyDown);
-      document.body.style.overflow = "";
-    };
-  }, [onClose]);
+  const panelRef = useRef<HTMLDivElement>(null);
+  useDialogA11y(panelRef, { onClose });
 
   const statusLabel: Record<string, string> = {
     created: "Preparing…",
@@ -303,26 +297,24 @@ export function UnlockModal({ onClose }: { onClose: () => void }) {
   };
 
   const URGENT_THRESHOLD_PERCENT = 25;
-  const progressPercent =
-    secondsLeft !== null ? Math.max(0, Math.min(100, (secondsLeft / WINDOW_SECONDS) * 100)) : 100;
+  const progressPercent = secondsLeft !== null ? Math.max(0, Math.min(100, (secondsLeft / WINDOW_SECONDS) * 100)) : 100;
   const urgent = progressPercent <= URGENT_THRESHOLD_PERCENT;
   const mm = secondsLeft !== null ? Math.floor(secondsLeft / 60) : 0;
   const ss = secondsLeft !== null ? secondsLeft % 60 : 0;
 
   return (
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions
     <div
-      // Was items-end (bottom sheet) below `sm` — felt "stuck to the
-      // bottom" rather than a centered dialog on a phone. Centered on
-      // every screen size now; px-4 keeps it off the screen edges on
-      // narrow phones (previously relied entirely on items-end flush to
-      // the edge, so there was no horizontal margin to speak of either).
       className="animate-fade-in fixed inset-0 z-[100] flex items-center justify-center bg-[#2b1a10]/50 px-4 backdrop-blur-sm"
       onClick={handleOverlayClick}
       role="dialog"
       aria-modal="true"
       aria-label="Unlock Exclusive Mentorship"
     >
-      <div className="animate-slide-up relative max-h-[85vh] w-full max-w-sm overflow-hidden overflow-y-auto rounded-[28px] bg-base-900 shadow-[0_24px_70px_-20px_rgba(230,57,70,0.35)]">
+      <div
+        className="animate-slide-up relative max-h-[85vh] w-full max-w-sm overflow-hidden overflow-y-auto rounded-[28px] bg-base-900 shadow-[0_24px_70px_-20px_rgba(230,57,70,0.35)]"
+        ref={panelRef}
+      >
         <button
           type="button"
           onClick={onClose}
@@ -427,13 +419,17 @@ export function UnlockModal({ onClose }: { onClose: () => void }) {
                   onCopy={(field, value) => handleCopy(field, value)}
                 />
 
-                <p className="text-center text-[13px] leading-relaxed text-zinc-400">{t("unlock_modal.instruction_bn")}</p>
+                <p className="text-center text-[13px] leading-relaxed text-zinc-400">
+                  {t("unlock_modal.instruction_bn")}
+                </p>
 
                 <p className="flex items-center justify-center gap-1.5 text-center text-xs text-zinc-500">
-                  {!pollingStopped && <span className="h-1.5 w-1.5 flex-none animate-pulse rounded-full bg-highlight-500" />}
+                  {!pollingStopped && (
+                    <span className="h-1.5 w-1.5 flex-none animate-pulse rounded-full bg-highlight-500" />
+                  )}
                   {pollingStopped
                     ? "Still waiting — contact support."
-                    : statusLabel["status" in order ? order.status : "waiting"] ?? "Waiting for your payment…"}
+                    : (statusLabel["status" in order ? order.status : "waiting"] ?? "Waiting for your payment…")}
                 </p>
               </div>
             )

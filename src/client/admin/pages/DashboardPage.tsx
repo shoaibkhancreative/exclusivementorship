@@ -73,12 +73,6 @@ const STATUS_TONE: Record<string, string> = {
   cancelled: "bg-red-500/15 text-red-300"
 };
 
-/**
- * Overview built from the existing /admin/students + /admin/lessons
- * endpoints, PLUS /admin/analytics for revenue/signup trends and payment
- * status breakdown (see db.ts getRevenueAnalytics — aggregates
- * payment_orders/users, no new tables).
- */
 export default function DashboardPage() {
   const [students, setStudents] = useState<StudentRow[] | null>(null);
   const [lessons, setLessons] = useState<AdminLesson[] | null>(null);
@@ -132,9 +126,20 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <StatCard label="Total students" value={students.length} icon={<UsersIcon />} hint={`+${newThisWeek} this week`} />
+        <StatCard
+          label="Total students"
+          value={students.length}
+          icon={<UsersIcon />}
+          hint={`+${newThisWeek} this week`}
+        />
         <StatCard label="Paid" value={paidCount} icon={<CoinIcon />} tone="accent" />
-        <StatCard label="Conversion" value={`${conversionRate}%`} icon={<TrendUpIcon />} tone="accent" hint={`${freeCount} still free`} />
+        <StatCard
+          label="Conversion"
+          value={`${conversionRate}%`}
+          icon={<TrendUpIcon />}
+          tone="accent"
+          hint={`${freeCount} still free`}
+        />
         <StatCard
           label="Published classes"
           value={`${publishedLessons}/${lessons.length}`}
@@ -145,8 +150,20 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <StatCard label="Total revenue" value={formatUsd(analytics.totalRevenue)} icon={<CoinIcon />} tone="accent" hint={`${analytics.totalPaidOrders} paid orders`} />
-        <StatCard label="This month" value={formatUsd(analytics.revenueThisMonth)} icon={<TrendUpIcon />} tone={momChange >= 0 ? "accent" : "warning"} hint={`${momChange >= 0 ? "+" : ""}${momChange}% vs last month`} />
+        <StatCard
+          label="Total revenue"
+          value={formatUsd(analytics.totalRevenue)}
+          icon={<CoinIcon />}
+          tone="accent"
+          hint={`${analytics.totalPaidOrders} paid orders`}
+        />
+        <StatCard
+          label="This month"
+          value={formatUsd(analytics.revenueThisMonth)}
+          icon={<TrendUpIcon />}
+          tone={momChange >= 0 ? "accent" : "warning"}
+          hint={`${momChange >= 0 ? "+" : ""}${momChange}% vs last month`}
+        />
         <StatCard label="Last 30 days" value={formatUsd(analytics.revenueLast30Days)} icon={<CoinIcon />} />
         <StatCard label="Avg. order value" value={formatUsd(analytics.avgOrderValue)} icon={<TrendUpIcon />} />
       </div>

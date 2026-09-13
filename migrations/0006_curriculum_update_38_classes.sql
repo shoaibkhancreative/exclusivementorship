@@ -1,36 +1,3 @@
--- Curriculum update: rename Classes 1-6 to their new presentation titles and
--- add outline-only rows for Classes 7-38, completing the 6-semester /
--- 38-class public roadmap described in src/worker/lib/semesters.ts.
---
--- WHY A MIGRATION AND NOT A RESEED:
--- seed/seed.sql rebuilds the lessons table with DELETE + INSERT, which is
--- fine for a fresh/local database but NOT safe here: lesson_progress rows
--- reference lessons.id with ON DELETE CASCADE, so deleting and re-inserting
--- lessons 1-6 on a live database would silently wipe every real student's
--- progress. This migration instead:
---   1. UPDATEs lessons 1-6 in place, by lesson_number, changing only the
---      presentation fields (title, tagline, chapter_name) — the row's `id`
---      never changes, so lesson_progress / assignments / payment state for
---      existing users is completely unaffected.
---   2. INSERTs new outline-only rows for classes 7-38 (no video, no
---      assignment, is_free = 0). These are never real on-site lessons —
---      GET /api/lessons/:number always returns 403 "locked" for them,
---      exactly like any class outside a learner's unlocked sequence, since
---      that content is delivered inside the private Telegram mentorship.
---      `INSERT OR IGNORE` relies on the existing UNIQUE constraint on
---      lesson_number (see migrations/0001_init.sql) to make this idempotent:
---      safe to re-run without duplicating rows if it's ever applied twice.
---
--- Run this the same way as any other migration:
---   npm run db:migrate:local
---   npm run db:migrate:remote
-
--- ---------------------------------------------------------------------------
--- 1) Rename Classes 1-6 (real on-site lessons) — id preserved, only display
---    fields change. Video ids, descriptions, free/premium flags, sort order
---    and assignment content are untouched.
--- ---------------------------------------------------------------------------
-
 UPDATE lessons SET
   title = 'The Real Game of Trading',
   chapter_name = 'Foundation',
@@ -66,10 +33,6 @@ UPDATE lessons SET
   chapter_name = 'Technical Edge',
   tagline = 'Understand inducement and why the market often creates false commitment first.'
 WHERE lesson_number = 6;
-
--- ---------------------------------------------------------------------------
--- 2) Add Classes 7-38 as outline-only roadmap entries.
--- ---------------------------------------------------------------------------
 
 INSERT OR IGNORE INTO lessons (lesson_number, title, chapter_name, thumbnail_url, youtube_video_id, description, tagline, is_free, is_active, sort_order, assignment_title, assignment_instruction) VALUES
 (7, 'The Footprints of Inefficiency', 'Technical Edge', '/thumbnails/lesson-07.jpg', 'N/A-TELEGRAM-DELIVERED', NULL, 'Learn how Fair Value Gaps reveal what price leaves behind.', 0, 1, 7, NULL, NULL),

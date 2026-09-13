@@ -2,7 +2,15 @@ import { Hono } from "hono";
 import type { Env } from "../lib/config";
 import { RATE_LIMITS, getFreeLessonCount, OTP_RESEND_COOLDOWN_SECONDS } from "../lib/config";
 import type { AppVariables } from "../middleware/session";
-import { readCookie, revokeSession, buildLogoutCookie, buildSessionCookie, createSession, issueOtp, verifyOtp } from "../auth";
+import {
+  readCookie,
+  revokeSession,
+  buildLogoutCookie,
+  buildSessionCookie,
+  createSession,
+  issueOtp,
+  verifyOtp
+} from "../auth";
 import { checkRateLimit, getOrCreateUserByGoogle, logAuditEvent, secondsSinceLastOtpRequest } from "../db";
 import { sendOtpEmail } from "../services/email";
 import { verifyTurnstile } from "../services/turnstile";
@@ -15,12 +23,6 @@ function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length <= 254;
 }
 
-/**
- * Login is email-only (OTP) — there is no name field collected anywhere in
- * the product. Rather than inventing one, we derive a readable display name
- * from the email's local part for use in the profile card/avatar. This is
- * deterministic and never stored.
- */
 function deriveDisplayName(email: string): string {
   const local = email.split("@")[0] ?? email;
   const cleaned = local.replace(/[._+-]+/g, " ").trim();
@@ -59,18 +61,12 @@ authRoutes.post("/request-otp", async (c) => {
   const perIp = await checkRateLimit(c.env, `otp_request:ip:${ipHash}`, RATE_LIMITS.otpRequestPerIpPerHour, 3600);
 
   if (!perEmail.allowed || !perIp.allowed) {
-    return c.json(
-      { error: "rate_limited", message: "Too many requests. Please try again in a bit." },
-      429
-    );
+    return c.json({ error: "rate_limited", message: "Too many requests. Please try again in a bit." }, 429);
   }
 
   const secondsSinceLast = await secondsSinceLastOtpRequest(c.env, email);
   if (secondsSinceLast !== null && secondsSinceLast < OTP_RESEND_COOLDOWN_SECONDS) {
-    return c.json(
-      { error: "resend_cooldown", message: "Please wait a moment before requesting another code." },
-      429
-    );
+    return c.json({ error: "resend_cooldown", message: "Please wait a moment before requesting another code." }, 429);
   }
 
   const code = await issueOtp(c.env, email);
@@ -78,7 +74,6 @@ authRoutes.post("/request-otp", async (c) => {
   try {
     await sendOtpEmail(c.env, email, code);
   } catch (err) {
-    // Do not leak provider details to the client.
     // eslint-disable-next-line no-console
     console.error("sendOtpEmail failed", err);
     return c.json({ error: "email_send_failed", message: "We couldn't send the code. Please try again shortly." }, 502);
@@ -86,8 +81,6 @@ authRoutes.post("/request-otp", async (c) => {
 
   await logAuditEvent(c.env, "otp_requested", { ipHash, metadata: { email } });
 
-  // Deliberately generic response — never reveals whether the email was
-  // already a known user.
   return c.json({ ok: true, message: "If that email is valid, a code has been sent." });
 });
 
@@ -128,14 +121,6 @@ authRoutes.post("/verify-otp", async (c) => {
   return c.json({ ok: true, user: { email: result.user.email, courseStatus: result.user.course_status } });
 });
 
-/**
- * Alternative to email-OTP login. Added because OTP emails were landing in
- * some users' spam folders (a domain-reputation issue, not something a code
- * change fixes quickly) — for anyone with a Google account this skips email
- * delivery entirely, since Google hands us an already-verified email
- * directly. OTP remains fully intact as the primary/fallback method for
- * everyone else.
- */
 authRoutes.post("/google", async (c) => {
   const body = await c.req.json<{ credential?: string }>().catch(() => ({}) as { credential?: string });
   const credential = (body.credential ?? "").trim();

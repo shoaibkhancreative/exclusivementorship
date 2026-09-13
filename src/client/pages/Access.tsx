@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { Button } from "../components/ui";
 import { useContent } from "../lib/useContent";
+import { useDocumentMeta } from "../lib/useDocumentMeta";
 import { useLayout } from "../lib/useLayout";
 
 const DEFAULT_ORDER = ["badge", "title", "description", "cta"];
@@ -8,6 +9,7 @@ const DEFAULT_ORDER = ["badge", "title", "description", "cta"];
 export default function Access() {
   const { t } = useContent();
   const { getBlockOrder } = useLayout();
+  useDocumentMeta({ title: "Access Granted", path: "/access" });
 
   const blocks: Record<string, React.ReactNode> = {
     badge: (
@@ -34,5 +36,7 @@ export default function Access() {
 
   const order = getBlockOrder("access", DEFAULT_ORDER);
 
-  return <div className="page-enter mx-auto max-w-lg px-6 py-16 text-center">{order.map((id) => blocks[id] ?? null)}</div>;
+  return (
+    <div className="page-enter mx-auto max-w-lg px-6 py-16 text-center">{order.map((id) => blocks[id] ?? null)}</div>
+  );
 }

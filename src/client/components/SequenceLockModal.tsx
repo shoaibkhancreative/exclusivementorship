@@ -1,57 +1,38 @@
-import { useEffect } from "react";
+import { useRef } from "react";
 import { Button } from "./ui";
+import { useDialogA11y } from "../lib/useDialogA11y";
 
-/**
- * The "sequence locked" counterpart to UnlockModal.tsx's payment popup —
- * tapping a locked class's button used to reveal an explanation directly on
- * top of the video (see the git history of Lesson.tsx); now both lock
- * reasons open a popup instead, so this is that popup for the "finish the
- * previous class first" case. Deliberately much simpler than UnlockModal
- * since there's no action to take here beyond going back and finishing the
- * previous class: just the message and a close button. Mirrors
- * NewConversationModal.tsx's overlay shape/conventions (backdrop click +
- * Escape to close, body scroll lock) since that's the plain-popup pattern
- * already used elsewhere in this codebase.
- */
 export function SequenceLockModal({ message, onClose }: { message: string; onClose: () => void }) {
-  useEffect(() => {
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    document.addEventListener("keydown", handleKeyDown);
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", handleKeyDown);
-      document.body.style.overflow = "";
-    };
-  }, [onClose]);
+  const panelRef = useRef<HTMLDivElement>(null);
+  useDialogA11y(panelRef, { onClose });
 
   function handleOverlayClick(e: React.MouseEvent) {
     if (e.target === e.currentTarget) onClose();
   }
 
   return (
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions
     <div
-      // Was items-end (bottom sheet) below `sm` — for a small, single-
-      // message popup like this one, that read as "stuck at the bottom
-      // of the screen" rather than a normal centered dialog. Centered on
-      // every screen size now; px-4 keeps it off the screen edges on
-      // narrow phones.
       className="animate-fade-in fixed inset-0 z-[100] flex items-center justify-center bg-[#1c1b17]/70 px-4 backdrop-blur-sm"
       onClick={handleOverlayClick}
       role="dialog"
       aria-modal="true"
       aria-label="Class locked"
     >
-      <div className="animate-slide-up w-full max-w-xs rounded-2xl bg-base-900 p-6 text-center shadow-xl">
-        {/* Same accent-circle-with-lock treatment as the button that opened
-            this popup (see Lesson.tsx), just larger — keeps the popup
-            visually tied to what was just tapped instead of introducing a
-            third icon style. */}
+      <div
+        ref={panelRef}
+        className="animate-slide-up w-full max-w-xs rounded-2xl bg-base-900 p-6 text-center shadow-xl"
+      >
         <span className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-accent-500 text-base-950">
           <svg width="18" height="19" viewBox="0 0 12 13" aria-hidden="true">
             <rect x="1.5" y="5.5" width="9" height="6.5" rx="1.3" stroke="currentColor" strokeWidth="1.3" fill="none" />
-            <path d="M3.5 5.5V3.75a2.5 2.5 0 0 1 5 0V5.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" fill="none" />
+            <path
+              d="M3.5 5.5V3.75a2.5 2.5 0 0 1 5 0V5.5"
+              stroke="currentColor"
+              strokeWidth="1.3"
+              strokeLinecap="round"
+              fill="none"
+            />
           </svg>
         </span>
         <p className="text-sm font-medium leading-relaxed text-zinc-100">{message}</p>

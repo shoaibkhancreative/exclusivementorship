@@ -8,19 +8,9 @@ export interface CreatePaymentResult {
   payAmount: number;
   payCurrency: string;
   status: string;
-  /** ISO timestamp — NOWPayments payments expire ~20 min after creation. */
   expiresAt: string | null;
 }
 
-/**
- * Creates a payment via NOWPayments' non-hosted "payment" endpoint (as
- * opposed to "invoice", which redirects the user to a NOWPayments-hosted
- * page). This returns a raw pay-to address, amount, and currency, which we
- * render inside our own checkout UI — the user never leaves our site and
- * never sees the NOWPayments name or brand. This is the standard, documented
- * way to build a custom-branded checkout on top of NOWPayments; it's not a
- * workaround, it's simply choosing "payment" over "invoice" in their API.
- */
 export async function createNowPaymentsPayment(
   env: Env,
   opts: { orderId: string; amount: number; currency: string; customerEmail: string }
@@ -69,11 +59,6 @@ export async function createNowPaymentsPayment(
   };
 }
 
-/**
- * Recursively sorts object keys — required because NOWPayments computes the
- * IPN signature over the JSON-stringified payload with keys sorted
- * alphabetically at every level. See NOWPayments IPN docs.
- */
 function sortObjectKeys(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(sortObjectKeys);
   if (value !== null && typeof value === "object") {
@@ -100,11 +85,6 @@ async function hmacSha512Hex(secret: string, message: string): Promise<string> {
     .join("");
 }
 
-/**
- * Verifies the `x-nowpayments-sig` header against the raw IPN body.
- * Returns false (never throws) on any malformed input so callers can
- * uniformly reject the request.
- */
 export async function verifyNowPaymentsSignature(
   env: Env,
   rawBodyJson: unknown,
@@ -128,7 +108,6 @@ function timingSafeEqualHex(a: string, b: string): boolean {
   return result === 0;
 }
 
-/** Maps NOWPayments' payment_status values to our internal order status. */
 export function mapNowPaymentsStatus(
   status: string
 ): "created" | "waiting" | "confirming" | "confirmed" | "finished" | "failed" | "expired" | "cancelled" {
@@ -154,5 +133,4 @@ export function mapNowPaymentsStatus(
   }
 }
 
-/** Statuses that count as "paid" for the purpose of unlocking the mentorship. */
 export const PAID_STATUSES = new Set(["confirmed", "finished"]);

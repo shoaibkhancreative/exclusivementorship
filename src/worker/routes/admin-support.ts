@@ -40,19 +40,14 @@ const VALID_AGENT_PROFILES: SupportAgentProfile[] = ["nlt", "void", "venom", "sh
 const VALID_STATUSES = ["open", "closed"] as const;
 const VALID_USER_STATUSES = ["paid", "free", "guest"] as const;
 
-/** Best-effort background task — see routes/support.ts' identical helper for why (executionCtx.waitUntil in real Workers, fire-and-swallow elsewhere). */
 function background(c: Context<{ Bindings: Env; Variables: AdminVariables }>, task: Promise<void>) {
   const reported = task.catch((err) => {
     // eslint-disable-next-line no-console
     console.error("admin support background task failed", err);
   });
-  // See routes/support.ts' identical helper for why this needs a try/catch
-  // rather than `c.executionCtx?.waitUntil(...)`: the getter throws instead
-  // of returning undefined when there's no ExecutionContext.
   try {
     c.executionCtx.waitUntil(reported);
   } catch {
-    // no-op — `reported` is already running and self-contained.
   }
 }
 
@@ -123,15 +118,20 @@ function serializeMessage(m: {
   };
 }
 
-/** GET /admin/support/tickets — filterable (status, agent profile, date range, search, and paid/free/guest user status), sorted by most recent activity. */
 adminSupportRoutes.get("/tickets", async (c) => {
   const statusParam = c.req.query("status");
   const agentParam = c.req.query("agent_profile");
   const userStatusParam = c.req.query("user_status");
 
   const filters: SupportTicketAdminFilters = {
-    status: statusParam && (VALID_STATUSES as readonly string[]).includes(statusParam) ? (statusParam as "open" | "closed") : undefined,
-    agentProfile: agentParam && VALID_AGENT_PROFILES.includes(agentParam as SupportAgentProfile) ? (agentParam as SupportAgentProfile) : undefined,
+    status:
+      statusParam && (VALID_STATUSES as readonly string[]).includes(statusParam)
+        ? (statusParam as "open" | "closed")
+        : undefined,
+    agentProfile:
+      agentParam && VALID_AGENT_PROFILES.includes(agentParam as SupportAgentProfile)
+        ? (agentParam as SupportAgentProfile)
+        : undefined,
     dateFrom: c.req.query("date_from") || undefined,
     dateTo: c.req.query("date_to") || undefined,
     search: c.req.query("search") || undefined,
@@ -145,27 +145,10 @@ adminSupportRoutes.get("/tickets", async (c) => {
   return c.json({ tickets: tickets.map(serializeTicket) });
 });
 
-/**
- * POST /admin/support/tickets — lets an admin proactively open a brand-new
- * ticket addressed to an existing (logged-in) user, with an initial admin
- * message, instead of only replying to tickets the learner started. Only
- * ever targets a real user_id — there's no such thing as an admin starting
- * a ticket "to" a guest, since guests are only identified by a cookie the
- * admin panel has no way to address.
- *
- * Interaction with the "one visible ticket per identity" rule
- * (hasVisibleSupportTicket / the learner-facing create-ticket handler in
- * routes/support.ts): this does NOT bypass it. If the learner already has a
- * visible ticket, admin-created tickets are rejected with 409 and the admin
- * is pointed at replying in the existing thread instead. Bypassing the rule
- * would let a learner end up with two simultaneously-visible tickets, which
- * nothing else in this system (their own ticket list, "Close conversation")
- * is built to handle — keeping the invariant intact everywhere it's checked
- * is worth the small extra step of an admin occasionally needing to close
- * (or ask the learner to close) an old ticket first.
- */
 adminSupportRoutes.post("/tickets", async (c) => {
-  const body = await c.req.json<{ userId?: string; body?: string }>().catch(() => ({}) as { userId?: string; body?: string });
+  const body = await c.req
+    .json<{ userId?: string; body?: string }>()
+    .catch(() => ({}) as { userId?: string; body?: string });
   const userId = (body.userId ?? "").trim();
   const text = (body.body ?? "").trim();
 
@@ -202,18 +185,25 @@ adminSupportRoutes.post("/tickets", async (c) => {
     originPath: null
   });
 
-  const message = await createSupportMessage(c.env, { ticketId: ticket.id, senderType: "admin", body: text, attachment: null });
+  const message = await createSupportMessage(c.env, {
+    ticketId: ticket.id,
+    senderType: "admin",
+    body: text,
+    attachment: null
+  });
 
   background(c, notifyLearnerOfReply(c.env, ticket, ticket.agent_profile));
   background(c, notifyLearnerInSite(c.env, ticket, text));
 
   return c.json(
-    { ticket: serializeTicket({ ...ticket, user_email: user.email, user_name: null }), message: serializeMessage(message) },
+    {
+      ticket: serializeTicket({ ...ticket, user_email: user.email, user_name: null }),
+      message: serializeMessage(message)
+    },
     201
   );
 });
 
-/** GET /admin/support/tickets/:id/messages — full thread; marks learner messages read. */
 adminSupportRoutes.get("/tickets/:id/messages", async (c) => {
   const ticket = await getSupportTicket(c.env, c.req.param("id"));
   if (!ticket) return c.json({ error: "not_found" }, 404);
@@ -226,7 +216,6 @@ adminSupportRoutes.get("/tickets/:id/messages", async (c) => {
   });
 });
 
-/** POST /admin/support/tickets/:id/messages — reply as the ticket's current agent_profile; emails the learner in the background (doesn't block the admin's own reply). */
 adminSupportRoutes.post("/tickets/:id/messages", async (c) => {
   const ticket = await getSupportTicket(c.env, c.req.param("id"));
   if (!ticket) return c.json({ error: "not_found" }, 404);
@@ -242,7 +231,11 @@ adminSupportRoutes.post("/tickets/:id/messages", async (c) => {
   let attachment: { bytes: Uint8Array; mime: string; filename: string } | null = null;
   if (body.attachment) {
     try {
-      const decoded = decodeImageDataUrl(body.attachment.dataUrl, SUPPORT_MAX_ATTACHMENT_BYTES, SUPPORT_ALLOWED_ATTACHMENT_MIME_TYPES);
+      const decoded = decodeImageDataUrl(
+        body.attachment.dataUrl,
+        SUPPORT_MAX_ATTACHMENT_BYTES,
+        SUPPORT_ALLOWED_ATTACHMENT_MIME_TYPES
+      );
       attachment = { ...decoded, filename: body.attachment.filename || "attachment" };
     } catch (err) {
       const code = err instanceof Error ? err.message : "invalid_attachment";
@@ -250,13 +243,21 @@ adminSupportRoutes.post("/tickets/:id/messages", async (c) => {
         return c.json({ error: "attachment_too_large", message: "That image is too large." }, 413);
       }
       if (code === "invalid_mime") {
-        return c.json({ error: "invalid_mime", message: "Only image attachments (JPEG, PNG, WebP, GIF) are supported." }, 400);
+        return c.json(
+          { error: "invalid_mime", message: "Only image attachments (JPEG, PNG, WebP, GIF) are supported." },
+          400
+        );
       }
       return c.json({ error: "invalid_attachment", message: "That attachment couldn't be read." }, 400);
     }
   }
 
-  const message = await createSupportMessage(c.env, { ticketId: ticket.id, senderType: "admin", body: text || null, attachment });
+  const message = await createSupportMessage(c.env, {
+    ticketId: ticket.id,
+    senderType: "admin",
+    body: text || null,
+    attachment
+  });
 
   background(c, notifyLearnerOfReply(c.env, ticket, ticket.agent_profile));
   background(c, notifyLearnerInSite(c.env, ticket, text || "[attachment]"));
@@ -264,27 +265,26 @@ adminSupportRoutes.post("/tickets/:id/messages", async (c) => {
   return c.json({ message: serializeMessage(message) }, 201);
 });
 
-async function notifyLearnerOfReply(env: Env, ticket: { user_id: string | null; guest_email: string | null }, agentProfile: SupportAgentProfile) {
-  const toEmail = ticket.user_id ? (await findUserById(env, ticket.user_id))?.email ?? null : ticket.guest_email;
+async function notifyLearnerOfReply(
+  env: Env,
+  ticket: { user_id: string | null; guest_email: string | null },
+  agentProfile: SupportAgentProfile
+) {
+  const toEmail = ticket.user_id ? ((await findUserById(env, ticket.user_id))?.email ?? null) : ticket.guest_email;
   if (!toEmail) return;
   const agentDisplayName = SUPPORT_AGENT_LABELS[agentProfile] ?? agentProfile;
   await sendSupportReplyEmail(env, toEmail, { agentDisplayName });
 }
 
-/**
- * Creates the in-site notification (see db.ts's notifications section) for
- * an admin message landing in a learner's ticket — a reply, or the first
- * message of an admin-started conversation. A no-op for guest tickets:
- * `notifications.user_id` is NOT NULL, so there's nowhere to put a row for
- * someone with no account. Guests keep getting only the email above; this
- * runs alongside it (background(), not instead of) wherever it's called.
- */
-async function notifyLearnerInSite(env: Env, ticket: { user_id: string | null }, messagePreview: string): Promise<void> {
+async function notifyLearnerInSite(
+  env: Env,
+  ticket: { user_id: string | null },
+  messagePreview: string
+): Promise<void> {
   if (!ticket.user_id) return;
   await createNotification(env, { userId: ticket.user_id, type: "support_reply", message: messagePreview });
 }
 
-/** POST /admin/support/tickets/:id/shift — reassigns the ticket's agent_profile (including back to 'nlt') and drops an automatic system-style message into the thread so the learner sees who they're now talking to. Does not touch existing messages — every message is always shown under the ticket's CURRENT profile. */
 adminSupportRoutes.post("/tickets/:id/shift", async (c) => {
   const ticket = await getSupportTicket(c.env, c.req.param("id"));
   if (!ticket) return c.json({ error: "not_found" }, 404);
@@ -324,7 +324,6 @@ adminSupportRoutes.post("/tickets/:id/reopen", async (c) => {
   return c.json({ ok: true, status: "open" });
 });
 
-/** POST /admin/support/tickets/:id/unhide — undoes a learner's "Close conversation": puts the ticket back in their own ticket list. */
 adminSupportRoutes.post("/tickets/:id/unhide", async (c) => {
   const ticket = await getSupportTicket(c.env, c.req.param("id"));
   if (!ticket) return c.json({ error: "not_found" }, 404);
@@ -332,13 +331,6 @@ adminSupportRoutes.post("/tickets/:id/unhide", async (c) => {
   return c.json({ ok: true });
 });
 
-/**
- * POST /admin/support/tickets/:id/hide — the missing direction of unhide
- * above: lets an admin hide a ticket from the learner's own list, the same
- * thing "Close conversation" does on their side (sets hidden_by_user_at via
- * hideSupportTicketForUser). The ticket keeps existing and stays fully
- * visible/actionable here either way.
- */
 adminSupportRoutes.post("/tickets/:id/hide", async (c) => {
   const ticket = await getSupportTicket(c.env, c.req.param("id"));
   if (!ticket) return c.json({ error: "not_found" }, 404);
@@ -346,7 +338,6 @@ adminSupportRoutes.post("/tickets/:id/hide", async (c) => {
   return c.json({ ok: true });
 });
 
-/** DELETE /admin/support/tickets/:id — permanently deletes the ticket and every message in it (cascade). Irreversible. */
 adminSupportRoutes.delete("/tickets/:id", async (c) => {
   const ticket = await getSupportTicket(c.env, c.req.param("id"));
   if (!ticket) return c.json({ error: "not_found" }, 404);
@@ -354,14 +345,6 @@ adminSupportRoutes.delete("/tickets/:id", async (c) => {
   return c.json({ ok: true });
 });
 
-/**
- * DELETE /admin/support/identities/:identityKey — the "delete profile"
- * action in the Users column: permanently deletes EVERY ticket (and, via
- * cascade, every message) belonging to one identity in one shot.
- * identityKey reuses the exact `user:<id>` / `guest:<id>` format
- * SupportPage.tsx's identityKeyOf already builds for its own row keys, so
- * the frontend can pass it straight through with no reshaping.
- */
 adminSupportRoutes.delete("/identities/:identityKey", async (c) => {
   const identity = parseIdentityKey(c.req.param("identityKey"));
   if (!identity) return c.json({ error: "invalid_identity" }, 400);
@@ -369,7 +352,6 @@ adminSupportRoutes.delete("/identities/:identityKey", async (c) => {
   return c.json({ ok: true, deletedCount });
 });
 
-/** Parses SupportPage.tsx's `user:<id>` / `guest:<id>` identity key format server-side. Returns null for anything malformed. */
 function parseIdentityKey(key: string): SupportIdentity | null {
   const separatorIndex = key.indexOf(":");
   if (separatorIndex === -1) return null;
@@ -381,13 +363,11 @@ function parseIdentityKey(key: string): SupportIdentity | null {
   return null;
 }
 
-/** DELETE /admin/support/messages/:id — either sender's message, any ticket. */
 adminSupportRoutes.delete("/messages/:id", async (c) => {
   await deleteSupportMessage(c.env, c.req.param("id"));
   return c.json({ ok: true });
 });
 
-/** GET /admin/support/messages/:id/attachment — same byte-streaming as the learner endpoint, gated by requireAdmin above instead of ticket ownership. */
 adminSupportRoutes.get("/messages/:id/attachment", async (c) => {
   const attachment = await getSupportMessageAttachment(c.env, c.req.param("id"));
   if (!attachment) return c.json({ error: "not_found" }, 404);

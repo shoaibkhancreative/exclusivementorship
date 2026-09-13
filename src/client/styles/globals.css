@@ -2,7 +2,9 @@
 @tailwind components;
 @tailwind utilities;
 
-html, body, #root {
+html,
+body,
+#root {
   height: 100%;
 }
 
@@ -19,11 +21,6 @@ h3 {
   letter-spacing: -0.01em;
 }
 
-/* Reusable "eyebrow" label — was being hand-rolled inline (text-[11px]
-   uppercase tracking-[0.14em] text-zinc-500) in more than one place.
-   Pulling it into one class keeps every label on the site in lockstep,
-   which is most of what makes a site feel considered rather than
-   assembled page-by-page. */
 .kicker {
   font-size: 11px;
   font-weight: 500;
@@ -38,7 +35,9 @@ h3 {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
+  *,
+  *::before,
+  *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
@@ -54,8 +53,6 @@ h3 {
   outline-offset: 2px;
 }
 
-/* Thin, brand-tinted scrollbar — default OS scrollbars are the single
-   biggest "this wasn't designed" tell on an otherwise considered page. */
 * {
   scrollbar-width: thin;
   scrollbar-color: #cdb877 transparent;
@@ -76,9 +73,6 @@ h3 {
   background-color: #cdb877;
 }
 
-/* One shared, restrained entrance for page-level content — a 200ms
-   settle instead of a hard cut. Kept subtle on purpose: this should read
-   as "smooth", never as "an animation happened". */
 @keyframes fade-in-up {
   from {
     opacity: 0;
@@ -98,12 +92,6 @@ h3 {
   }
 }
 
-/* Small library of restrained, reusable motion — same "settle, don't
-   jump" character as .page-enter above. Used for modals, dropdowns,
-   staggered list rows, and hover lift so every bit of motion on the
-   site reads as one consistent language instead of one-off tweaks. */
-
-/* Popovers/dropdowns (ProfileMenu) — grows from its anchor corner. */
 @keyframes scale-in {
   from {
     opacity: 0;
@@ -118,7 +106,6 @@ h3 {
   animation: scale-in 0.16s ease-out both;
 }
 
-/* Mobile bottom-sheet modals (UnlockModal) — rises from the bottom edge. */
 @keyframes slide-up {
   from {
     opacity: 0;
@@ -133,7 +120,6 @@ h3 {
   animation: slide-up 0.22s ease-out both;
 }
 
-/* Modal backdrop — plain fade, no movement. */
 @keyframes fade-in {
   from {
     opacity: 0;
@@ -146,9 +132,6 @@ h3 {
   animation: fade-in 0.18s ease-out both;
 }
 
-/* Staggered list rows (course outline) — each row is given its own
-   --delay via inline style from the component, so the list reads as
-   one gentle cascade instead of every row snapping in at once. */
 @keyframes list-item-in {
   from {
     opacity: 0;

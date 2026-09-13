@@ -27,12 +27,6 @@ describe("mapNowPaymentsStatus", () => {
   });
 });
 
-/**
- * Mirrors NOWPayments' own IPN signing: HMAC-SHA512 over the JSON-stringified
- * payload with keys sorted alphabetically. Since our test payload's keys are
- * already inserted in alphabetical order, JSON.stringify(payload) already
- * matches the "sorted" form our implementation independently computes.
- */
 function signPayload(secret: string, payload: Record<string, unknown>): string {
   return createHmac("sha512", secret).update(JSON.stringify(payload)).digest("hex");
 }

@@ -1,9 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type PublicConfig } from "./api";
 
-// Module-level cache so multiple components (Home, Login, Unlock,
-// SupportButton, ...) mounting at once don't each fire their own
-// /config/public request.
 let cached: PublicConfig | null = null;
 let inflight: Promise<PublicConfig> | null = null;
 

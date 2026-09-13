@@ -15,7 +15,13 @@ interface LayoutPage {
   blocks: LayoutBlock[];
 }
 
-function PageLayoutCard({ page, onSaved }: { page: LayoutPage; onSaved: (pageKey: string, blocks: LayoutBlock[]) => void }) {
+function PageLayoutCard({
+  page,
+  onSaved
+}: {
+  page: LayoutPage;
+  onSaved: (pageKey: string, blocks: LayoutBlock[]) => void;
+}) {
   const [blocks, setBlocks] = useState(page.blocks);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<"idle" | "saved" | "error">("idle");
@@ -42,9 +48,12 @@ function PageLayoutCard({ page, onSaved }: { page: LayoutPage; onSaved: (pageKey
     setSaving(true);
     setStatus("idle");
     try {
-      const res = await api.post<{ ok: true; blocks: { id: string; visible: boolean }[] }>(`/admin/layout/${page.pageKey}`, {
-        blocks: blocks.map(({ id, visible }) => ({ id, visible }))
-      });
+      const res = await api.post<{ ok: true; blocks: { id: string; visible: boolean }[] }>(
+        `/admin/layout/${page.pageKey}`,
+        {
+          blocks: blocks.map(({ id, visible }) => ({ id, visible }))
+        }
+      );
       const saved = res.blocks.map((b) => ({ ...b, label: blocks.find((x) => x.id === b.id)?.label ?? b.id }));
       setBlocks(saved);
       onSaved(page.pageKey, saved);
@@ -84,7 +93,9 @@ function PageLayoutCard({ page, onSaved }: { page: LayoutPage; onSaved: (pageKey
                     ▼
                   </button>
                 </div>
-                <span className={`text-sm ${block.visible ? "text-zinc-200" : "text-zinc-500 line-through"}`}>{block.label}</span>
+                <span className={`text-sm ${block.visible ? "text-zinc-200" : "text-zinc-500 line-through"}`}>
+                  {block.label}
+                </span>
               </div>
               <label className="flex items-center gap-2 text-xs text-zinc-400">
                 <input type="checkbox" checked={block.visible} onChange={() => toggleVisible(index)} />

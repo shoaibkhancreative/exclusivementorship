@@ -49,9 +49,6 @@ describe("parsePositiveIntId", () => {
   });
 
   it("rejects values with leading/trailing garbage that Number() would otherwise coerce", () => {
-    // Number("1e2") === 100, Number(" 1 ") === 1 — both must still be
-    // rejected here since they aren't a clean decimal-digit string, which
-    // is what actually reaches a D1 `.bind()` call as a route param.
     expect(parsePositiveIntId("1e2")).toBeNull();
     expect(parsePositiveIntId("0x10")).toBeNull();
     expect(parsePositiveIntId("1,000")).toBeNull();

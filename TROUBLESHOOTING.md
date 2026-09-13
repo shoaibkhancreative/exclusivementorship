@@ -76,7 +76,7 @@
   reports being stuck, check the actual data:
   `SELECT current_lesson, course_status FROM users WHERE email = '...'`
 - Lessons 1-5 unlock strictly in order, one at a time, only after the
-  *previous* lesson's assignment is submitted (not just the video watched).
+  _previous_ lesson's assignment is submitted (not just the video watched).
   If a user hasn't submitted an assignment, the next lesson is expected to
   be locked — this is by design, not a bug.
 - Lesson 6+ additionally requires `course_status = 'paid'`, regardless of

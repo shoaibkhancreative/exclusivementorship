@@ -1,7 +1,13 @@
 import { useContent } from "../lib/useContent";
+import { useDocumentMeta } from "../lib/useDocumentMeta";
 
 export default function Terms() {
   const { t } = useContent();
+  useDocumentMeta({
+    title: "Terms of Service",
+    description: "The terms of service for Exclusive Mentorship — Next Level Trader.",
+    path: "/terms"
+  });
   return (
     <div className="page-enter mx-auto max-w-2xl px-6 py-14 text-sm leading-relaxed text-zinc-400">
       <h1 className="mb-7 text-2xl text-zinc-50">{t("terms.title")}</h1>

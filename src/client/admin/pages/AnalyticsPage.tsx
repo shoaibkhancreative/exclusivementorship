@@ -5,10 +5,6 @@ import StatCard from "../components/StatCard";
 import BarChart from "../components/BarChart";
 import { UsersIcon, CoinIcon, TrendUpIcon, BookIcon, DownloadIcon } from "../components/icons";
 
-// ---------------------------------------------------------------------------
-// Types — mirror AdvancedAnalytics in src/worker/db.ts (GET /admin/analytics/advanced)
-// ---------------------------------------------------------------------------
-
 type Granularity = "day" | "week" | "month";
 type CourseStatusFilter = "all" | "free" | "paid";
 
@@ -222,15 +218,20 @@ export default function AnalyticsPage() {
     <div className="page-enter flex flex-col gap-6">
       <div>
         <h1 className="text-xl text-zinc-100">Analytics</h1>
-        <p className="text-sm text-zinc-500">Revenue, signups, funnel, and lesson completion — filter by date, status, currency, and cohort.</p>
+        <p className="text-sm text-zinc-500">
+          Revenue, signups, funnel, and lesson completion — filter by date, status, currency, and cohort.
+        </p>
       </div>
 
       {/* ------------------------------ Filter bar ------------------------------ */}
       <Card className="flex flex-col gap-3 p-4">
         <div className="flex flex-wrap items-end gap-3">
           <div className="flex flex-col gap-1">
-            <label className="text-[11px] uppercase tracking-wide text-zinc-500">From</label>
+            <label htmlFor="analytics-date-from" className="text-[11px] uppercase tracking-wide text-zinc-500">
+              From
+            </label>
             <input
+              id="analytics-date-from"
               type="date"
               value={dateFrom}
               max={dateTo}
@@ -239,8 +240,11 @@ export default function AnalyticsPage() {
             />
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-[11px] uppercase tracking-wide text-zinc-500">To</label>
+            <label htmlFor="analytics-date-to" className="text-[11px] uppercase tracking-wide text-zinc-500">
+              To
+            </label>
             <input
+              id="analytics-date-to"
               type="date"
               value={dateTo}
               min={dateFrom}
@@ -262,8 +266,11 @@ export default function AnalyticsPage() {
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className="text-[11px] uppercase tracking-wide text-zinc-500">Cohort</label>
+            <label htmlFor="analytics-cohort" className="text-[11px] uppercase tracking-wide text-zinc-500">
+              Cohort
+            </label>
             <select
+              id="analytics-cohort"
               value={courseStatus}
               onChange={(e) => setCourseStatus(e.target.value as CourseStatusFilter)}
               className="focus-ring rounded-lg border border-base-700 bg-base-800 px-2.5 py-1.5 text-sm text-zinc-100 outline-none"
@@ -275,8 +282,11 @@ export default function AnalyticsPage() {
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className="text-[11px] uppercase tracking-wide text-zinc-500">Currency</label>
+            <label htmlFor="analytics-currency" className="text-[11px] uppercase tracking-wide text-zinc-500">
+              Currency
+            </label>
             <select
+              id="analytics-currency"
               value={currency}
               onChange={(e) => setCurrency(e.target.value)}
               className="focus-ring rounded-lg border border-base-700 bg-base-800 px-2.5 py-1.5 text-sm text-zinc-100 outline-none"
@@ -291,8 +301,11 @@ export default function AnalyticsPage() {
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className="text-[11px] uppercase tracking-wide text-zinc-500">Group by</label>
+            <label htmlFor="analytics-granularity" className="text-[11px] uppercase tracking-wide text-zinc-500">
+              Group by
+            </label>
             <select
+              id="analytics-granularity"
               value={granularity}
               onChange={(e) => setGranularity(e.target.value as Granularity)}
               className="focus-ring rounded-lg border border-base-700 bg-base-800 px-2.5 py-1.5 text-sm text-zinc-100 outline-none"
@@ -313,7 +326,9 @@ export default function AnalyticsPage() {
                 key={s}
                 onClick={() => toggleStatus(s)}
                 className={`focus-ring rounded-full px-2.5 py-1 text-[11px] font-medium capitalize transition-colors ${
-                  active ? (STATUS_TONE[s] ?? "bg-base-800 text-zinc-300") + " ring-1 ring-inset ring-accent-500/40" : "bg-base-800 text-zinc-500 hover:text-zinc-300"
+                  active
+                    ? (STATUS_TONE[s] ?? "bg-base-800 text-zinc-300") + " ring-1 ring-inset ring-accent-500/40"
+                    : "bg-base-800 text-zinc-500 hover:text-zinc-300"
                 }`}
               >
                 {s}
@@ -321,7 +336,10 @@ export default function AnalyticsPage() {
             );
           })}
           {selectedStatuses.length > 0 && (
-            <button onClick={() => setSelectedStatuses([])} className="focus-ring text-[11px] text-zinc-500 hover:text-zinc-300">
+            <button
+              onClick={() => setSelectedStatuses([])}
+              className="focus-ring text-[11px] text-zinc-500 hover:text-zinc-300"
+            >
               Clear
             </button>
           )}
@@ -334,9 +352,26 @@ export default function AnalyticsPage() {
       {data && (
         <>
           <div className={`grid grid-cols-2 gap-3 sm:grid-cols-4 ${loading ? "opacity-60" : ""}`}>
-            <StatCard label="Students in range" value={data.kpis.newStudentsInRange} icon={<UsersIcon />} hint={`${data.kpis.totalStudents} total`} />
-            <StatCard label="Conversion" value={`${data.kpis.conversionRate}%`} icon={<TrendUpIcon />} tone="accent" hint={`${data.kpis.paidStudents} paid / ${data.kpis.freeStudents} free`} />
-            <StatCard label="Revenue in range" value={formatUsd(data.kpis.totalRevenue)} icon={<CoinIcon />} tone="accent" hint={`${data.kpis.totalOrders} orders`} />
+            <StatCard
+              label="Students in range"
+              value={data.kpis.newStudentsInRange}
+              icon={<UsersIcon />}
+              hint={`${data.kpis.totalStudents} total`}
+            />
+            <StatCard
+              label="Conversion"
+              value={`${data.kpis.conversionRate}%`}
+              icon={<TrendUpIcon />}
+              tone="accent"
+              hint={`${data.kpis.paidStudents} paid / ${data.kpis.freeStudents} free`}
+            />
+            <StatCard
+              label="Revenue in range"
+              value={formatUsd(data.kpis.totalRevenue)}
+              icon={<CoinIcon />}
+              tone="accent"
+              hint={`${data.kpis.totalOrders} orders`}
+            />
             <StatCard
               label="Avg. days to convert"
               value={data.kpis.avgDaysToConvert ?? "—"}
@@ -347,9 +382,25 @@ export default function AnalyticsPage() {
 
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <StatCard label="Avg. order value" value={formatUsd(data.kpis.avgOrderValue)} icon={<CoinIcon />} />
-            <StatCard label="Lesson completion" value={`${data.kpis.avgLessonCompletionRate}%`} icon={<BookIcon />} hint="avg across active lessons" />
-            <StatCard label="Underpaid (tolerated)" value={data.underpaidOrderCount} icon={<CoinIcon />} tone={data.underpaidOrderCount > 0 ? "warning" : "default"} />
-            <StatCard label="Support tickets" value={data.supportStats.total} icon={<UsersIcon />} hint={`${data.supportStats.open} open`} tone={data.supportStats.open > 0 ? "warning" : "default"} />
+            <StatCard
+              label="Lesson completion"
+              value={`${data.kpis.avgLessonCompletionRate}%`}
+              icon={<BookIcon />}
+              hint="avg across active lessons"
+            />
+            <StatCard
+              label="Underpaid (tolerated)"
+              value={data.underpaidOrderCount}
+              icon={<CoinIcon />}
+              tone={data.underpaidOrderCount > 0 ? "warning" : "default"}
+            />
+            <StatCard
+              label="Support tickets"
+              value={data.supportStats.total}
+              icon={<UsersIcon />}
+              hint={`${data.supportStats.open} open`}
+              tone={data.supportStats.open > 0 ? "warning" : "default"}
+            />
           </div>
 
           {/* ------------------------------ Trends ------------------------------ */}
@@ -357,14 +408,21 @@ export default function AnalyticsPage() {
             <Card>
               <div className="mb-3 flex items-center justify-between">
                 <h2 className="text-sm font-medium text-zinc-200">Revenue trend</h2>
-                <button onClick={exportRevenueCsv} className="focus-ring flex items-center gap-1 text-xs text-zinc-500 hover:text-accent-300">
+                <button
+                  onClick={exportRevenueCsv}
+                  className="focus-ring flex items-center gap-1 text-xs text-zinc-500 hover:text-accent-300"
+                >
                   <DownloadIcon className="h-3.5 w-3.5" /> CSV
                 </button>
               </div>
               {data.revenueTrend.length === 0 ? (
                 <p className="py-8 text-center text-sm text-zinc-500">No revenue in this range.</p>
               ) : (
-                <BarChart points={data.revenueTrend.map((p) => ({ label: p.period, value: p.amount }))} formatValue={formatUsd} color="#34d399" />
+                <BarChart
+                  points={data.revenueTrend.map((p) => ({ label: p.period, value: p.amount }))}
+                  formatValue={formatUsd}
+                  color="#34d399"
+                />
               )}
             </Card>
 
@@ -417,7 +475,9 @@ export default function AnalyticsPage() {
                     const pct = totalStatusEvents ? Math.round((row.count / totalStatusEvents) * 100) : 0;
                     return (
                       <div key={row.status} className="flex items-center gap-3">
-                        <span className={`w-20 shrink-0 rounded-full px-2 py-0.5 text-center text-[11px] font-medium capitalize ${STATUS_TONE[row.status] ?? "bg-base-800 text-zinc-400"}`}>
+                        <span
+                          className={`w-20 shrink-0 rounded-full px-2 py-0.5 text-center text-[11px] font-medium capitalize ${STATUS_TONE[row.status] ?? "bg-base-800 text-zinc-400"}`}
+                        >
                           {row.status}
                         </span>
                         <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-base-800">
@@ -460,7 +520,12 @@ export default function AnalyticsPage() {
               <div>
                 <h2 className="text-sm font-medium text-zinc-200">Lesson completion</h2>
                 <p className="text-xs text-zinc-500">
-                  {courseStatus === "all" ? "All students" : courseStatus === "paid" ? "Paid students only" : "Free students only"} · sorted by course order
+                  {courseStatus === "all"
+                    ? "All students"
+                    : courseStatus === "paid"
+                      ? "Paid students only"
+                      : "Free students only"}{" "}
+                  · sorted by course order
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -512,7 +577,11 @@ export default function AnalyticsPage() {
           <Card>
             <h2 className="mb-3 text-sm font-medium text-zinc-200">Support inbox (in range)</h2>
             <div className="flex gap-3">
-              <StatCard label="Open" value={data.supportStats.open} tone={data.supportStats.open > 0 ? "warning" : "default"} />
+              <StatCard
+                label="Open"
+                value={data.supportStats.open}
+                tone={data.supportStats.open > 0 ? "warning" : "default"}
+              />
               <StatCard label="Resolved" value={data.supportStats.resolved} tone="accent" />
               <StatCard label="Total" value={data.supportStats.total} />
             </div>

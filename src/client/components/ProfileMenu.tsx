@@ -6,10 +6,6 @@ import { useContent } from "../lib/useContent";
 import { useUnlockModal } from "../lib/UnlockModalContext";
 import { Avatar } from "./Avatar";
 
-// Same flat, single-stroke language as OutlineList's Lock/Check/Play glyphs
-// (rounded caps, currentColor, no fill) — small identifying icons for the
-// two menu actions, not decoration. An open padlock for "unlock" (something
-// about to become available) and an arrow leaving a doorway for "logout".
 function UnlockGlyph() {
   return (
     <svg width="13" height="14" viewBox="0 0 14 15" fill="none" aria-hidden="true">
@@ -22,24 +18,26 @@ function UnlockGlyph() {
 function LogoutGlyph() {
   return (
     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <path d="M6.5 2.5H3a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M9.5 5 13 8l-3.5 3M13 8H5.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+      <path
+        d="M6.5 2.5H3a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h3.5"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M9.5 5 13 8l-3.5 3M13 8H5.5"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }
 
-// Mirrors the Dashboard's cover-card threshold (see pages/Learn.tsx) — a
-// free learner needs to have completed this many classes before the
-// "Unlock Full Mentorship" button appears here too.
 const CLASSES_TO_UNLOCK_CTA = 5;
 
-/**
- * Deliberately minimal: identity (avatar + name/email) plus exactly two
- * possible actions — "Unlock Full Mentorship" (same visibility rule as
- * before: hidden for paid users and hidden until enough classes are
- * completed) and "Logout". No progress count, no "Continue" card, no
- * "Access" button — nothing else lives here.
- */
 export function ProfileMenu() {
   const { me, refresh } = useSession();
   const navigate = useNavigate();
@@ -75,10 +73,6 @@ export function ProfileMenu() {
       .catch(() => setOutlineError(true));
   }, []);
 
-  // Lazy-fetch: the outline data isn't needed until the dropdown is
-  // actually opened (it's only used to decide whether the Unlock button
-  // should show), and once loaded once we keep it around rather than
-  // re-fetching on every open.
   useEffect(() => {
     if (open && !outline && !outlineError) {
       loadOutline();
@@ -92,9 +86,6 @@ export function ProfileMenu() {
 
   const completedCount = outline?.outline.filter((l) => l.state === "completed").length ?? 0;
 
-  // Same single-CTA gate as the Dashboard cover card — hidden until a free
-  // learner has completed enough classes, never shown to premium learners
-  // (they're unlocked already).
   const showUnlockCta = !isPremium && completedCount >= CLASSES_TO_UNLOCK_CTA;
 
   async function handleLogout() {
@@ -106,23 +97,14 @@ export function ProfileMenu() {
 
   function handleUnlockClick() {
     setOpen(false);
-    // Opens the checkout popup directly — there's no intermediate /unlock
-    // page anymore (see UnlockModalContext).
     openUnlockModal();
   }
 
   return (
     <div className="relative" ref={containerRef}>
-      {/* Padding around the avatar widens the tap target to a comfortable
-          size on touch screens without growing the avatar itself. */}
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        // p-0.5 around a 34px avatar left the actual tap target only
-        // ~35-38px — a bit tight for the one way to reach the account
-        // menu on a phone. p-1.5 below `lg` widens the hit area without
-        // touching the avatar's own size; reverts to the original p-0.5
-        // at `lg`+ so desktop is unchanged.
         className="focus-ring rounded-full p-1.5 lg:p-0.5"
         aria-haspopup="true"
         aria-expanded={open}
@@ -136,7 +118,6 @@ export function ProfileMenu() {
           role="menu"
           className="animate-scale-in absolute right-0 top-full z-50 mt-2 w-72 max-w-[90vw] origin-top-right overflow-hidden rounded-2xl border border-base-800 bg-base-900 shadow-lg shadow-base-800/30"
         >
-          {/* Identity */}
           <div className="flex items-center gap-3 px-4 pb-3 pt-4">
             <Avatar label={label} premium={isPremium} size={40} />
             <div className="min-w-0">
@@ -145,11 +126,6 @@ export function ProfileMenu() {
             </div>
           </div>
 
-          {/* Account actions — the single status-driven Unlock button (once
-              earned), plus logout. Nothing else lives in this menu. Each
-              gets one small flat icon, same restrained treatment as every
-              other icon on the site — not decoration piled on for its own
-              sake. */}
           <div className="flex flex-col gap-1 border-t border-base-800 p-2">
             {showUnlockCta && (
               <button

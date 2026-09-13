@@ -4,12 +4,6 @@ interface AvatarProps {
   size?: number;
 }
 
-/**
- * Initials avatar. There is no profile-picture upload anywhere in the
- * product (email-only OTP login), so this is the real avatar — not a
- * placeholder. Premium status is represented ONLY by the subtle gold ring;
- * no text badge is ever rendered here.
- */
 export function Avatar({ label, premium = false, size = 36 }: AvatarProps) {
   const initial = label.trim().charAt(0).toUpperCase() || "?";
   const fontSize = Math.max(11, Math.round(size * 0.4));

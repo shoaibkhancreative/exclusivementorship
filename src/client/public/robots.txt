@@ -1,0 +1,17 @@
+# See CHANGES.md — this file lives in src/client/public so Vite copies it
+# straight into dist/client, and it's served directly by Cloudflare's asset
+# layer (never touches the Worker), same as _headers and favicon.svg.
+#
+# Only the true marketing/legal pages are meant to be indexed. Everything
+# behind auth (dashboard, lessons, account) has no SEO value to a logged-out
+# crawler anyway and would just show a login redirect, and /admin and /api
+# must never appear in search results.
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /api/
+Disallow: /learn
+Disallow: /lesson/
+Disallow: /access
+
+Sitemap: https://exclusivementorship.xyz/sitemap.xml

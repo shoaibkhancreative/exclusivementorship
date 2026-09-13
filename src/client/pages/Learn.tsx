@@ -6,6 +6,7 @@ import { OutlineList } from "../components/OutlineList";
 import { Footer } from "../components/Footer";
 import { RetryBadge } from "../components/IllustrationBadge";
 import { useContent } from "../lib/useContent";
+import { useDocumentMeta } from "../lib/useDocumentMeta";
 import { useUnlockModal } from "../lib/UnlockModalContext";
 
 export default function Learn() {
@@ -14,6 +15,8 @@ export default function Learn() {
   const { t } = useContent();
   const navigate = useNavigate();
   const { openUnlockModal } = useUnlockModal();
+
+  useDocumentMeta({ title: "Your Lessons", path: "/learn" });
 
   const loadOutline = useCallback(() => {
     setError(false);
@@ -50,13 +53,6 @@ export default function Learn() {
   const finishedFreeTier = completedCount >= data.freeLessonCount;
   const finishedCourse = total > 0 && completedCount >= total;
 
-  // One dynamic CTA, driven entirely by where the learner actually stands —
-  // never more than one button on this card.
-  //   0 completed                          -> Start Now  -> lesson 1
-  //   free, mid-way, free tier not finished -> Continue   -> current lesson
-  //   free, free tier finished, not paid    -> Unlock Mentorship -> opens checkout popup directly
-  //   paid, course not finished             -> Continue   -> current lesson
-  //   paid, entire course finished          -> Finished   -> disabled
   let ctaLabel: string;
   let ctaDisabled = false;
   let onCtaClick: () => void;
@@ -75,7 +71,6 @@ export default function Learn() {
     }
   } else if (finishedFreeTier) {
     ctaLabel = t("learn.cta_unlock");
-    // Opens the checkout popup directly — no intermediate /unlock page.
     onCtaClick = openUnlockModal;
   } else {
     ctaLabel = t("learn.cta_continue");
@@ -83,161 +78,103 @@ export default function Learn() {
   }
 
   return (
-    // A wider stage than the rest of the site (matched by the Lesson page)
-    // so the cover + class list can sit side by side on desktop, like a
-    // YouTube playlist page — everything else stays on the narrower
-    // max-w-4xl column that keeps the site's minimal, single-column feel.
-    // Scales up again past lg so the layout doesn't stay pinned to a fixed
-    // width on large/multi-monitor desktops.
-    //
-    // Top padding is intentionally smaller than the bottom padding (pt-3/
-    // sm:pt-4/lg:pt-5 vs the original symmetric py-6/sm:py-10/lg:py-12) —
-    // the sticky TopBar above already carries its own py-4, so the old
-    // symmetric value stacked on top of that read as a noticeably bigger
-    // gap under the header than anywhere else on the page. Trimming only
-    // the top side (bottom stays exactly as it was, for the footer's
-    // sake) shrinks that gap without touching the lg:mt-6 offset on the
-    // cover card below, which is what keeps the cover thumbnail and the
-    // first class thumbnail lined up at the same height — that offset is
-    // relative to this wrapper, so it moves up by the same amount as
-    // everything else and the alignment holds.
-    //
-    // NOTE: `page-enter` used to live on this outer div, which is an
-    // ancestor of the `lg:sticky` cover card below. A `transform` on any
-    // ancestor of a `position: sticky` element breaks that element's
-    // sticky behavior (the transformed ancestor becomes its containing
-    // block instead of the viewport) — `.page-enter`'s fade-in-up keyframe
-    // animates `transform` and holds `translateY(0)` on the element
-    // permanently afterward (animation-fill-mode: both), so the cover
-    // card could never actually stick on desktop. Same root cause as the
-    // Lesson page's video player — see Lesson.tsx for the fuller writeup.
-    // Fixed the same way: `page-enter` moved onto the sticky element
-    // itself (harmless — only ancestors break sticky) and onto the
-    // non-ancestor content beside it, preserving the same fade-in look.
     <>
-    <div className="mx-auto max-w-6xl px-5 pb-6 pt-3 sm:px-6 sm:pb-10 sm:pt-4 lg:pb-12 lg:pt-5 xl:max-w-7xl 2xl:max-w-[90rem]">
-      <div className="lg:grid lg:grid-cols-[320px_1fr] lg:items-start lg:gap-8 xl:grid-cols-[360px_1fr] xl:gap-10">
-        {/* Cover card — sticks in place while the class list scrolls past it,
-            same "the playlist itself doesn't move" behavior as YouTube's
-            playlist header. `page-enter` lives directly on this sticky
-            element (not on an ancestor) — see the note above.
-            `lg:mt-6` nudges the card down on desktop only, just enough to
-            line its cover thumbnail up with the first class thumbnail
-            beside it: the list's first chapter block now reserves 32px
-            above its rows for the small per-chapter info mark (see
-            OutlineList.tsx), plus that row's own ~12px top padding — 44px
-            total — while the card's own padding before its thumbnail is
-            20px (p-5). 24px (mt-6) closes that gap so both thumbnails
-            start at the same height, the way YouTube's playlist header and
-            its video list always do. Mobile stacks the card above the
-            list instead of beside it, so no nudge is applied there. */}
-        <div className="page-enter lg:sticky lg:top-24 lg:mt-6">
-          <div className="rounded-md border border-base-800 bg-base-900 p-4 shadow-[0_4px_16px_-4px_rgba(28,27,23,0.14),0_1px_3px_rgba(28,27,23,0.08)] sm:p-5">
-            <div className="relative mb-4 aspect-video overflow-hidden rounded-md bg-base-800 bg-cover bg-center shadow-[0_1px_3px_rgba(28,27,23,0.16),0_1px_2px_rgba(28,27,23,0.10)] ring-1 ring-black/10 sm:mb-5">
-              {cover?.thumbnailUrl ? (
-                <img src={cover.thumbnailUrl} alt="" className="h-full w-full object-cover" />
-              ) : (
-                // Warm placeholder for a cover with no thumbnail yet — a
-                // soft accent-tinted circle with a simple flat play mark,
-                // not the flat gray "film strip" glyph this used to be.
-                // Same soft-circle-badge language as the lock badge on
-                // locked thumbnails and the progress-percent chip below,
-                // just sized up for this bigger cover slot.
-                <div className="flex h-full w-full items-center justify-center">
-                  <span className="flex h-14 w-14 items-center justify-center rounded-full bg-accent-500/12 text-accent-500 sm:h-16 sm:w-16">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                      <path d="M9.5 7.5v9c0 .6.65.98 1.18.68l7.5-4.5a.79.79 0 0 0 0-1.36l-7.5-4.5A.79.79 0 0 0 9.5 7.5Z" fill="currentColor" />
+      <div className="mx-auto max-w-6xl px-5 pb-6 pt-3 sm:px-6 sm:pb-10 sm:pt-4 lg:pb-12 lg:pt-5 xl:max-w-7xl 2xl:max-w-[90rem]">
+        <div className="lg:grid lg:grid-cols-[320px_1fr] lg:items-start lg:gap-8 xl:grid-cols-[360px_1fr] xl:gap-10">
+          <div className="page-enter lg:sticky lg:top-24 lg:mt-6">
+            <div className="rounded-md border border-base-800 bg-base-900 p-4 shadow-[0_4px_16px_-4px_rgba(28,27,23,0.14),0_1px_3px_rgba(28,27,23,0.08)] sm:p-5">
+              <div className="relative mb-4 aspect-video overflow-hidden rounded-md bg-base-800 bg-cover bg-center shadow-[0_1px_3px_rgba(28,27,23,0.16),0_1px_2px_rgba(28,27,23,0.10)] ring-1 ring-black/10 sm:mb-5">
+                {cover?.thumbnailUrl ? (
+                  <img src={cover.thumbnailUrl} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center">
+                    <span className="flex h-14 w-14 items-center justify-center rounded-full bg-accent-500/12 text-accent-500 sm:h-16 sm:w-16">
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <path
+                          d="M9.5 7.5v9c0 .6.65.98 1.18.68l7.5-4.5a.79.79 0 0 0 0-1.36l-7.5-4.5A.79.79 0 0 0 9.5 7.5Z"
+                          fill="currentColor"
+                        />
+                      </svg>
+                    </span>
+                  </div>
+                )}
+                <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-base-950/55 via-transparent to-transparent" />
+                {cover?.durationLabel && (
+                  <span className="absolute bottom-2 right-2 rounded bg-zinc-100/90 px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-base-950">
+                    {cover.durationLabel}
+                  </span>
+                )}
+              </div>
+
+              <h1 className="mb-1.5 break-words text-lg font-semibold leading-snug text-zinc-50 sm:text-xl lg:text-2xl">
+                {t("learn.page_title")}
+              </h1>
+              <p className="mb-4 text-[13px] text-zinc-500 sm:mb-5">
+                {t("learn.classes_count_label", { count: total })}
+                <span className="mx-1.5 text-zinc-700">•</span>
+                <span className="font-medium text-accent-300">{progressPercent}%</span>
+              </p>
+
+              <div className="mb-6">
+                <div
+                  className="h-2 w-full overflow-hidden rounded-full bg-base-800 shadow-[inset_0_1px_2px_rgba(28,27,23,0.15)]"
+                  role="progressbar"
+                  aria-valuenow={progressPercent}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-label={t("learn.progress_label")}
+                >
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-accent-500 to-accent-400 transition-all duration-300"
+                    style={{ width: `${progressPercent}%` }}
+                  />
+                </div>
+              </div>
+
+              <Button className="w-full" onClick={onCtaClick} disabled={ctaDisabled}>
+                {ctaLabel}
+              </Button>
+
+              {!isPaid && finishedFreeTier && completedCount > 0 && (
+                <div className="mt-4 flex items-start gap-3 rounded-md bg-accent-500/[0.07] p-3">
+                  <span className="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-accent-500/15 text-accent-500">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                      <path
+                        d="M12 2.5 14 9l6.5.3-5.2 4 2 6.2L12 15.8 6.7 19.5l2-6.2-5.2-4L10 9l2-6.5Z"
+                        fill="currentColor"
+                      />
                     </svg>
                   </span>
+                  <p className="pt-1 text-[13px] leading-snug text-zinc-400">{t("learn.completed_message")}</p>
                 </div>
               )}
-              <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-base-950/55 via-transparent to-transparent" />
-              {cover?.durationLabel && (
-                <span className="absolute bottom-2 right-2 rounded bg-zinc-100/90 px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-base-950">
-                  {cover.durationLabel}
-                </span>
+
+              {isPaid && finishedCourse && (
+                <div className="mt-4 flex items-start gap-3 rounded-md bg-highlight-500/[0.1] p-3">
+                  <span className="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-highlight-500/20 text-highlight-500">
+                    <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+                      <path
+                        d="M2.5 7.2 5.4 10 11.5 3.5"
+                        stroke="currentColor"
+                        strokeWidth="1.8"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        fill="none"
+                      />
+                    </svg>
+                  </span>
+                  <p className="pt-1 text-[13px] leading-snug text-zinc-400">{t("learn.finished_message")}</p>
+                </div>
               )}
             </div>
+          </div>
 
-            {/* Title first, exactly like a YouTube playlist header — no
-                small caps label above it anymore (that just repeated
-                whatever this page's title already says). Right under it,
-                one plain metadata line standing in for YouTube's own
-                "Playlist • N videos • views" row: how many classes, and
-                how far in. */}
-            <h1 className="mb-1.5 break-words text-lg font-semibold leading-snug text-zinc-50 sm:text-xl lg:text-2xl">
-              {t("learn.page_title")}
-            </h1>
-            <p className="mb-4 text-[13px] text-zinc-500 sm:mb-5">
-              {t("learn.classes_count_label", { count: total })}
-              <span className="mx-1.5 text-zinc-700">•</span>
-              <span className="font-medium text-accent-300">{progressPercent}%</span>
-            </p>
-
-            {/* Plain progress bar — the count and percent are already said
-                above, so this is purely the visual "how far in" cue, not
-                a second copy of the same numbers. */}
-            <div className="mb-6">
-              <div
-                className="h-2 w-full overflow-hidden rounded-full bg-base-800 shadow-[inset_0_1px_2px_rgba(28,27,23,0.15)]"
-                role="progressbar"
-                aria-valuenow={progressPercent}
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-label={t("learn.progress_label")}
-              >
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-accent-500 to-accent-400 transition-all duration-300"
-                  style={{ width: `${progressPercent}%` }}
-                />
-              </div>
-            </div>
-
-            {/* The one and only button on this card — label and destination
-                are entirely state-driven (see the ctaLabel logic above). */}
-            <Button className="w-full" onClick={onCtaClick} disabled={ctaDisabled}>
-              {ctaLabel}
-            </Button>
-
-            {/* One small, state-driven note under the button — never both at
-                once, and never alongside the free-tier "Continue" state,
-                which doesn't need extra convincing. Same soft-circle-icon +
-                muted-text language as the rest of the card (see the cover
-                placeholder above), just sized down: a round accent-tinted
-                badge with a flat, single-color glyph, never a stock icon. */}
-            {!isPaid && finishedFreeTier && completedCount > 0 && (
-              <div className="mt-4 flex items-start gap-3 rounded-md bg-accent-500/[0.07] p-3">
-                <span className="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-accent-500/15 text-accent-500">
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                    <path
-                      d="M12 2.5 14 9l6.5.3-5.2 4 2 6.2L12 15.8 6.7 19.5l2-6.2-5.2-4L10 9l2-6.5Z"
-                      fill="currentColor"
-                    />
-                  </svg>
-                </span>
-                <p className="pt-1 text-[13px] leading-snug text-zinc-400">{t("learn.completed_message")}</p>
-              </div>
-            )}
-
-            {isPaid && finishedCourse && (
-              <div className="mt-4 flex items-start gap-3 rounded-md bg-highlight-500/[0.1] p-3">
-                <span className="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-highlight-500/20 text-highlight-500">
-                  <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
-                    <path d="M2.5 7.2 5.4 10 11.5 3.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-                  </svg>
-                </span>
-                <p className="pt-1 text-[13px] leading-snug text-zinc-400">{t("learn.finished_message")}</p>
-              </div>
-            )}
+          <div className="page-enter mt-10 lg:mt-0">
+            <OutlineList items={data.outline} activeLessonNumber={data.currentLesson} semesters={data.semesters} />
           </div>
         </div>
-
-        <div className="page-enter mt-10 lg:mt-0">
-          <OutlineList items={data.outline} activeLessonNumber={data.currentLesson} semesters={data.semesters} />
-        </div>
       </div>
-    </div>
-    <Footer />
+      <Footer />
     </>
   );
 }

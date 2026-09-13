@@ -52,21 +52,21 @@ lesson count, the intro video, and student access — see
 
 ## Architecture
 
-| Layer | Technology |
-|---|---|
-| Frontend | React + React Router + Tailwind CSS, built with Vite |
-| Backend | [Hono](https://hono.dev) running on Cloudflare Workers |
-| Database | Cloudflare D1 (SQLite) |
-| Email (OTP) | [Resend](https://resend.com) |
-| Payments | [NOWPayments](https://nowpayments.io) (non-hosted "payment" API — custom in-site checkout popup, no NOWPayments branding shown) |
-| Free video hosting | YouTube (unlisted) |
-| Paid video hosting | [Bunny.net](https://bunny.net) Stream |
-| Support contact | Telegram (floating support button only — no content delivery) |
-| Bot protection | Cloudflare Turnstile |
-| Hosting | A single Cloudflare Worker, serving both the API and the built SPA via [Workers Static Assets](https://developers.cloudflare.com/workers/static-assets/) |
+| Layer              | Technology                                                                                                                                               |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Frontend           | React + React Router + Tailwind CSS, built with Vite                                                                                                     |
+| Backend            | [Hono](https://hono.dev) running on Cloudflare Workers                                                                                                   |
+| Database           | Cloudflare D1 (SQLite)                                                                                                                                   |
+| Email (OTP)        | [Resend](https://resend.com)                                                                                                                             |
+| Payments           | [NOWPayments](https://nowpayments.io) (non-hosted "payment" API — custom in-site checkout popup, no NOWPayments branding shown)                          |
+| Free video hosting | YouTube (unlisted)                                                                                                                                       |
+| Paid video hosting | [Bunny.net](https://bunny.net) Stream                                                                                                                    |
+| Support contact    | Telegram (floating support button only — no content delivery)                                                                                            |
+| Bot protection     | Cloudflare Turnstile                                                                                                                                     |
+| Hosting            | A single Cloudflare Worker, serving both the API and the built SPA via [Workers Static Assets](https://developers.cloudflare.com/workers/static-assets/) |
 
 **Why one Worker for everything?** Cloudflare's newer "assets" binding lets a
-single Worker serve a static SPA *and* handle `/api/*` routes, with automatic
+single Worker serve a static SPA _and_ handle `/api/*` routes, with automatic
 SPA fallback for client-side routing. This avoids the complexity (and cost)
 of a separate Pages project or a Next.js edge-runtime adapter, while staying
 100% within the Free plan.
@@ -320,7 +320,7 @@ URL for free classes, or a Bunny.net stream embed URL for paid classes),
 title, tagline, or description → **Save changes**. Takes effect
 immediately, no redeploy.
 
-`seed/seed.sql` is still used for a *fresh* install's starting content (see
+`seed/seed.sql` is still used for a _fresh_ install's starting content (see
 `npm run db:seed:local`/`:remote`), but isn't the ongoing editing path once
 real students have progress — see the seed data warning near the top of
 that file.
@@ -329,7 +329,7 @@ that file.
 
 Preferred path: admin panel → **Settings** → **Price & Discount**. Takes
 effect immediately, no redeploy. (`ENROLLMENT_PRICE_USDT` /
-`REFERENCE_PRICE_USDT` in `wrangler.jsonc` only set the *initial* defaults
+`REFERENCE_PRICE_USDT` in `wrangler.jsonc` only set the _initial_ defaults
 before an admin has ever saved a value.)
 
 ## How to change how many classes are free, or the homepage intro video
@@ -430,7 +430,7 @@ Lessons & Chapters page.
 Use the admin panel (**Lessons & Chapters** → **+ Add lesson**) — no SQL or
 redeploy needed. It appends the lesson at the end of the course, hidden
 until you paste its video embed link and publish it. `seed/seed.sql` is
-still the source of truth for a *fresh* install's starting content, but is
+still the source of truth for a _fresh_ install's starting content, but is
 not the ongoing editing path once the site is live — see the seed data
 warning above about never reseeding a database with real user progress.
 

@@ -18,7 +18,7 @@ async function call(env: Env, path: string, init: RequestInit & { cookie?: strin
 
 function extractCookie(res: Response): string {
   const setCookie = res.headers.get("set-cookie") ?? "";
-  return setCookie.split(";")[0]; // "<name>=..."
+  return setCookie.split(";")[0];
 }
 
 async function loginNewUser(env: Env, email: string) {
@@ -78,8 +78,6 @@ describe("Admin auth (HTTP)", () => {
     expect(noAuth.status).toBe(401);
 
     const { cookie: studentCookie } = await loginNewUser(env, "student@example.com");
-    // Student cookie is named em_session, not em_admin_session — swapping
-    // it in should never authenticate an admin route.
     const withStudentCookie = await call(env, "/api/admin/students", {
       cookie: studentCookie.replace("em_session", "em_admin_session")
     });
@@ -273,8 +271,6 @@ describe("Admin lessons & chapters management (HTTP)", () => {
   });
 
   it("keeps a chapter's lessons contiguous when a new lesson is added to an earlier chapter", async () => {
-    // "Foundation" is the first (not last) seeded chapter — a naive
-    // append-at-the-end would split it apart from the rest of its lessons.
     const create = await call(env, "/api/admin/lessons", {
       method: "POST",
       cookie: adminCookie,
@@ -286,7 +282,6 @@ describe("Admin lessons & chapters management (HTTP)", () => {
       lessons: Array<{ id: number; chapterName: string }>;
     };
     const chapterNames = lessons.lessons.map((l) => l.chapterName);
-    // Every run of a given chapter name should be a single contiguous block.
     const seenChapters = new Set<string>();
     let previous: string | null = null;
     for (const name of chapterNames) {
@@ -302,7 +297,6 @@ describe("Admin lessons & chapters management (HTTP)", () => {
     const chaptersRes = (await (await call(env, "/api/admin/chapters", { cookie: adminCookie })).json()) as {
       chapters: Array<{ id: number; name: string }>;
     };
-    // Move the last chapter to the front.
     const reorderedChapterIds = [
       chaptersRes.chapters[chaptersRes.chapters.length - 1].id,
       ...chaptersRes.chapters.slice(0, -1).map((c) => c.id)
@@ -318,7 +312,6 @@ describe("Admin lessons & chapters management (HTTP)", () => {
     const lessons = (await (await call(env, "/api/admin/lessons", { cookie: adminCookie })).json()) as {
       lessons: Array<{ chapterName: string }>;
     };
-    // That chapter's lessons should now lead the course.
     expect(lessons.lessons[0].chapterName).toBe(lastChapterName);
   });
 
@@ -364,7 +357,6 @@ describe("Admin lessons & chapters management (HTTP)", () => {
       lessons: Array<{ id: number; lessonNumber: number }>;
     };
     expect(after.lessons.some((l) => l.id === target.id)).toBe(false);
-    // Numbering stays a clean, gap-free 1..N sequence after the delete.
     const numbers = after.lessons.map((l) => l.lessonNumber).sort((a, b) => a - b);
     expect(numbers).toEqual(Array.from({ length: after.lessons.length }, (_, i) => i + 1));
 
@@ -404,10 +396,9 @@ describe("Admin lessons & chapters management (HTTP)", () => {
       lessons: Array<{ id: number; chapterName: string; lessonNumber: number }>;
     };
     const foundation = lessons.lessons.filter((l) => l.chapterName === "Foundation");
-    const dragged = foundation[foundation.length - 1]; // last Foundation class
+    const dragged = foundation[foundation.length - 1];
     const rest = lessons.lessons.filter((l) => l.id !== dragged.id);
 
-    // Drop it to lead the "Technical Edge" chapter instead.
     const orderedLessons = rest.map((l) => ({ id: l.id, chapterName: l.chapterName }));
     const technicalStart = orderedLessons.findIndex((l) => l.chapterName === "Technical Edge");
     orderedLessons.splice(technicalStart, 0, { id: dragged.id, chapterName: "Technical Edge" });
@@ -424,15 +415,12 @@ describe("Admin lessons & chapters management (HTTP)", () => {
     };
     const movedLesson = after.lessons.find((l) => l.id === dragged.id)!;
     expect(movedLesson.chapterName).toBe("Technical Edge");
-    // It was dropped right before the old first Technical Edge class, so it
-    // now leads that chapter and takes over what used to be its position.
     expect(movedLesson.lessonNumber).toBe(dragged.lessonNumber);
     const newTechnicalFirst = after.lessons
       .filter((l) => l.chapterName === "Technical Edge")
       .sort((a, b) => a.lessonNumber - b.lessonNumber)[0];
     expect(newTechnicalFirst.id).toBe(dragged.id);
 
-    // Chapters stay contiguous after the cross-chapter drag.
     const chapterNames = after.lessons.map((l) => l.chapterName);
     const seenChapters = new Set<string>();
     let previous: string | null = null;
@@ -493,7 +481,9 @@ describe("Admin lessons & chapters management (HTTP)", () => {
       cookie: adminCookie
     });
     expect(dup.status).toBe(200);
-    const body = (await dup.json()) as { lesson: { id: number; title: string; chapterName: string; isActive: boolean } };
+    const body = (await dup.json()) as {
+      lesson: { id: number; title: string; chapterName: string; isActive: boolean };
+    };
     expect(body.lesson.id).not.toBe(source.id);
     expect(body.lesson.title).toBe(`${source.title} (copy)`);
     expect(body.lesson.chapterName).toBe(source.chapterName);
@@ -579,12 +569,6 @@ describe("Admin lessons & chapters management (HTTP)", () => {
     expect(badAction.status).toBe(400);
   });
 
-  // Regression coverage for the id-param/array validation hardening: a
-  // non-numeric or malformed :id route param used to reach a D1 `.bind()`
-  // call as NaN and blow up as an opaque 500; it must now be a clean 404
-  // (unknown resource) rather than an internal error. Likewise, array
-  // payloads (bulk ids, reorder ids) must reject non-integer/non-positive
-  // entries instead of silently passing them through to the query.
   it("returns 404 (not a 500) for a non-numeric lesson/chapter id in any :id route", async () => {
     const patchLesson = await call(env, "/api/admin/lessons/not-a-number", {
       method: "PATCH",
@@ -666,14 +650,11 @@ describe("Admin lessons & chapters management (HTTP)", () => {
     });
     expect(chapterReorderWithBadId.status).toBe(400);
 
-    // Confirm the earlier bad requests never mutated anything (fail closed,
-    // not partially-applied).
     const afterList = (await (await call(env, "/api/admin/lessons", { cookie: adminCookie })).json()) as {
       lessons: Array<{ id: number; isActive: boolean }>;
     };
     expect(afterList.lessons.find((l) => l.id === realId)?.isActive).toBe(true);
 
-    // A well-formed, oversized array (over the 500-entry cap) is rejected too.
     const tooMany = await call(env, "/api/admin/lessons/bulk", {
       method: "POST",
       cookie: adminCookie,
@@ -711,7 +692,6 @@ describe("Admin lessons — Bunny auto-thumbnail (HTTP)", () => {
         title: "Bunny Class",
         chapterName: "Foundation",
         videoEmbedUrl: "https://iframe.mediadelivery.net/embed/747219/vid-777"
-        // thumbnailUrl intentionally omitted
       })
     });
     expect(create.status).toBe(200);
@@ -765,7 +745,7 @@ describe("Admin lessons — Bunny auto-thumbnail (HTTP)", () => {
       })
     });
     const created = (await create.json()) as { lesson: { id: number } };
-    expect(fetchSpy).not.toHaveBeenCalled(); // YouTube URL — never worth calling Bunny's API for
+    expect(fetchSpy).not.toHaveBeenCalled();
 
     fetchSpy.mockResolvedValueOnce(
       new Response(JSON.stringify({ thumbnailFileName: "thumbnail_9fa21c.jpg" }), { status: 200 })
@@ -820,7 +800,9 @@ describe("Admin revenue/signup analytics (HTTP)", () => {
     await seedPaidOrder(env, "buyer2@example.com", 49);
 
     const { user: pendingUser } = await loginNewUser(env, "pending@example.com");
-    await env.DB.prepare(`INSERT INTO payment_orders (id, user_id, amount, currency, status) VALUES (?, ?, ?, 'usdtbsc', 'waiting')`)
+    await env.DB.prepare(
+      `INSERT INTO payment_orders (id, user_id, amount, currency, status) VALUES (?, ?, ?, 'usdtbsc', 'waiting')`
+    )
       .bind(randomUuid(), pendingUser.id, 49)
       .run();
 
@@ -837,7 +819,6 @@ describe("Admin revenue/signup analytics (HTTP)", () => {
     expect(body.totalPaidOrders).toBe(2);
     expect(body.avgOrderValue).toBe(49);
     expect(body.dailyRevenue.length).toBe(30);
-    // Today's bucket should carry both confirmed orders.
     expect(body.dailyRevenue[29].amount).toBe(98);
     expect(body.statusBreakdown.find((s) => s.status === "waiting")?.count).toBe(1);
     expect(body.statusBreakdown.find((s) => s.status === "finished")?.count).toBe(2);
@@ -862,7 +843,7 @@ describe("Admin-editable price/discount settings (HTTP)", () => {
   it("public config reflects env var defaults until an admin changes them", async () => {
     const res = await call(env, "/api/config/public");
     const body = (await res.json()) as { enrollmentPrice: number; referencePrice: number };
-    expect(body.enrollmentPrice).toBe(39); // from testEnv's ENROLLMENT_PRICE_USDT
+    expect(body.enrollmentPrice).toBe(39);
     expect(body.referencePrice).toBe(100);
   });
 

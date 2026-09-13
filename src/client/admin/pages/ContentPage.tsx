@@ -13,12 +13,13 @@ interface ContentField {
   type: "text" | "textarea" | "image";
 }
 
-/**
- * One field row: local draft state, save, and reset-to-default. Kept as its
- * own component (rather than one giant form) so saving field A never
- * re-renders or risks clobbering an in-progress edit to field B.
- */
-function ContentFieldRow({ field, onSaved }: { field: ContentField; onSaved: (key: string, value: string | null) => void }) {
+function ContentFieldRow({
+  field,
+  onSaved
+}: {
+  field: ContentField;
+  onSaved: (key: string, value: string | null) => void;
+}) {
   const [draft, setDraft] = useState(field.value ?? field.default_value);
   const [saving, setSaving] = useState(false);
   const [resetting, setResetting] = useState(false);
@@ -65,7 +66,9 @@ function ContentFieldRow({ field, onSaved }: { field: ContentField; onSaved: (ke
           {field.label}
         </label>
         {isOverridden && (
-          <span className="rounded-full bg-accent-500/10 px-2 py-0.5 text-[11px] font-medium text-accent-400">Customized</span>
+          <span className="rounded-full bg-accent-500/10 px-2 py-0.5 text-[11px] font-medium text-accent-400">
+            Customized
+          </span>
         )}
       </div>
 
@@ -96,12 +99,7 @@ function ContentFieldRow({ field, onSaved }: { field: ContentField; onSaved: (ke
       {isImage && <ImageUrlPreview url={draft} />}
 
       <div className="mt-2 flex items-center gap-3">
-        <Button
-          type="button"
-          onClick={handleSave}
-          disabled={!dirty || saving}
-          className="!px-3 !py-1.5 text-xs"
-        >
+        <Button type="button" onClick={handleSave} disabled={!dirty || saving} className="!px-3 !py-1.5 text-xs">
           {saving ? "Saving…" : "Save"}
         </Button>
         <button
@@ -176,8 +174,8 @@ export default function ContentPage() {
         <h1 className="text-lg text-zinc-100">Content</h1>
       </div>
       <p className="mb-5 max-w-2xl text-sm text-zinc-500">
-        Every piece of text on the public site, grouped by page. Changes go live immediately — no redeploy needed. "Reset
-        to default" restores the original wording for that field.
+        Every piece of text on the public site, grouped by page. Changes go live immediately — no redeploy needed.
+        "Reset to default" restores the original wording for that field.
       </p>
 
       <input

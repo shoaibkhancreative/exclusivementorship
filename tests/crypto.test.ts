@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { generateOtp, hmacSha256Hex, randomToken, randomUuid, sha256Hex, timingSafeEqual } from "../src/worker/lib/crypto";
+import {
+  generateOtp,
+  hmacSha256Hex,
+  randomToken,
+  randomUuid,
+  sha256Hex,
+  timingSafeEqual
+} from "../src/worker/lib/crypto";
 
 describe("sha256Hex / hmacSha256Hex", () => {
   it("produces a stable, deterministic hash for the same input", async () => {
@@ -55,8 +62,6 @@ describe("generateOtp", () => {
 
   it("is not trivially predictable across many calls (basic sanity check)", () => {
     const codes = new Set(Array.from({ length: 30 }, () => generateOtp()));
-    // Extremely unlikely to collide 30 times out of 1,000,000 possibilities
-    // unless the generator is broken.
     expect(codes.size).toBeGreaterThan(25);
   });
 });

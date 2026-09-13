@@ -15,10 +15,6 @@ const TONE_STYLES: Record<NonNullable<StatCardProps["tone"]>, { iconBg: string; 
   danger: { iconBg: "bg-red-500/15", iconText: "text-red-300" }
 };
 
-/**
- * Compact headline-metric card used on the Dashboard and Students pages.
- * Purely presentational — takes an already-computed value, no data fetching.
- */
 export default function StatCard({ label, value, icon, tone = "default", hint }: StatCardProps) {
   const styles = TONE_STYLES[tone];
   return (
@@ -26,7 +22,9 @@ export default function StatCard({ label, value, icon, tone = "default", hint }:
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium uppercase tracking-wide text-zinc-500">{label}</span>
         {icon && (
-          <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${styles.iconBg} ${styles.iconText}`}>
+          <span
+            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${styles.iconBg} ${styles.iconText}`}
+          >
             {icon}
           </span>
         )}

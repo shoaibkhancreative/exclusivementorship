@@ -1,8 +1,3 @@
--- 1) Switch the default pay currency to USDT on BEP20 (BNB Smart Chain) —
---    lowest network fee of NOWPayments' supported USDT networks. Existing
---    rows are untouched; this only changes what NEW orders default to
---    if the currency column is ever left unset (the app always sets it
---    explicitly, but we keep the schema default honest).
 ALTER TABLE payment_orders RENAME TO payment_orders_old;
 
 CREATE TABLE payment_orders (
@@ -21,13 +16,7 @@ CREATE TABLE payment_orders (
   created_at            TEXT NOT NULL DEFAULT (datetime('now')),
   confirmed_at          TEXT,
   raw_last_webhook      TEXT,
-  -- How much was actually received on-chain, per the last IPN — kept even
-  -- when it doesn't match `pay_amount_crypto` so underpaid/overpaid orders
-  -- have a paper trail. NULL until at least one payment IPN arrives.
   actually_paid         REAL,
-  -- Set when an underpaid order was auto-unlocked because the shortfall
-  -- was within the configured tolerance, so support can see at a glance
-  -- which "paid" orders were exact vs. tolerated.
   underpaid_tolerated   INTEGER NOT NULL DEFAULT 0
 );
 

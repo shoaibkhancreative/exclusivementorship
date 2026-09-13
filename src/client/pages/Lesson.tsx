@@ -8,6 +8,7 @@ import { SequenceLockModal } from "../components/SequenceLockModal";
 import { VideoStage } from "../components/VideoStage";
 import { useSession } from "../lib/SessionContext";
 import { useContent } from "../lib/useContent";
+import { useDocumentMeta } from "../lib/useDocumentMeta";
 import { useUnlockModal } from "../lib/UnlockModalContext";
 
 export default function Lesson() {
@@ -17,24 +18,17 @@ export default function Lesson() {
   const { t } = useContent();
   const { openUnlockModal } = useUnlockModal();
   const [lesson, setLesson] = useState<LessonDetail | null>(null);
+
+  useDocumentMeta({ title: lesson?.title ?? "Lesson", path: `/lesson/${id ?? ""}` });
   const [outline, setOutline] = useState<OutlineResponse | null>(null);
   const [outlineError, setOutlineError] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [completing, setCompleting] = useState(false);
   const [showFallback, setShowFallback] = useState(false);
-  // Whether the "finish the previous class first" popup is open — opened by
-  // tapping the lock button on a sequence-locked class (see the isLocked
-  // branch below). A "payment" lock instead opens the shared UnlockModal via
-  // openUnlockModal; either way, tapping the lock button now always opens a
-  // popup rather than ever putting an explanation on top of the video
-  // itself. Reset whenever the lesson changes.
   const [showSequenceLockModal, setShowSequenceLockModal] = useState(false);
 
   const loadOutline = useCallback(() => {
     setOutlineError(false);
-    // Keep the course outline visible and fresh alongside the class itself —
-    // this is what lets the learner switch classes without ever losing the
-    // outline or returning to the main learning page.
     return api
       .get<OutlineResponse>("/lessons")
       .then(setOutline)
@@ -47,10 +41,6 @@ export default function Lesson() {
       .get<LessonDetail>(`/lessons/${id}`)
       .then(setLesson)
       .catch(() => {
-        // Every lesson number now loads its own page (locked ones just show
-        // a locked overlay instead of the video — see the isLocked branch
-        // below), so getting here means a genuine failure: a bad/nonexistent
-        // lesson number, or a network problem.
         setError(t("lesson.load_error"));
       });
   }, [id, t]);
@@ -61,11 +51,6 @@ export default function Lesson() {
     setShowFallback(false);
     setShowSequenceLockModal(false);
 
-    // The fallback "mark as watched" link only appears after a short delay.
-    // It exists for genuine technical failures (an ad-blocker or browser
-    // extension silently blocking YouTube's completion-tracking script) —
-    // not as an instant skip button. See VideoPlayer.tsx for the primary,
-    // automatic detection path.
     const fallbackTimer = window.setTimeout(() => setShowFallback(true), 45000);
 
     loadLesson();
@@ -74,24 +59,18 @@ export default function Lesson() {
     return () => window.clearTimeout(fallbackTimer);
   }, [id, navigate, loadOutline, loadLesson]);
 
-  /**
-   * Called only once the video player itself reports the video ended (see
-   * VideoPlayer's onEnded) — this is the entire "must finish this class
-   * before moving on" mechanism. Never called on page load.
-   */
   const handleVideoEnded = useCallback(() => {
     if (!lesson || completing || lesson.videoCompleted) return;
     setCompleting(true);
     api
-      .post<{ ok: true; nextLessonNumber: number; showPremiumGate: boolean }>(`/lessons/${lesson.lessonNumber}/complete-video`)
+      .post<{ ok: true; nextLessonNumber: number; showPremiumGate: boolean }>(
+        `/lessons/${lesson.lessonNumber}/complete-video`
+      )
       .then(() => {
         setLesson((prev) => (prev ? { ...prev, videoCompleted: true } : prev));
         loadOutline();
       })
       .catch(() => {
-        // If this fails (e.g. a stale session), the Next button below
-        // simply stays disabled — nothing unlocks without the server
-        // confirming it, by design.
       })
       .finally(() => setCompleting(false));
   }, [lesson, completing, loadOutline]);
@@ -114,82 +93,19 @@ export default function Lesson() {
   const idx = items.findIndex((item) => item.lessonNumber === lessonNumber);
   const prevItem = idx > 0 ? items[idx - 1] : null;
   const nextItem = idx >= 0 && idx < items.length - 1 ? items[idx + 1] : null;
-  // Every class's page is openable now, including locked ones (they just
-  // show a locked overlay instead of the video) — so Previous/Next only
-  // need to check that a neighboring class exists, not its lock state.
   const canGoPrev = Boolean(prevItem);
   const canGoNext = Boolean(nextItem);
 
-  // Previous/Next is mobile-only now (see the row below) — the desktop
-  // playlist panel already covers moving between classes there, and
-  // "Back to Home" isn't shown on any breakpoint anymore (the header's
-  // own logo/Home link already covers that). Sized for a comfortable
-  // touch target now that it's not sharing a row with a third button.
   const navButtonClass =
     "focus-ring flex items-center justify-center rounded-md border border-base-800 bg-base-900 px-3 py-2.5 text-sm font-medium text-zinc-300 transition-colors hover:border-base-600 hover:bg-base-800 hover:text-zinc-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-base-800 disabled:hover:bg-base-900 disabled:hover:text-zinc-300 disabled:active:scale-100";
 
   return (
-    // A wider stage than the rest of the site (matched by the Learn page)
-    // so the video and the playlist panel can sit side by side on desktop —
-    // the class content itself keeps reading top-to-bottom just as before.
-    //
-    // Unlike Learn.tsx, this stage isn't capped at a fixed Tailwind
-    // breakpoint (max-w-6xl/7xl/90rem) — a watch page's video player is
-    // the whole point of the page, so it should keep growing with the
-    // monitor the way YouTube's own watch page does, not stop widening
-    // partway through a 1440p/4K/ultrawide screen. `max-w-[min(96vw,1920px)]`
-    // scales continuously with the viewport (96vw, matching the small
-    // side margin YouTube itself leaves) instead of jumping between fixed
-    // breakpoint widths, capped at 1920px so the video/text don't stretch
-    // to an unreadable size on a genuinely huge or ultrawide display. On
-    // mobile this is a no-op (96vw is already far wider than a phone
-    // screen, same as the old max-w-6xl was) — mobile keeps the exact
-    // same single-column, viewport-fit layout as before.
-    //
-    // NOTE: `.page-enter` (globals.css) animates `transform: translateY(...)`
-    // and holds that transform on the element permanently afterwards
-    // (animation-fill-mode: both, ending at translateY(0) — still a
-    // non-"none" transform, not just an opacity fade). A `transform` on ANY
-    // ancestor of a `position: sticky` element breaks that element's
-    // sticky behavior in every browser, because the transformed ancestor
-    // becomes the sticky element's containing block instead of the
-    // viewport/scrollport. That's exactly what was happening here: this
-    // outer div used to carry `page-enter` and is an ancestor of the
-    // `sticky` video wrapper below, so the video could never actually
-    // stick — it just scrolled away like a normal block. Fixed by moving
-    // `page-enter` off this ancestor and onto the sticky element itself
-    // (a transform on the sticky element itself is harmless; only
-    // ancestors break it) and onto the non-ancestor content below it, so
-    // the same fade-in look is preserved without breaking sticky.
     <div className="mx-auto w-full max-w-[min(96vw,1920px)] px-4 py-5 sm:px-6 sm:py-10">
       <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start lg:gap-8 xl:grid-cols-[minmax(0,1fr)_420px]">
         <div>
-          {/* Pinned on mobile only: the video/player itself stays fixed at
-              the top of the screen while everything else (nav row, title,
-              description, playlist) scrolls underneath — same idea as a
-              mobile video app keeping the player in place, and the reason
-              the Back/Previous/Next row below isn't inside this box
-              anymore: it used to sit above the video inside this same
-              sticky block, which meant it stayed pinned on top of the
-              player too. Moving it out keeps the video the only thing
-              that freezes, with nothing overlapping it. top-16 clears the
-              site's own sticky TopBar (see TopBar.tsx). Reset back to
-              normal document flow at the lg breakpoint, where the two-
-              column layout already keeps things comfortably in view.
-              `page-enter` lives directly on this sticky element (not on an
-              ancestor) — see the note above for why that distinction is
-              what makes sticky actually work here. */}
           <div className="page-enter sticky top-16 z-10 -mx-4 border-b border-base-800/70 bg-base-950 px-4 pb-3 pt-3 sm:-mx-6 sm:px-6 lg:static lg:z-auto lg:mx-0 lg:border-b-0 lg:bg-transparent lg:px-0 lg:pb-0 lg:pt-0">
             {lesson.isLocked ? (
               <div>
-                {/* The thumbnail is always shown, even fully locked — it's
-                    the same image already visible in the outline list, never
-                    the actual video. Shown fully clear/undimmed here (no dark
-                    wash) — the lock button below is a solid filled circle so
-                    it stays legible on its own regardless of what's under it.
-                    The outline list's own thumbnails (OutlineList.tsx) keep
-                    their separate dim/lock treatment unchanged — this only
-                    affects the big thumbnail on the class's own page. */}
                 <div
                   className="relative aspect-video overflow-hidden rounded-lg border border-base-800 bg-black bg-cover bg-center"
                   style={lesson.thumbnailUrl ? { backgroundImage: `url(${lesson.thumbnailUrl})` } : undefined}
@@ -200,35 +116,36 @@ export default function Lesson() {
                     </span>
                   )}
                   <div className="absolute inset-0 flex items-center justify-center">
-                    {/* One button design for every locked class, matching
-                        the size/shape of the unlocked-class play button in
-                        VideoStage.tsx (same h-10/h-11 circle, same hover/
-                        active motion) so a locked class reads as "the same
-                        kind of thing, not available yet" rather than a
-                        different control — just in accent color, with a
-                        lock glyph instead of a play glyph, and never any
-                        text on top of the video itself. Tapping it always
-                        opens a popup: the existing shared checkout for a
-                        payment lock, or a small explanation popup for a
-                        sequence lock (see SequenceLockModal.tsx). */}
                     <button
                       type="button"
-                      onClick={() => (lesson.lockReason === "payment" ? openUnlockModal() : setShowSequenceLockModal(true))}
+                      onClick={() =>
+                        lesson.lockReason === "payment" ? openUnlockModal() : setShowSequenceLockModal(true)
+                      }
                       aria-label={
                         lesson.lockReason === "payment"
                           ? t("lesson.locked_payment_message_bn")
                           : t("lesson.locked_sequence_message_bn")
                       }
-                      // Was h-10/w-10 (40px) below `sm`, h-11/w-11 (44px)
-                      // at `sm`+ — same fix as VideoStage's play button:
-                      // 44px everywhere so the narrow-phone size (the one
-                      // that was actually a bit small) matches everything
-                      // else instead of being the outlier.
                       className="focus-ring flex h-11 w-11 flex-none items-center justify-center rounded-full bg-accent-500 text-base-950 shadow-md transition-transform duration-150 hover:scale-105 active:scale-95"
                     >
                       <svg width="15" height="16" viewBox="0 0 12 13" aria-hidden="true">
-                        <rect x="1.5" y="5.5" width="9" height="6.5" rx="1.3" stroke="currentColor" strokeWidth="1.3" fill="none" />
-                        <path d="M3.5 5.5V3.75a2.5 2.5 0 0 1 5 0V5.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" fill="none" />
+                        <rect
+                          x="1.5"
+                          y="5.5"
+                          width="9"
+                          height="6.5"
+                          rx="1.3"
+                          stroke="currentColor"
+                          strokeWidth="1.3"
+                          fill="none"
+                        />
+                        <path
+                          d="M3.5 5.5V3.75a2.5 2.5 0 0 1 5 0V5.5"
+                          stroke="currentColor"
+                          strokeWidth="1.3"
+                          strokeLinecap="round"
+                          fill="none"
+                        />
                       </svg>
                     </button>
                   </div>
@@ -240,11 +157,6 @@ export default function Lesson() {
                 rawEmbedUrl={lesson.videoEmbedUrl}
                 title={lesson.title}
                 onEnded={handleVideoEnded}
-                // VideoStage signs every Bunny-hosted embed (free or paid)
-                // via POST /lessons/:number/video-token — Bunny's Token
-                // Authentication setting is per-library, not per-video, so
-                // an unsigned "free" embed 403s just like an unsigned paid
-                // one would. YouTube embeds are unaffected either way.
                 watermarkLabel={lesson.watermarkEnabled && me?.authenticated ? (me.email ?? null) : null}
                 thumbnailUrl={lesson.thumbnailUrl}
               />
@@ -255,14 +167,6 @@ export default function Lesson() {
             )}
           </div>
 
-          {/* Previous / Next only — "Back to Home" is gone from here
-              entirely (the header's logo/Home link already does that
-              job), and the whole row is hidden past `lg` since the
-              playlist panel next to the video already covers moving
-              between classes on desktop. That leaves this as mobile-only
-              real estate, so instead of the old compact three-button row
-              it's now a full-width, equal-size two-button grid — bigger,
-              easier-to-hit touch targets than a cramped inline pair. */}
           <div className="grid grid-cols-2 gap-2 lg:hidden">
             <button
               type="button"
@@ -283,14 +187,6 @@ export default function Lesson() {
             </button>
           </div>
 
-          {/* Everything below this point scrolls normally underneath the
-              pinned video on mobile. Title/description sizing is tuned
-              down a step on small screens (was overflowing/too cramped at
-              the desktop sizes on narrow phones).
-              `page-enter` here (rather than on an ancestor further up)
-              keeps the same fade-in for this block without sitting above
-              the sticky video wrapper — see the note near the top of this
-              component for why that placement matters. */}
           <div className="page-enter mt-3 lg:mt-0">
             <h1 className="mb-4 mt-4 break-words text-lg font-semibold leading-snug text-zinc-50 sm:text-xl lg:mb-5 lg:text-2xl">
               {lesson.title}
@@ -302,7 +198,14 @@ export default function Lesson() {
                   {lesson.videoCompleted ? (
                     <span className="inline-flex items-center gap-1.5 rounded-full bg-accent-500/10 px-3 py-1 text-[13px] font-medium text-accent-500">
                       <svg width="11" height="11" viewBox="0 0 14 14" aria-hidden="true" className="flex-none">
-                        <path d="M2.5 7.2 5.4 10 11.5 3.5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                        <path
+                          d="M2.5 7.2 5.4 10 11.5 3.5"
+                          stroke="currentColor"
+                          strokeWidth="1.7"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          fill="none"
+                        />
                       </svg>
                       {t("lesson.watched_badge")}
                     </span>
@@ -331,10 +234,6 @@ export default function Lesson() {
           </div>
         </div>
 
-        {/* Playlist panel — the Lesson-page equivalent of YouTube's "up
-            next" sidebar. Sticks alongside the video on desktop; on mobile
-            it simply falls below the class content, same place the plain
-            outline used to sit. */}
         <aside className="page-enter mt-8 lg:sticky lg:top-24 lg:mt-0">
           <div className="rounded-lg border border-base-800 bg-base-900/40 lg:flex lg:max-h-[75vh] lg:flex-col">
             <div className="flex items-center justify-between gap-3 border-b border-base-800 px-4 py-3">
@@ -370,7 +269,10 @@ export default function Lesson() {
       </div>
 
       {showSequenceLockModal && (
-        <SequenceLockModal message={t("lesson.locked_sequence_message_bn")} onClose={() => setShowSequenceLockModal(false)} />
+        <SequenceLockModal
+          message={t("lesson.locked_sequence_message_bn")}
+          onClose={() => setShowSequenceLockModal(false)}
+        />
       )}
     </div>
   );

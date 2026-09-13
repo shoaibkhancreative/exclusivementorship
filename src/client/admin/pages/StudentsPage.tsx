@@ -33,7 +33,6 @@ function progressPct(s: StudentRow) {
   return s.totalLessons ? s.completedLessons / s.totalLessons : 0;
 }
 
-/** Escapes a value for a CSV cell — wraps in quotes and doubles any embedded quotes whenever the value contains a comma, quote, or newline. */
 function csvCell(value: string | number | null | undefined): string {
   const str = value === null || value === undefined ? "" : String(value);
   if (/[",\n]/.test(str)) return `"${str.replace(/"/g, '""')}"`;
@@ -89,11 +88,6 @@ export default function StudentsPage() {
     }
   }
 
-  /**
-   * Permanently deletes one student's account (progress, payment history,
-   * everything). Requires the admin to type the exact email back — a plain
-   * confirm() is too easy to click through for something this destructive.
-   */
   async function deleteStudent(student: StudentRow) {
     const typed = prompt(
       `This permanently deletes ${student.email}'s account — progress, payment history, everything. This cannot be undone.\n\nType the student's email to confirm:`
@@ -115,10 +109,6 @@ export default function StudentsPage() {
     }
   }
 
-  // Search + status filter, then sort — recomputed whenever any control
-  // changes. Pagination is a separate slice below so changing the sort/
-  // filter always resets back to page 1 (a stale page number could
-  // otherwise land past the end of a newly-shrunk result set).
   const filteredSorted = useMemo(() => {
     if (!students) return null;
     const q = query.trim().toLowerCase();
@@ -147,8 +137,6 @@ export default function StudentsPage() {
     return sorted;
   }, [students, query, statusFilter, sortKey, sortDir]);
 
-  // Reset to page 1 whenever the visible result set's shape changes, so an
-  // admin filtering/searching never lands on a now-empty page.
   useEffect(() => {
     setPage(1);
   }, [query, statusFilter, sortKey, sortDir, pageSize]);
@@ -210,7 +198,9 @@ export default function StudentsPage() {
         className={`focus-ring flex items-center gap-1 uppercase transition-colors ${active ? "text-zinc-200" : "text-zinc-500 hover:text-zinc-300"}`}
       >
         {label}
-        <ChevronDownIcon className={`h-3 w-3 transition-transform ${active && sortDir === "asc" ? "rotate-180" : ""} ${active ? "opacity-100" : "opacity-30"}`} />
+        <ChevronDownIcon
+          className={`h-3 w-3 transition-transform ${active && sortDir === "asc" ? "rotate-180" : ""} ${active ? "opacity-100" : "opacity-30"}`}
+        />
       </button>
     );
   }
@@ -287,7 +277,10 @@ export default function StudentsPage() {
             </thead>
             <tbody>
               {paged.map((s) => (
-                <tr key={s.id} className="border-b border-base-800/60 transition-colors last:border-0 hover:bg-base-800/30">
+                <tr
+                  key={s.id}
+                  className="border-b border-base-800/60 transition-colors last:border-0 hover:bg-base-800/30"
+                >
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2.5">
                       <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-base-800 text-xs font-semibold text-zinc-300">
@@ -302,9 +295,7 @@ export default function StudentsPage() {
                   <td className="px-4 py-3">
                     <span
                       className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                        s.courseStatus === "paid"
-                          ? "bg-accent-500/15 text-accent-300"
-                          : "bg-base-800 text-zinc-400"
+                        s.courseStatus === "paid" ? "bg-accent-500/15 text-accent-300" : "bg-base-800 text-zinc-400"
                       }`}
                     >
                       {s.courseStatus === "paid" ? "Paid" : "Free"}
@@ -366,7 +357,8 @@ export default function StudentsPage() {
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-base-800 px-4 py-3 text-xs text-zinc-500">
               <div className="flex items-center gap-2">
                 <span>
-                  Showing {(clampedPage - 1) * pageSize + 1}–{Math.min(clampedPage * pageSize, totalFiltered)} of {totalFiltered}
+                  Showing {(clampedPage - 1) * pageSize + 1}–{Math.min(clampedPage * pageSize, totalFiltered)} of{" "}
+                  {totalFiltered}
                 </span>
                 <select
                   value={pageSize}
@@ -409,12 +401,6 @@ export default function StudentsPage() {
   );
 }
 
-/**
- * Wipes every student account and everything that cascades from it
- * (progress, payment history, notifications). Course content and admin
- * accounts are never touched. Gated behind typing an exact phrase back —
- * there is no "undo" for this, so a plain confirm() isn't enough.
- */
 function DangerZone({ studentCount, onWiped }: { studentCount: number; onWiped: () => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);

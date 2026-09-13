@@ -5,31 +5,6 @@ interface FullscreenStageProps {
   children: ReactNode;
 }
 
-/**
- * Generic "click to fullscreen" wrapper, extracted out of VideoStage so both
- * lesson videos (VideoStage) and the homepage intro video (Home.tsx) get the
- * exact same fullscreen behavior/UX instead of two different
- * implementations drifting apart.
- *
- * Renders `children` (typically a <VideoPlayer/>, optionally with an overlay
- * sibling like the watermark) inside a container with its own fullscreen
- * toggle button. See the extended rationale below for why this exists
- * instead of just relying on the embedded player's native fullscreen button.
- *
- * - Real Fullscreen API via requestFullscreen()/exitFullscreen() when
- *   available, triggered from a genuine click gesture (not from inside a
- *   `fullscreenchange` handler, which browsers routinely reject).
- * - CSS-only "pseudo-fullscreen" fallback (fixed-position overlay) for
- *   browsers without the Fullscreen API on arbitrary elements (notably iOS
- *   Safari), or if requestFullscreen() is rejected for any other reason.
- * - The pseudo-fullscreen path is portaled straight onto <body> so it isn't
- *   accidentally confined by an ancestor with `transform`/`filter`/
- *   `backdrop-filter`/`will-change` (which create a new containing block for
- *   `position: fixed`). Real native fullscreen is never portaled — the
- *   browser already promotes it to the top layer, and portaling would
- *   unmount the exact node that was fullscreened, kicking us straight back
- *   out.
- */
 export function FullscreenStage({ children }: FullscreenStageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [pseudoFullscreen, setPseudoFullscreen] = useState(false);
@@ -57,8 +32,6 @@ export function FullscreenStage({ children }: FullscreenStageProps) {
   const exitFullscreen = useCallback(() => {
     if (isNativeFullscreen && document.fullscreenElement) {
       document.exitFullscreen().catch(() => {
-        // Nothing more we can do — leave state as-is; the fullscreenchange
-        // listener below will resync if the browser exits on its own.
       });
     } else {
       setPseudoFullscreen(false);
@@ -113,15 +86,6 @@ export function FullscreenStage({ children }: FullscreenStageProps) {
         type="button"
         onClick={togglePseudoFullscreen}
         aria-label={pseudoFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-        // Top-right, not bottom-right: the embedded player's own control bar
-        // (scrubber, play/pause, its now-inert fullscreen icon) lives along
-        // the bottom edge, and a button placed there would sit on top of
-        // those controls and interfere with clicking them.
-        // p-2 around a 16px icon was only ~36px of hit area — tight for
-        // what's the ONLY way back out of pseudo-fullscreen on browsers
-        // without the native Fullscreen API (notably iOS Safari). p-3
-        // below `sm` widens that to ~40px; reverts to the original p-2 at
-        // `sm`+ so desktop/tablet is unchanged.
         className="focus-ring absolute right-3 top-3 z-10 rounded-md bg-black/60 p-3 text-white/90 transition-colors hover:bg-black/80 hover:text-white sm:p-2"
       >
         {pseudoFullscreen ? (

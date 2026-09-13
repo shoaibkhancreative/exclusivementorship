@@ -5,8 +5,6 @@ export async function createTestEnv(overrides: Partial<Env> = {}): Promise<Env> 
   const { fakeD1 } = await createTestD1();
 
   const assets: Fetcher = {
-    // Minimal stand-in for the Workers Assets binding — not exercised by
-    // API-focused tests, but required to satisfy the Env type.
     fetch: async () => new Response("not found", { status: 404 })
   } as unknown as Fetcher;
 
@@ -24,11 +22,6 @@ export async function createTestEnv(overrides: Partial<Env> = {}): Promise<Env> 
     NOWPAYMENTS_IPN_SECRET: "test-ipn-secret",
     BUNNY_TOKEN_AUTH_KEY: "test-bunny-token-key",
     BUNNY_PULL_ZONE_HOST: "vz-test12345-de6.b-cdn.net",
-    // RESEND_API_KEY, NOWPAYMENTS_API_KEY, and TURNSTILE_SECRET_KEY are
-    // intentionally left unset: each service module has an explicit "not
-    // configured" dev-mode fallback (see services/email.ts,
-    // services/turnstile.ts) or is stubbed per-test via
-    // vi.stubGlobal('fetch', ...) where a real network call would occur.
     ...overrides
   };
 }

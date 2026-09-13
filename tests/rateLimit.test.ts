@@ -32,7 +32,6 @@ describe("checkRateLimit", () => {
     const blocked = await checkRateLimit(env, key, 1, 3600);
     expect(blocked.allowed).toBe(false);
 
-    // Simulate the window having elapsed.
     await env.DB.prepare("UPDATE rate_limits SET window_start = datetime('now', '-2 hour') WHERE bucket_key = ?")
       .bind(key)
       .run();

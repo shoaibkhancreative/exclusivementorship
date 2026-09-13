@@ -1,13 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "./api";
 
-// Bundled fallback copy — mirrors worker/lib/content.ts's CONTENT_DEFAULTS.
-// Used the moment a component renders (before the network response lands)
-// and if the /config/content fetch ever fails outright, so the public site
-// never shows a blank string or crashes on a missing key. Keeping this list
-// in sync with the worker's CONTENT_FIELDS is a one-time cost each time a
-// new key is added there; nothing here is a second source of truth for
-// *values* an admin can change — it's only ever the last-resort fallback.
 const BUNDLED_DEFAULTS: Record<string, string> = {
   "site.brand_name": "Exclusive Mentorship",
   "topbar.nav_home": "Home",
@@ -15,7 +8,8 @@ const BUNDLED_DEFAULTS: Record<string, string> = {
   "home.kicker": "Next Level Trader",
   "home.headline": "Trade With Structure, Not Guesswork",
   "home.intro_video_fallback": "Intro video coming soon",
-  "home.body": "Market structure, liquidity, and price delivery — a framework for traders ready to level up. Free lessons start today.",
+  "home.body":
+    "Market structure, liquidity, and price delivery — a framework for traders ready to level up. Free lessons start today.",
   "home.cta_start": "Start Learning",
   "unlock_modal.title": "Unlock Full Mentorship",
   "unlock_modal.description": "Get lifetime access to every advanced class, right away.",
@@ -79,11 +73,11 @@ const BUNDLED_DEFAULTS: Record<string, string> = {
   "footer.terms_link": "Terms of Use",
   "privacy.title": "Privacy Policy",
   "privacy.p1":
-    "Exclusive Mentorship (\"we\", \"us\", \"our\") collects only what's needed to run the mentorship: the email address you sign in with (by one-time code or Google Sign-In), your course progress (which classes you've completed), and payment/order metadata for enrollment (order ID, amount, status, and confirmation time). We never see or store your card or crypto wallet contents — crypto payments are processed entirely by our payment provider, NOWPayments. If you contact support, we also keep the content of your messages and any images you attach, so we can help with your question.",
+    'Exclusive Mentorship ("we", "us", "our") collects only what\'s needed to run the mentorship: the email address you sign in with (by one-time code or Google Sign-In), your course progress (which classes you\'ve completed), and payment/order metadata for enrollment (order ID, amount, status, and confirmation time). We never see or store your card or crypto wallet contents — crypto payments are processed entirely by our payment provider, NOWPayments. If you contact support, we also keep the content of your messages and any images you attach, so we can help with your question.',
   "privacy.p2":
     "Watching a class's video to the end is what unlocks the next class in the sequence — we record only that a video was completed, not detailed viewing analytics (we don't track how much of a video you watched, pausing/rewinding, or playback speed). This completion data is used solely to run the course structure and is visible to you in your own dashboard.",
   "privacy.p3":
-    "We share the minimum data necessary with a small set of service providers to run the site: Resend (to deliver your login code and other account emails), NOWPayments (to process your crypto payment), Cloudflare Turnstile (to confirm you're not a bot when requesting a login code), and Google (only if you choose \"Sign in with Google\", to verify your identity). None of these providers may use your data for anything beyond providing that service to us.",
+    'We share the minimum data necessary with a small set of service providers to run the site: Resend (to deliver your login code and other account emails), NOWPayments (to process your crypto payment), Cloudflare Turnstile (to confirm you\'re not a bot when requesting a login code), and Google (only if you choose "Sign in with Google", to verify your identity). None of these providers may use your data for anything beyond providing that service to us.',
   "privacy.p4_prefix":
     "We keep your account data for as long as your account is active. Support conversations and expired login codes are deleted automatically after a short retention window; records of confirmed payments are kept indefinitely for financial and legal record-keeping. You may request access to, correction of, or deletion of your account and associated data at any time by contacting",
   "privacy.contact_email": "support@exclusivementorship.xyz",
@@ -105,7 +99,8 @@ const BUNDLED_DEFAULTS: Record<string, string> = {
   "support.compose_placeholder": "Describe your issue…",
   "support.reply_placeholder": "Type a message…",
   "support.close_button": "Close conversation",
-  "support.close_confirm": "Close this conversation? You won't see it in your list anymore, but you can always start a new one.",
+  "support.close_confirm":
+    "Close this conversation? You won't see it in your list anymore, but you can always start a new one.",
   "notifications.panel_title": "Notifications",
   "notifications.mark_all_read": "Mark all read",
   "notifications.loading": "Loading…",
@@ -116,8 +111,6 @@ interface ContentResponse {
   content: Record<string, string>;
 }
 
-// Module-level cache/inflight, same pattern as useConfig — every component
-// using useContent() shares one /config/content fetch.
 let cached: Record<string, string> | null = null;
 let inflight: Promise<Record<string, string>> | null = null;
 
@@ -130,7 +123,6 @@ function interpolate(template: string, vars?: Record<string, string | number>): 
 }
 
 export interface UseContentResult {
-  /** Looks up `key`, falling back to the bundled default if the network map hasn't loaded (or doesn't have it), then interpolates any `{placeholder}` vars. */
   t: (key: string, vars?: Record<string, string | number>) => string;
   loaded: boolean;
 }
@@ -160,14 +152,6 @@ export function useContent(): UseContentResult {
     };
   }, []);
 
-  // Stable function identity across renders (only changes when the content
-  // map itself changes, e.g. once when /config/content resolves) — this
-  // matters because `t` gets passed into other components' useCallback/
-  // useEffect dependency arrays (e.g. Lesson.tsx's loadLesson). A `t` that
-  // was a brand-new function on every render used to make those effects
-  // re-fire on every render too, wiping state (like the loaded lesson) and
-  // immediately refetching in a loop — visible as a class that loads then
-  // instantly disappears, or never settles at all.
   const t = useCallback(
     (key: string, vars?: Record<string, string | number>): string => {
       const raw = map?.[key] ?? BUNDLED_DEFAULTS[key] ?? key;

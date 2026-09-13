@@ -41,7 +41,6 @@ describe("OTP flow", () => {
   it("rejects a code after it has expired", async () => {
     const code = await issueOtp(env, "user@example.com");
 
-    // Force the stored OTP into the past to simulate expiry without sleeping.
     await env.DB.prepare("UPDATE otp_codes SET expires_at = datetime('now', '-1 hour') WHERE email = ?")
       .bind("user@example.com")
       .run();
@@ -136,16 +135,13 @@ describe("Sessions", () => {
     if (!verify.ok) throw new Error("expected ok");
 
     const firstToken = await createSession(env, verify.user.id);
-    // Confirm the first session is genuinely valid before the second login.
     expect((await resolveSession(env, firstToken))?.id).toBe(verify.user.id);
 
     const secondToken = await createSession(env, verify.user.id);
 
-    // The first device's cookie no longer authenticates anything...
     const firstResolved = await resolveSession(env, firstToken);
     expect(firstResolved).toBeNull();
 
-    // ...while the new session (whoever logged in most recently) still does.
     const secondResolved = await resolveSession(env, secondToken);
     expect(secondResolved?.id).toBe(verify.user.id);
   });
@@ -161,7 +157,6 @@ describe("Sessions", () => {
     const tokenA = await createSession(env, verifyA.user.id);
     const tokenB = await createSession(env, verifyB.user.id);
 
-    // Logging in as Bob must not touch Alice's independent session.
     expect((await resolveSession(env, tokenA))?.id).toBe(verifyA.user.id);
     expect((await resolveSession(env, tokenB))?.id).toBe(verifyB.user.id);
   });

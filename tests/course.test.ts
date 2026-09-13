@@ -32,8 +32,6 @@ describe("canAccessLesson", () => {
   });
 
   it("blocks lesson 6 for a free (unpaid) user even if current_lesson is 6", () => {
-    // This models a defensive scenario — access must additionally require
-    // course_status === 'paid' beyond the free threshold, not just sequence.
     expect(canAccessLesson({ lessonNumber: 6, currentLesson: 6, courseStatus: "free", freeLessonCount: FREE })).toBe(
       false
     );
@@ -61,13 +59,10 @@ describe("canAccessLesson", () => {
   });
 
   it("respects an admin-lowered free-lesson-count", () => {
-    // With freeLessonCount = 2, lesson 3 requires payment even if reached sequentially.
     expect(canAccessLesson({ lessonNumber: 3, currentLesson: 3, courseStatus: "free", freeLessonCount: 2 })).toBe(
       false
     );
-    expect(canAccessLesson({ lessonNumber: 3, currentLesson: 3, courseStatus: "paid", freeLessonCount: 2 })).toBe(
-      true
-    );
+    expect(canAccessLesson({ lessonNumber: 3, currentLesson: 3, courseStatus: "paid", freeLessonCount: 2 })).toBe(true);
   });
 });
 
@@ -106,7 +101,6 @@ describe("lessonState", () => {
   });
 
   it("marks a reachable-but-not-current lesson as available", () => {
-    // Sequentially unlocked (<= currentLesson) but not the exact current pointer.
     expect(lessonState(2, false, { lessonNumber: 2, ...base })).toBe("available");
   });
 
@@ -146,8 +140,6 @@ describe("lockReasonForLesson", () => {
   });
 
   it("returns 'sequence' for an unreached premium lesson too, not 'payment'", () => {
-    // Hasn't finished the free classes yet — the message should be "finish
-    // the previous class", not "unlock the mentorship" yet.
     expect(
       lockReasonForLesson({ lessonNumber: 7, currentLesson: 3, courseStatus: "free", freeLessonCount: FREE })
     ).toBe("sequence");
@@ -160,8 +152,6 @@ describe("lockReasonForLesson", () => {
   });
 
   it("returns 'sequence' for a not-yet-reached premium lesson even after paying", () => {
-    // Paid, but hasn't finished what comes before it — still a sequence
-    // lock, not a payment lock.
     expect(
       lockReasonForLesson({ lessonNumber: 8, currentLesson: 6, courseStatus: "paid", freeLessonCount: FREE })
     ).toBe("sequence");

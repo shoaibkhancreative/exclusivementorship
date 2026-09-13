@@ -4,16 +4,7 @@ type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: "primary" | "secondary" | "ghost";
 };
 
-/**
- * Three button styles, one shape (rounded-md), one motion (color only, no
- * scale/shadow tricks). Primary is the only place accent-500 fills a
- * surface — everywhere else the accent only tints text, so it stays a
- * signal for "the one thing to do here" rather than decoration.
- */
 export function Button({ variant = "primary", className = "", ...props }: ButtonProps) {
-  // Same three variants, same single shape, same color-only motion — flat
-  // fill, no shadow, no gradient. Primary presses half a pixel on click so
-  // it still feels tactile without relying on shadow tricks.
   const base =
     "focus-ring inline-flex items-center justify-center rounded-md px-5 py-3 text-sm font-medium transition-colors duration-150 active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100";
   const variants: Record<string, string> = {

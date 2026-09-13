@@ -3,25 +3,14 @@ import { api, ApiError, type SupportAttachmentInput, type SupportMessage, type S
 import { useSession } from "../lib/SessionContext";
 import { useContent } from "../lib/useContent";
 import { fileToCompressedDataUrl } from "../lib/imageAttachment";
+import { useDialogA11y } from "../lib/useDialogA11y";
 import { Button } from "./ui";
 
 const TICKET_LIST_POLL_MS = 45_000;
-// Snappy enough that a reply feels close to real-time without needing
-// WebSockets/Durable Objects — only runs while a thread is actually open,
-// and only while the tab is visible (see the visibilitychange handling
-// below), so it's cheap even at this cadence.
 const THREAD_POLL_MS = 4_000;
 
 type View = "list" | "new" | "thread";
 
-/**
- * Tracks whether the viewport is below Tailwind's `sm` breakpoint (640px) —
- * needed because this panel behaves completely differently on either side
- * of that breakpoint (a near-fullscreen mobile sheet vs. a small anchored
- * desktop popover, see the root className below) and a few *behaviors*
- * (backdrop, Escape-to-close, body scroll lock) should only apply to the
- * mobile sheet, not the desktop popover, to keep desktop exactly as it was.
- */
 function useIsMobileViewport(): boolean {
   const [isMobile, setIsMobile] = useState(() => typeof window !== "undefined" && window.innerWidth < 640);
   useEffect(() => {
@@ -39,7 +28,6 @@ function formatTime(iso: string): string {
   return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 }
 
-/** Splits an imageAttachment.ts "code:message" error into just the human-readable part; falls back to a generic message for anything else. */
 function friendlyAttachmentError(err: unknown): string {
   const raw = err instanceof Error ? err.message : "";
   const idx = raw.indexOf(":");
@@ -47,7 +35,6 @@ function friendlyAttachmentError(err: unknown): string {
   return "Couldn't process that image. Please try another, or a screenshot instead.";
 }
 
-/** Same warm three-dot loader as UnlockModal's FriendlyLoader — kept local since that one isn't exported. */
 function FriendlyLoader() {
   return (
     <div className="flex items-center justify-center gap-1.5 py-4" role="status" aria-label="Loading">
@@ -66,7 +53,6 @@ interface Props {
   fullscreen: boolean;
   onToggleFullscreen: () => void;
   onMinimize: () => void;
-  /** Bubbles the caller's latest ticket list up so the floating button's badge stays in sync without a second poll loop. */
   onTicketsChange: (tickets: SupportTicket[]) => void;
 }
 
@@ -79,13 +65,16 @@ export function SupportChatPanel({ fullscreen, onToggleFullscreen, onMinimize, o
   const [messages, setMessages] = useState<SupportMessage[] | null>(null);
   const [composerText, setComposerText] = useState("");
   const [guestEmail, setGuestEmail] = useState("");
-  const [pendingAttachment, setPendingAttachment] = useState<(SupportAttachmentInput & { previewUrl: string }) | null>(null);
+  const [pendingAttachment, setPendingAttachment] = useState<(SupportAttachmentInput & { previewUrl: string }) | null>(
+    null
+  );
   const [sending, setSending] = useState(false);
   const [compressing, setCompressing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [closing, setClosing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const threadEndRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   const loadTickets = useCallback(() => {
     api
@@ -95,7 +84,6 @@ export function SupportChatPanel({ fullscreen, onToggleFullscreen, onMinimize, o
         onTicketsChange(res.tickets);
       })
       .catch(() => {
-        // Silent — the panel just shows whatever it last had.
       });
   }, [onTicketsChange]);
 
@@ -110,14 +98,9 @@ export function SupportChatPanel({ fullscreen, onToggleFullscreen, onMinimize, o
       .get<{ ticket: SupportTicket; messages: SupportMessage[] }>(`/support/tickets/${id}/messages`)
       .then((res) => setMessages(res.messages))
       .catch(() => {
-        // Silent — keep showing whatever's already rendered.
       });
   }, []);
 
-  // Only polls while the thread view is open AND the tab is actually
-  // visible — no point burning requests on a backgrounded tab, and it
-  // re-fetches immediately the moment the person switches back rather than
-  // waiting out the rest of the interval.
   useEffect(() => {
     if (view !== "thread" || !ticketId) return;
     loadThread(ticketId);
@@ -140,26 +123,7 @@ export function SupportChatPanel({ fullscreen, onToggleFullscreen, onMinimize, o
 
   const isMobileViewport = useIsMobileViewport();
 
-  // On mobile this panel is a near-fullscreen sheet — every other
-  // full/near-full-screen popup on the site (UnlockModal, SequenceLockModal)
-  // closes on Escape and locks background scroll while open; this one was
-  // missing both, which is what made it feel out of step with the rest of
-  // the site's modals. Scoped to mobile only (via isMobileViewport) since
-  // at `sm`+ this is just a small anchored popover, not a takeover, and
-  // that desktop behavior should stay exactly as it was.
-  useEffect(() => {
-    if (!isMobileViewport) return;
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") onMinimize();
-    }
-    document.addEventListener("keydown", handleKeyDown);
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", handleKeyDown);
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [isMobileViewport, onMinimize]);
+  useDialogA11y(panelRef, { active: isMobileViewport, onClose: onMinimize });
 
   const hasOpenTicket = (tickets ?? []).length > 0;
 
@@ -212,13 +176,13 @@ export function SupportChatPanel({ fullscreen, onToggleFullscreen, onMinimize, o
         body: composerText.trim() || undefined,
         guestEmail: me?.authenticated ? undefined : guestEmail.trim(),
         originPath: window.location.pathname,
-        attachment: pendingAttachment ? { dataUrl: pendingAttachment.dataUrl, filename: pendingAttachment.filename } : undefined
+        attachment: pendingAttachment
+          ? { dataUrl: pendingAttachment.dataUrl, filename: pendingAttachment.filename }
+          : undefined
       });
       setTickets((prev) => [res.ticket, ...(prev ?? [])]);
       onTicketsChange([res.ticket, ...(tickets ?? [])]);
       openTicket(res.ticket.id);
-      // The panel just opened this ticket fresh — show the first message
-      // immediately rather than waiting on the next poll tick.
       setMessages([res.message]);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't send that. Please try again.");
@@ -232,10 +196,6 @@ export function SupportChatPanel({ fullscreen, onToggleFullscreen, onMinimize, o
     const text = composerText.trim();
     const attachment = pendingAttachment;
 
-    // Optimistic append: the sender sees their own message land instantly
-    // instead of waiting for the next poll tick. A temporary id is swapped
-    // out once the next successful poll brings back the real row; if the
-    // send fails, the optimistic bubble is removed and the text restored.
     const tempId = `temp-${Date.now()}`;
     const optimisticMessage: SupportMessage = {
       id: tempId,
@@ -287,14 +247,14 @@ export function SupportChatPanel({ fullscreen, onToggleFullscreen, onMinimize, o
   }
 
   const composerBox = (onSend: () => void, placeholder: string) => (
-    // pb-[max(...)] falls back to the original 0.75rem (p-3's bottom) on
-    // any device without a bottom safe-area inset (i.e. everywhere except
-    // notched/gesture-bar phones), so this only ever adds space, never
-    // removes it.
     <div className="border-t border-base-700 bg-base-900 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
       {pendingAttachment && (
         <div className="mb-2 flex items-center gap-2 rounded-xl border border-base-700 bg-base-950 p-1.5">
-          <img src={pendingAttachment.previewUrl} alt="Attachment preview" className="h-10 w-10 rounded-lg object-cover" />
+          <img
+            src={pendingAttachment.previewUrl}
+            alt="Attachment preview"
+            className="h-10 w-10 rounded-lg object-cover"
+          />
           <span className="flex-1 truncate text-xs text-zinc-500">{pendingAttachment.filename}</span>
           <button
             type="button"
@@ -357,12 +317,6 @@ export function SupportChatPanel({ fullscreen, onToggleFullscreen, onMinimize, o
 
   return (
     <>
-      {/* Backdrop — mobile only (see isMobileViewport above). Without this
-          the panel used to just float over the page with the background
-          still fully interactive/scrollable underneath it, which is what
-          made it feel unfinished compared to every other popup on the
-          site. Tapping it minimizes the panel, same as tapping outside
-          UnlockModal/SequenceLockModal closes those. */}
       {isMobileViewport && (
         <div
           className="animate-fade-in fixed inset-0 z-[99] bg-[#1c1b17]/60 backdrop-blur-sm"
@@ -372,11 +326,6 @@ export function SupportChatPanel({ fullscreen, onToggleFullscreen, onMinimize, o
       )}
       <div
         style={{ transformOrigin: "bottom right" }}
-        // Mobile opens like the site's other bottom sheets (animate-slide-up,
-        // e.g. UnlockModal/SequenceLockModal); at sm+ it becomes an anchored
-        // popover growing from its corner (animate-scale-in, same as
-        // ProfileMenu). The shadow is the same warm/muted cream-tinted one
-        // ProfileMenu uses for its popover, not a generic black shadow-2xl.
         className={`animate-slide-up sm:animate-scale-in fixed z-[100] flex flex-col overflow-hidden border border-base-700 bg-base-900 shadow-2xl shadow-base-800/40 ${
           fullscreen
             ? "inset-0 rounded-none"
@@ -384,195 +333,212 @@ export function SupportChatPanel({ fullscreen, onToggleFullscreen, onMinimize, o
         }`}
         role="dialog"
         aria-label="Support chat"
+        ref={panelRef}
       >
-      {/* Header */}
-      <div className="flex shrink-0 items-center gap-2 border-b border-base-700 bg-base-950 px-3.5 py-3">
-        {view !== "list" ? (
+        <div className="flex shrink-0 items-center gap-2 border-b border-base-700 bg-base-950 px-3.5 py-3">
+          {view !== "list" ? (
+            <button
+              type="button"
+              onClick={() => setView("list")}
+              className="focus-ring flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-base-800/80 hover:text-zinc-200"
+              aria-label="Back to tickets"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path
+                  d="M14.5 6 8 12.5 14.5 19"
+                  stroke="currentColor"
+                  strokeWidth="1.7"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+          ) : (
+            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-accent-500 text-[11px] font-bold text-base-950">
+              EM
+            </span>
+          )}
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-[13.5px] font-medium text-zinc-100">
+              {view === "thread"
+                ? (tickets?.find((t2) => t2.id === ticketId)?.agentDisplayName ?? t("support.panel_title"))
+                : t("support.panel_title")}
+            </div>
+            {view === "list" && <div className="text-[11.5px] text-zinc-500">{t("support.panel_subtitle")}</div>}
+          </div>
+          {view === "thread" && (
+            <button
+              type="button"
+              onClick={closeConversation}
+              disabled={closing}
+              className="focus-ring flex h-8 items-center gap-1 rounded-full px-2.5 text-[11px] text-zinc-500 transition-colors hover:bg-base-800/80 hover:text-accent-300 disabled:opacity-50"
+              title={t("support.close_button")}
+            >
+              {t("support.close_button")}
+            </button>
+          )}
           <button
             type="button"
-            onClick={() => setView("list")}
+            onClick={onToggleFullscreen}
             className="focus-ring flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-base-800/80 hover:text-zinc-200"
-            aria-label="Back to tickets"
+            aria-label={fullscreen ? "Exit fullscreen" : "Expand to fullscreen"}
+            title={fullscreen ? "Exit fullscreen" : "Fullscreen"}
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path d="M14.5 6 8 12.5 14.5 19" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              {fullscreen ? (
+                <path
+                  d="M9 4v5H4M15 4v5h5M9 20v-5H4m11 5v-5h5"
+                  stroke="currentColor"
+                  strokeWidth="1.7"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              ) : (
+                <path
+                  d="M4 9V4h5M20 9V4h-5M4 15v5h5m11-5v5h-5"
+                  stroke="currentColor"
+                  strokeWidth="1.7"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              )}
             </svg>
           </button>
-        ) : (
-          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-accent-500 text-[11px] font-bold text-base-950">EM</span>
-        )}
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-[13.5px] font-medium text-zinc-100">
-            {view === "thread" ? tickets?.find((t2) => t2.id === ticketId)?.agentDisplayName ?? t("support.panel_title") : t("support.panel_title")}
-          </div>
-          {view === "list" && <div className="text-[11.5px] text-zinc-500">{t("support.panel_subtitle")}</div>}
-        </div>
-        {view === "thread" && (
           <button
             type="button"
-            onClick={closeConversation}
-            disabled={closing}
-            className="focus-ring flex h-8 items-center gap-1 rounded-full px-2.5 text-[11px] text-zinc-500 transition-colors hover:bg-base-800/80 hover:text-accent-300 disabled:opacity-50"
-            title={t("support.close_button")}
+            onClick={onMinimize}
+            className="focus-ring flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-base-800/80 hover:text-zinc-200"
+            aria-label="Minimize"
+            title="Minimize"
           >
-            {t("support.close_button")}
+            ✕
           </button>
-        )}
-        <button
-          type="button"
-          onClick={onToggleFullscreen}
-          className="focus-ring flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-base-800/80 hover:text-zinc-200"
-          aria-label={fullscreen ? "Exit fullscreen" : "Expand to fullscreen"}
-          title={fullscreen ? "Exit fullscreen" : "Fullscreen"}
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            {fullscreen ? (
-              <path
-                d="M9 4v5H4M15 4v5h5M9 20v-5H4m11 5v-5h5"
-                stroke="currentColor"
-                strokeWidth="1.7"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            ) : (
-              <path
-                d="M4 9V4h5M20 9V4h-5M4 15v5h5m11-5v5h-5"
-                stroke="currentColor"
-                strokeWidth="1.7"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            )}
-          </svg>
-        </button>
-        <button
-          type="button"
-          onClick={onMinimize}
-          className="focus-ring flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-base-800/80 hover:text-zinc-200"
-          aria-label="Minimize"
-          title="Minimize"
-        >
-          ✕
-        </button>
-      </div>
+        </div>
 
-      {/* Body */}
-      {view === "list" && (
-        <div className="flex flex-1 flex-col overflow-hidden">
-          <div className="flex-1 overflow-y-auto">
-            {tickets === null ? (
-              <FriendlyLoader />
-            ) : tickets.length === 0 ? (
-              <div className="p-6 text-center text-sm text-zinc-500">{t("support.empty_state")}</div>
-            ) : (
-              <ul className="divide-y divide-base-800">
-                {tickets.map((ticket) => (
-                  <li key={ticket.id}>
-                    <button
-                      type="button"
-                      onClick={() => openTicket(ticket.id)}
-                      className="focus-ring flex w-full items-start gap-2.5 px-3.5 py-3 text-left transition-colors hover:bg-base-800/40"
-                    >
-                      <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-base-800 text-[11px] font-semibold text-zinc-400">
-                        {ticket.agentDisplayName[0]}
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="flex items-center justify-between gap-2">
-                          <span className="truncate text-[13px] font-medium text-zinc-100">{ticket.agentDisplayName}</span>
-                          <span className="shrink-0 text-[10.5px] text-zinc-500">{formatTime(ticket.lastMessageAt)}</span>
+        {view === "list" && (
+          <div className="flex flex-1 flex-col overflow-hidden">
+            <div className="flex-1 overflow-y-auto">
+              {tickets === null ? (
+                <FriendlyLoader />
+              ) : tickets.length === 0 ? (
+                <div className="p-6 text-center text-sm text-zinc-500">{t("support.empty_state")}</div>
+              ) : (
+                <ul className="divide-y divide-base-800">
+                  {tickets.map((ticket) => (
+                    <li key={ticket.id}>
+                      <button
+                        type="button"
+                        onClick={() => openTicket(ticket.id)}
+                        className="focus-ring flex w-full items-start gap-2.5 px-3.5 py-3 text-left transition-colors hover:bg-base-800/40"
+                      >
+                        <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-base-800 text-[11px] font-semibold text-zinc-400">
+                          {ticket.agentDisplayName[0]}
                         </span>
-                        <span className="mt-0.5 flex items-center gap-1.5">
-                          <span className="truncate text-[12px] text-zinc-500">{ticket.subject || "New ticket"}</span>
-                          {ticket.status === "closed" && (
-                            <span className="shrink-0 rounded-full border border-base-700 px-1.5 py-[1px] text-[9.5px] text-zinc-500">
-                              Closed
+                        <span className="min-w-0 flex-1">
+                          <span className="flex items-center justify-between gap-2">
+                            <span className="truncate text-[13px] font-medium text-zinc-100">
+                              {ticket.agentDisplayName}
                             </span>
-                          )}
+                            <span className="shrink-0 text-[10.5px] text-zinc-500">
+                              {formatTime(ticket.lastMessageAt)}
+                            </span>
+                          </span>
+                          <span className="mt-0.5 flex items-center gap-1.5">
+                            <span className="truncate text-[12px] text-zinc-500">{ticket.subject || "New ticket"}</span>
+                            {ticket.status === "closed" && (
+                              <span className="shrink-0 rounded-full border border-base-700 px-1.5 py-[1px] text-[9.5px] text-zinc-500">
+                                Closed
+                              </span>
+                            )}
+                          </span>
                         </span>
-                      </span>
-                      {ticket.unreadCount > 0 && (
-                        <span className="mt-1 flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-accent-500 px-1 text-[9.5px] font-bold text-base-950">
-                          {ticket.unreadCount}
-                        </span>
+                        {ticket.unreadCount > 0 && (
+                          <span className="mt-1 flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-accent-500 px-1 text-[9.5px] font-bold text-base-950">
+                            {ticket.unreadCount}
+                          </span>
+                        )}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <div className="shrink-0 border-t border-base-700 p-3">
+              <Button
+                onClick={startNewTicket}
+                disabled={hasOpenTicket}
+                className="w-full"
+                title={hasOpenTicket ? t("support.ticket_limit_message") : undefined}
+              >
+                {t("support.new_ticket_button")}
+              </Button>
+              {hasOpenTicket && (
+                <p className="mt-1.5 text-center text-[11px] text-zinc-500">{t("support.ticket_limit_message")}</p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {view === "new" && (
+          <div className="flex flex-1 flex-col overflow-hidden">
+            <div className="flex-1 overflow-y-auto p-3.5">
+              {!me?.authenticated && (
+                <div className="mb-3">
+                  <label className="mb-1 block text-[12px] text-zinc-500">{t("support.email_prompt_label")}</label>
+                  <input
+                    type="email"
+                    value={guestEmail}
+                    onChange={(e) => setGuestEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    className="focus-ring w-full rounded-xl border border-base-700 bg-base-950 px-3.5 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-500"
+                  />
+                  <p className="mt-1 text-[11px] text-zinc-500">{t("support.email_prompt_note")}</p>
+                </div>
+              )}
+              <p className="text-[12.5px] text-zinc-500">What can we help with?</p>
+            </div>
+            {composerBox(sendNewTicket, t("support.compose_placeholder"))}
+          </div>
+        )}
+
+        {view === "thread" && (
+          <div className="flex flex-1 flex-col overflow-hidden">
+            <div className="flex-1 space-y-3 overflow-y-auto p-3.5">
+              {messages === null ? (
+                <FriendlyLoader />
+              ) : (
+                messages.map((m) => (
+                  <div key={m.id} className={`flex ${m.senderType === "user" ? "justify-end" : "justify-start"}`}>
+                    <div
+                      className={`max-w-[80%] rounded-2xl px-3.5 py-2.5 text-[13px] ${
+                        m.senderType === "user"
+                          ? "rounded-br-md bg-accent-500 text-base-950"
+                          : "rounded-bl-md border border-base-700 bg-base-950 text-zinc-100"
+                      } ${m.id.startsWith("temp-") ? "opacity-60" : ""}`}
+                    >
+                      {m.body && <p className="whitespace-pre-wrap break-words">{m.body}</p>}
+                      {m.hasAttachment && m.attachmentUrl && (
+                        <img
+                          src={m.attachmentUrl}
+                          alt={m.attachmentFilename ?? "Attachment"}
+                          className={`max-h-48 max-w-full rounded-md object-cover ${m.body ? "mt-1.5" : ""}`}
+                        />
                       )}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-          <div className="shrink-0 border-t border-base-700 p-3">
-            <Button
-              onClick={startNewTicket}
-              disabled={hasOpenTicket}
-              className="w-full"
-              title={hasOpenTicket ? t("support.ticket_limit_message") : undefined}
-            >
-              {t("support.new_ticket_button")}
-            </Button>
-            {hasOpenTicket && <p className="mt-1.5 text-center text-[11px] text-zinc-500">{t("support.ticket_limit_message")}</p>}
-          </div>
-        </div>
-      )}
-
-      {view === "new" && (
-        <div className="flex flex-1 flex-col overflow-hidden">
-          <div className="flex-1 overflow-y-auto p-3.5">
-            {!me?.authenticated && (
-              <div className="mb-3">
-                <label className="mb-1 block text-[12px] text-zinc-500">{t("support.email_prompt_label")}</label>
-                <input
-                  type="email"
-                  value={guestEmail}
-                  onChange={(e) => setGuestEmail(e.target.value)}
-                  placeholder="you@example.com"
-                  className="focus-ring w-full rounded-xl border border-base-700 bg-base-950 px-3.5 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-500"
-                />
-                <p className="mt-1 text-[11px] text-zinc-500">{t("support.email_prompt_note")}</p>
-              </div>
-            )}
-            <p className="text-[12.5px] text-zinc-500">What can we help with?</p>
-          </div>
-          {composerBox(sendNewTicket, t("support.compose_placeholder"))}
-        </div>
-      )}
-
-      {view === "thread" && (
-        <div className="flex flex-1 flex-col overflow-hidden">
-          <div className="flex-1 space-y-3 overflow-y-auto p-3.5">
-            {messages === null ? (
-              <FriendlyLoader />
-            ) : (
-              messages.map((m) => (
-                <div key={m.id} className={`flex ${m.senderType === "user" ? "justify-end" : "justify-start"}`}>
-                  <div
-                    className={`max-w-[80%] rounded-2xl px-3.5 py-2.5 text-[13px] ${
-                      m.senderType === "user"
-                        ? "rounded-br-md bg-accent-500 text-base-950"
-                        : "rounded-bl-md border border-base-700 bg-base-950 text-zinc-100"
-                    } ${m.id.startsWith("temp-") ? "opacity-60" : ""}`}
-                  >
-                    {m.body && <p className="whitespace-pre-wrap break-words">{m.body}</p>}
-                    {m.hasAttachment && m.attachmentUrl && (
-                      <img
-                        src={m.attachmentUrl}
-                        alt={m.attachmentFilename ?? "Attachment"}
-                        className={`max-h-48 max-w-full rounded-md object-cover ${m.body ? "mt-1.5" : ""}`}
-                      />
-                    )}
-                    <div className={`mt-1 text-[10px] ${m.senderType === "user" ? "text-base-950/60" : "text-zinc-500"}`}>
-                      {formatTime(m.createdAt)}
+                      <div
+                        className={`mt-1 text-[10px] ${m.senderType === "user" ? "text-base-950/60" : "text-zinc-500"}`}
+                      >
+                        {formatTime(m.createdAt)}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))
-            )}
-            <div ref={threadEndRef} />
+                ))
+              )}
+              <div ref={threadEndRef} />
+            </div>
+            {composerBox(sendReply, t("support.reply_placeholder"))}
           </div>
-          {composerBox(sendReply, t("support.reply_placeholder"))}
-        </div>
-      )}
-    </div>
+        )}
+      </div>
     </>
   );
 }
