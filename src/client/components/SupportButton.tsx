@@ -103,7 +103,7 @@ export function SupportButton() {
           onClick={handleOpen}
           aria-label="Contact support"
           title={t("support.button_label")}
-          className="focus-ring fixed bottom-5 right-5 z-40 flex items-center justify-center rounded-full bg-accent-500 shadow-[0_10px_28px_-8px_rgba(230,57,70,0.55)] transition-transform duration-150 hover:scale-105 hover:bg-accent-400 active:scale-95 sm:bottom-6 sm:right-6"
+          className="focus-ring fixed bottom-[max(1.25rem,calc(env(safe-area-inset-bottom)+0.5rem))] right-5 z-40 flex items-center justify-center rounded-full bg-accent-500 shadow-[0_10px_28px_-8px_rgba(230,57,70,0.55)] transition-transform duration-150 hover:scale-105 hover:bg-accent-400 active:scale-95 sm:bottom-6 sm:right-6"
           style={{ width: 56, height: 56 }}
         >
           {/* Flat, single-shape "friendly chat" badge — same illustration

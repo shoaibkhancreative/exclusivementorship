@@ -117,7 +117,12 @@ export function FullscreenStage({ children }: FullscreenStageProps) {
         // (scrubber, play/pause, its now-inert fullscreen icon) lives along
         // the bottom edge, and a button placed there would sit on top of
         // those controls and interfere with clicking them.
-        className="focus-ring absolute right-3 top-3 z-10 rounded-md bg-black/60 p-2 text-white/90 transition-colors hover:bg-black/80 hover:text-white"
+        // p-2 around a 16px icon was only ~36px of hit area — tight for
+        // what's the ONLY way back out of pseudo-fullscreen on browsers
+        // without the native Fullscreen API (notably iOS Safari). p-3
+        // below `sm` widens that to ~40px; reverts to the original p-2 at
+        // `sm`+ so desktop/tablet is unchanged.
+        className="focus-ring absolute right-3 top-3 z-10 rounded-md bg-black/60 p-3 text-white/90 transition-colors hover:bg-black/80 hover:text-white sm:p-2"
       >
         {pseudoFullscreen ? (
           <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true">

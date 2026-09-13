@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api } from "./api";
 
 // Bundled fallback copy — mirrors worker/lib/content.ts's CONTENT_DEFAULTS.
@@ -160,10 +160,21 @@ export function useContent(): UseContentResult {
     };
   }, []);
 
-  function t(key: string, vars?: Record<string, string | number>): string {
-    const raw = map?.[key] ?? BUNDLED_DEFAULTS[key] ?? key;
-    return interpolate(raw, vars);
-  }
+  // Stable function identity across renders (only changes when the content
+  // map itself changes, e.g. once when /config/content resolves) — this
+  // matters because `t` gets passed into other components' useCallback/
+  // useEffect dependency arrays (e.g. Lesson.tsx's loadLesson). A `t` that
+  // was a brand-new function on every render used to make those effects
+  // re-fire on every render too, wiping state (like the loaded lesson) and
+  // immediately refetching in a loop — visible as a class that loads then
+  // instantly disappears, or never settles at all.
+  const t = useCallback(
+    (key: string, vars?: Record<string, string | number>): string => {
+      const raw = map?.[key] ?? BUNDLED_DEFAULTS[key] ?? key;
+      return interpolate(raw, vars);
+    },
+    [map]
+  );
 
   return { t, loaded: map !== null };
 }

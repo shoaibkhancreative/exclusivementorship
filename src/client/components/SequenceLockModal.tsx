@@ -32,13 +32,18 @@ export function SequenceLockModal({ message, onClose }: { message: string; onClo
 
   return (
     <div
-      className="animate-fade-in fixed inset-0 z-[100] flex items-end justify-center bg-[#1c1b17]/70 backdrop-blur-sm sm:items-center"
+      // Was items-end (bottom sheet) below `sm` — for a small, single-
+      // message popup like this one, that read as "stuck at the bottom
+      // of the screen" rather than a normal centered dialog. Centered on
+      // every screen size now; px-4 keeps it off the screen edges on
+      // narrow phones.
+      className="animate-fade-in fixed inset-0 z-[100] flex items-center justify-center bg-[#1c1b17]/70 px-4 backdrop-blur-sm"
       onClick={handleOverlayClick}
       role="dialog"
       aria-modal="true"
       aria-label="Class locked"
     >
-      <div className="animate-slide-up w-full max-w-xs rounded-t-2xl bg-base-900 p-6 text-center shadow-xl sm:rounded-2xl">
+      <div className="animate-slide-up w-full max-w-xs rounded-2xl bg-base-900 p-6 text-center shadow-xl">
         {/* Same accent-circle-with-lock treatment as the button that opened
             this popup (see Lesson.tsx), just larger — keeps the popup
             visually tied to what was just tapped instead of introducing a

@@ -118,7 +118,12 @@ export function ProfileMenu() {
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="focus-ring rounded-full p-0.5"
+        // p-0.5 around a 34px avatar left the actual tap target only
+        // ~35-38px — a bit tight for the one way to reach the account
+        // menu on a phone. p-1.5 below `lg` widens the hit area without
+        // touching the avatar's own size; reverts to the original p-0.5
+        // at `lg`+ so desktop is unchanged.
+        className="focus-ring rounded-full p-1.5 lg:p-0.5"
         aria-haspopup="true"
         aria-expanded={open}
         aria-label="Account menu"

@@ -162,8 +162,13 @@ export function VideoStage({
         {/* No dark wash over the thumbnail itself anymore — it stays fully
             clear/undimmed. The play button on top is a solid filled circle,
             so it reads fine on its own without a darkened backdrop; only its
-            own hover/active scale gives the click affordance now. */}
-        <span className="relative flex h-10 w-10 flex-none items-center justify-center rounded-full bg-black/55 text-white shadow-md backdrop-blur-[1px] transition-transform duration-150 group-hover:scale-105 group-active:scale-95 sm:h-11 sm:w-11">
+            own hover/active scale gives the click affordance now.
+            This was h-10/w-10 (40px) below `sm` and h-11/w-11 (44px) at
+            `sm`+ — i.e. the one screen size it was actually a bit small on
+            (a narrow phone) was the one size that stayed at 40px. Using
+            the same 44px at every size fixes that without changing
+            anything at `sm` and up. */}
+        <span className="relative flex h-11 w-11 flex-none items-center justify-center rounded-full bg-black/55 text-white shadow-md backdrop-blur-[1px] transition-transform duration-150 group-hover:scale-105 group-active:scale-95">
           <svg width="14" height="15" viewBox="0 0 20 22" fill="currentColor" aria-hidden="true" className="ml-0.5">
             <path d="M1 1.5v19l18-9.5-18-9.5Z" />
           </svg>

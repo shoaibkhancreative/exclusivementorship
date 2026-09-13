@@ -90,6 +90,18 @@ export default function Learn() {
     // Scales up again past lg so the layout doesn't stay pinned to a fixed
     // width on large/multi-monitor desktops.
     //
+    // Top padding is intentionally smaller than the bottom padding (pt-3/
+    // sm:pt-4/lg:pt-5 vs the original symmetric py-6/sm:py-10/lg:py-12) —
+    // the sticky TopBar above already carries its own py-4, so the old
+    // symmetric value stacked on top of that read as a noticeably bigger
+    // gap under the header than anywhere else on the page. Trimming only
+    // the top side (bottom stays exactly as it was, for the footer's
+    // sake) shrinks that gap without touching the lg:mt-6 offset on the
+    // cover card below, which is what keeps the cover thumbnail and the
+    // first class thumbnail lined up at the same height — that offset is
+    // relative to this wrapper, so it moves up by the same amount as
+    // everything else and the alignment holds.
+    //
     // NOTE: `page-enter` used to live on this outer div, which is an
     // ancestor of the `lg:sticky` cover card below. A `transform` on any
     // ancestor of a `position: sticky` element breaks that element's
@@ -103,20 +115,23 @@ export default function Learn() {
     // itself (harmless — only ancestors break sticky) and onto the
     // non-ancestor content beside it, preserving the same fade-in look.
     <>
-    <div className="mx-auto max-w-6xl px-5 py-6 sm:px-6 sm:py-10 lg:py-12 xl:max-w-7xl 2xl:max-w-[90rem]">
+    <div className="mx-auto max-w-6xl px-5 pb-6 pt-3 sm:px-6 sm:pb-10 sm:pt-4 lg:pb-12 lg:pt-5 xl:max-w-7xl 2xl:max-w-[90rem]">
       <div className="lg:grid lg:grid-cols-[320px_1fr] lg:items-start lg:gap-8 xl:grid-cols-[360px_1fr] xl:gap-10">
         {/* Cover card — sticks in place while the class list scrolls past it,
             same "the playlist itself doesn't move" behavior as YouTube's
             playlist header. `page-enter` lives directly on this sticky
             element (not on an ancestor) — see the note above.
-            `lg:mt-16` nudges the card down on desktop only: the class list
-            beside it opens with a chapter heading (h2 + spacing ≈ 53px)
-            before its first thumbnail even starts, plus that row's own
-            ~12px top padding — so without this the card's cover thumbnail
-            sits noticeably higher than the first class thumbnail next to
-            it. 64px (mt-16) lines the two up. Mobile stacks the card above
-            the list instead of beside it, so no nudge is applied there. */}
-        <div className="page-enter lg:sticky lg:top-24 lg:mt-16">
+            `lg:mt-6` nudges the card down on desktop only, just enough to
+            line its cover thumbnail up with the first class thumbnail
+            beside it: the list's first chapter block now reserves 32px
+            above its rows for the small per-chapter info mark (see
+            OutlineList.tsx), plus that row's own ~12px top padding — 44px
+            total — while the card's own padding before its thumbnail is
+            20px (p-5). 24px (mt-6) closes that gap so both thumbnails
+            start at the same height, the way YouTube's playlist header and
+            its video list always do. Mobile stacks the card above the
+            list instead of beside it, so no nudge is applied there. */}
+        <div className="page-enter lg:sticky lg:top-24 lg:mt-6">
           <div className="rounded-md border border-base-800 bg-base-900 p-4 shadow-[0_4px_16px_-4px_rgba(28,27,23,0.14),0_1px_3px_rgba(28,27,23,0.08)] sm:p-5">
             <div className="relative mb-4 aspect-video overflow-hidden rounded-md bg-base-800 bg-cover bg-center shadow-[0_1px_3px_rgba(28,27,23,0.16),0_1px_2px_rgba(28,27,23,0.10)] ring-1 ring-black/10 sm:mb-5">
               {cover?.thumbnailUrl ? (
@@ -144,29 +159,32 @@ export default function Learn() {
               )}
             </div>
 
-            <p className="kicker mb-2">{t("learn.progress_kicker")}</p>
-            <h1 className="mb-4 break-words text-lg font-semibold leading-snug text-zinc-50 sm:text-xl lg:text-2xl">
+            {/* Title first, exactly like a YouTube playlist header — no
+                small caps label above it anymore (that just repeated
+                whatever this page's title already says). Right under it,
+                one plain metadata line standing in for YouTube's own
+                "Playlist • N videos • views" row: how many classes, and
+                how far in. */}
+            <h1 className="mb-1.5 break-words text-lg font-semibold leading-snug text-zinc-50 sm:text-xl lg:text-2xl">
               {t("learn.page_title")}
             </h1>
+            <p className="mb-4 text-[13px] text-zinc-500 sm:mb-5">
+              {t("learn.classes_count_label", { count: total })}
+              <span className="mx-1.5 text-zinc-700">•</span>
+              <span className="font-medium text-accent-300">{progressPercent}%</span>
+            </p>
 
-            {/* Real progress bar — completed / total classes, always visible.
-                This replaces both the old plain progress line and the
-                "X free classes left" text, which is removed entirely. */}
+            {/* Plain progress bar — the count and percent are already said
+                above, so this is purely the visual "how far in" cue, not
+                a second copy of the same numbers. */}
             <div className="mb-6">
-              <div className="mb-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[13px] sm:text-sm">
-                <span className="text-zinc-300">
-                  {completedCount} / {total} <span className="text-zinc-500">{t("learn.progress_label")}</span>
-                </span>
-                <span className="rounded-full bg-accent-500/12 px-2 py-0.5 text-[12px] font-semibold tabular-nums text-accent-300">
-                  {progressPercent}%
-                </span>
-              </div>
               <div
                 className="h-2 w-full overflow-hidden rounded-full bg-base-800 shadow-[inset_0_1px_2px_rgba(28,27,23,0.15)]"
                 role="progressbar"
                 aria-valuenow={progressPercent}
                 aria-valuemin={0}
                 aria-valuemax={100}
+                aria-label={t("learn.progress_label")}
               >
                 <div
                   className="h-full rounded-full bg-gradient-to-r from-accent-500 to-accent-400 transition-all duration-300"

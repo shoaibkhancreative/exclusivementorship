@@ -14,6 +14,26 @@ const THREAD_POLL_MS = 4_000;
 
 type View = "list" | "new" | "thread";
 
+/**
+ * Tracks whether the viewport is below Tailwind's `sm` breakpoint (640px) —
+ * needed because this panel behaves completely differently on either side
+ * of that breakpoint (a near-fullscreen mobile sheet vs. a small anchored
+ * desktop popover, see the root className below) and a few *behaviors*
+ * (backdrop, Escape-to-close, body scroll lock) should only apply to the
+ * mobile sheet, not the desktop popover, to keep desktop exactly as it was.
+ */
+function useIsMobileViewport(): boolean {
+  const [isMobile, setIsMobile] = useState(() => typeof window !== "undefined" && window.innerWidth < 640);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 639px)");
+    const handleChange = () => setIsMobile(mq.matches);
+    handleChange();
+    mq.addEventListener("change", handleChange);
+    return () => mq.removeEventListener("change", handleChange);
+  }, []);
+  return isMobile;
+}
+
 function formatTime(iso: string): string {
   const d = new Date(iso);
   return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
@@ -117,6 +137,29 @@ export function SupportChatPanel({ fullscreen, onToggleFullscreen, onMinimize, o
   useEffect(() => {
     threadEndRef.current?.scrollIntoView({ block: "end" });
   }, [messages, view]);
+
+  const isMobileViewport = useIsMobileViewport();
+
+  // On mobile this panel is a near-fullscreen sheet — every other
+  // full/near-full-screen popup on the site (UnlockModal, SequenceLockModal)
+  // closes on Escape and locks background scroll while open; this one was
+  // missing both, which is what made it feel out of step with the rest of
+  // the site's modals. Scoped to mobile only (via isMobileViewport) since
+  // at `sm`+ this is just a small anchored popover, not a takeover, and
+  // that desktop behavior should stay exactly as it was.
+  useEffect(() => {
+    if (!isMobileViewport) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") onMinimize();
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isMobileViewport, onMinimize]);
 
   const hasOpenTicket = (tickets ?? []).length > 0;
 
@@ -244,7 +287,11 @@ export function SupportChatPanel({ fullscreen, onToggleFullscreen, onMinimize, o
   }
 
   const composerBox = (onSend: () => void, placeholder: string) => (
-    <div className="border-t border-base-700 bg-base-900 p-3">
+    // pb-[max(...)] falls back to the original 0.75rem (p-3's bottom) on
+    // any device without a bottom safe-area inset (i.e. everywhere except
+    // notched/gesture-bar phones), so this only ever adds space, never
+    // removes it.
+    <div className="border-t border-base-700 bg-base-900 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
       {pendingAttachment && (
         <div className="mb-2 flex items-center gap-2 rounded-xl border border-base-700 bg-base-950 p-1.5">
           <img src={pendingAttachment.previewUrl} alt="Attachment preview" className="h-10 w-10 rounded-lg object-cover" />
@@ -309,21 +356,35 @@ export function SupportChatPanel({ fullscreen, onToggleFullscreen, onMinimize, o
   );
 
   return (
-    <div
-      style={{ transformOrigin: "bottom right" }}
-      // Mobile opens like the site's other bottom sheets (animate-slide-up,
-      // e.g. UnlockModal/SequenceLockModal); at sm+ it becomes an anchored
-      // popover growing from its corner (animate-scale-in, same as
-      // ProfileMenu). The shadow is the same warm/muted cream-tinted one
-      // ProfileMenu uses for its popover, not a generic black shadow-2xl.
-      className={`animate-slide-up sm:animate-scale-in fixed z-[100] flex flex-col overflow-hidden border border-base-700 bg-base-900 shadow-2xl shadow-base-800/40 ${
-        fullscreen
-          ? "inset-0 rounded-none"
-          : "inset-x-3 bottom-3 top-16 rounded-t-[28px] rounded-b-[28px] sm:inset-x-auto sm:top-auto sm:bottom-24 sm:right-6 sm:h-[min(560px,calc(100vh-7rem))] sm:w-[min(392px,calc(100vw-2.5rem))] sm:rounded-[28px]"
-      }`}
-      role="dialog"
-      aria-label="Support chat"
-    >
+    <>
+      {/* Backdrop — mobile only (see isMobileViewport above). Without this
+          the panel used to just float over the page with the background
+          still fully interactive/scrollable underneath it, which is what
+          made it feel unfinished compared to every other popup on the
+          site. Tapping it minimizes the panel, same as tapping outside
+          UnlockModal/SequenceLockModal closes those. */}
+      {isMobileViewport && (
+        <div
+          className="animate-fade-in fixed inset-0 z-[99] bg-[#1c1b17]/60 backdrop-blur-sm"
+          onClick={onMinimize}
+          aria-hidden="true"
+        />
+      )}
+      <div
+        style={{ transformOrigin: "bottom right" }}
+        // Mobile opens like the site's other bottom sheets (animate-slide-up,
+        // e.g. UnlockModal/SequenceLockModal); at sm+ it becomes an anchored
+        // popover growing from its corner (animate-scale-in, same as
+        // ProfileMenu). The shadow is the same warm/muted cream-tinted one
+        // ProfileMenu uses for its popover, not a generic black shadow-2xl.
+        className={`animate-slide-up sm:animate-scale-in fixed z-[100] flex flex-col overflow-hidden border border-base-700 bg-base-900 shadow-2xl shadow-base-800/40 ${
+          fullscreen
+            ? "inset-0 rounded-none"
+            : "inset-x-3 bottom-3 top-16 rounded-t-[28px] rounded-b-[28px] sm:inset-x-auto sm:top-auto sm:bottom-24 sm:right-6 sm:h-[min(560px,calc(100vh-7rem))] sm:w-[min(392px,calc(100vw-2.5rem))] sm:rounded-[28px]"
+        }`}
+        role="dialog"
+        aria-label="Support chat"
+      >
       {/* Header */}
       <div className="flex shrink-0 items-center gap-2 border-b border-base-700 bg-base-950 px-3.5 py-3">
         {view !== "list" ? (
@@ -512,5 +573,6 @@ export function SupportChatPanel({ fullscreen, onToggleFullscreen, onMinimize, o
         </div>
       )}
     </div>
+    </>
   );
 }

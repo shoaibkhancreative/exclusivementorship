@@ -311,17 +311,18 @@ export function UnlockModal({ onClose }: { onClose: () => void }) {
 
   return (
     <div
-      className="animate-fade-in fixed inset-0 z-[100] flex items-end justify-center bg-[#2b1a10]/50 backdrop-blur-sm sm:items-center"
+      // Was items-end (bottom sheet) below `sm` — felt "stuck to the
+      // bottom" rather than a centered dialog on a phone. Centered on
+      // every screen size now; px-4 keeps it off the screen edges on
+      // narrow phones (previously relied entirely on items-end flush to
+      // the edge, so there was no horizontal margin to speak of either).
+      className="animate-fade-in fixed inset-0 z-[100] flex items-center justify-center bg-[#2b1a10]/50 px-4 backdrop-blur-sm"
       onClick={handleOverlayClick}
       role="dialog"
       aria-modal="true"
       aria-label="Unlock Exclusive Mentorship"
     >
-      <div className="animate-slide-up relative max-h-[92vh] w-full overflow-hidden overflow-y-auto rounded-t-[28px] bg-base-900 shadow-[0_24px_70px_-20px_rgba(230,57,70,0.35)] sm:max-w-sm sm:rounded-[28px]">
-        <div className="flex justify-center pb-1 pt-3 sm:hidden">
-          <span className="h-1.5 w-10 rounded-full bg-base-700" />
-        </div>
-
+      <div className="animate-slide-up relative max-h-[85vh] w-full max-w-sm overflow-hidden overflow-y-auto rounded-[28px] bg-base-900 shadow-[0_24px_70px_-20px_rgba(230,57,70,0.35)]">
         <button
           type="button"
           onClick={onClose}
@@ -331,7 +332,7 @@ export function UnlockModal({ onClose }: { onClose: () => void }) {
           ✕
         </button>
 
-        <div className="px-6 pb-6 pt-8 sm:pt-9">
+        <div className="px-6 pb-6 pt-9">
           {step === "offer" ? (
             <div className="space-y-6 text-center">
               <GiftBadge />

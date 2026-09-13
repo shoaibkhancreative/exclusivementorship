@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import type { OutlineItem, SemesterMeta } from "../lib/api";
 import { IllustrationBadge } from "./IllustrationBadge";
@@ -26,6 +26,23 @@ function CheckGlyph() {
   return (
     <svg width="10" height="10" viewBox="0 0 14 14" aria-hidden="true">
       <path d="M2.5 7.2 5.4 10 11.5 3.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+    </svg>
+  );
+}
+
+/**
+ * Small "i" info mark — a plain outline circle with a dot and stem, same
+ * flat single-stroke language as every other glyph on this row (lock/
+ * check/play above). Sits as a quiet corner affordance on each chapter's
+ * tinted block; tapping it is the only way to see that chapter's name and
+ * description, so nothing else needs to print that text inline.
+ */
+function InfoGlyph() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <circle cx="8" cy="8" r="6.4" stroke="currentColor" strokeWidth="1.4" />
+      <path d="M8 7.3v4.3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      <circle cx="8" cy="4.9" r="0.9" fill="currentColor" />
     </svg>
   );
 }
@@ -192,6 +209,31 @@ export function OutlineList({
   const activeRowRef = useRef<HTMLDivElement>(null);
   const { t } = useContent();
 
+  // Which chapter's info popover is open (at most one at a time) — the
+  // *only* place a chapter's name/description shows now. No header text,
+  // no dropdown/accordion sits in the row flow itself; a chapter is
+  // otherwise just a subtly tinted band of rows, closer to a plain
+  // YouTube playlist than a sectioned course outline.
+  const [openInfoChapter, setOpenInfoChapter] = useState<string | null>(null);
+  const chapterBlockRefs = useRef(new Map<string, HTMLDivElement>());
+
+  useEffect(() => {
+    if (!openInfoChapter) return;
+    function handlePointerDown(e: MouseEvent) {
+      const el = chapterBlockRefs.current.get(openInfoChapter as string);
+      if (el && !el.contains(e.target as Node)) setOpenInfoChapter(null);
+    }
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpenInfoChapter(null);
+    }
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [openInfoChapter]);
+
   useEffect(() => {
     if (!scrollActiveIntoView || !activeRowRef.current) return;
     // Instant, not smooth — this panel is meant to already look "opened
@@ -206,85 +248,168 @@ export function OutlineList({
     return <EmptyOutline message={t("learn.empty_state")} />;
   }
 
-  return (
-    <div>
-      {items.map((item, index) => {
-        // Locked rows are still navigable (see the Link below) — this flag
-        // only controls the row's visual treatment, not whether it can be
-        // clicked.
-        const locked = item.state === "locked";
-        const isActive = item.lessonNumber === activeLessonNumber;
-        const isNextUp = item.state === "current" && !isActive;
+  // Index within the *whole* list (not the chapter) — kept for the same
+  // staggered entrance timing the flat list always used, regardless of
+  // which chapter a row happens to render inside once grouped.
+  const flatIndexByLessonNumber = new Map(items.map((item, i) => [item.lessonNumber, i]));
 
-        const prevItem = index > 0 ? items[index - 1] : null;
-        const showHeader = !prevItem || item.chapterName !== prevItem.chapterName;
-        const semester = semesterByChapter.get(item.chapterName);
+  const renderRow = (item: OutlineItem) => {
+    // Locked rows are still navigable (see the Link below) — this flag
+    // only controls the row's visual treatment, not whether it can be
+    // clicked.
+    const locked = item.state === "locked";
+    const isActive = item.lessonNumber === activeLessonNumber;
+    const isNextUp = item.state === "current" && !isActive;
+    const index = flatIndexByLessonNumber.get(item.lessonNumber) ?? 0;
 
-        const header = showHeader ? (
-          <div className={`border-b border-base-800 ${compact ? "pb-2" : "pb-3"} ${index === 0 ? "mb-3" : `mb-3 ${compact ? "mt-6" : "mt-10"}`}`}>
-            <h2 className={`font-semibold tracking-tight text-zinc-100 ${compact ? "text-[13px]" : "text-lg"}`}>
-              {semester ? semester.name : item.chapterName}
-            </h2>
-            {!compact && semester?.tagline && <p className="mt-1 text-[13px] text-zinc-500">{semester.tagline}</p>}
-          </div>
-        ) : null;
-
-        // The active row gets a faint accent wash so "where you are" reads
-        // instantly on a long list, not just from the thumbnail overlay.
-        // A "next up" (but not currently open) row gets a subtler dot on
-        // its index instead — present but not competing with the active row.
-        const row = (
-          <div
-            className={`flex items-center rounded-md ${compact ? "gap-2.5 px-2 py-2" : "gap-3.5 px-3 py-3"} ${
-              locked ? "text-zinc-500" : "text-zinc-100"
-            } ${isActive ? "bg-accent-500/[0.07]" : ""}`}
+    // The active row gets a faint accent wash so "where you are" reads
+    // instantly on a long list, not just from the thumbnail overlay.
+    // A "next up" (but not currently open) row gets a subtler dot on
+    // its index instead — present but not competing with the active row.
+    // The index number itself only prints in the compact "up next" panel —
+    // that matches YouTube's own split: its playlist page never numbers
+    // rows (just thumbnail + duration badge), only its watch-page sidebar
+    // does.
+    const row = (
+      <div
+        className={`flex items-center rounded-md ${compact ? "gap-2.5 px-2 py-2" : "gap-3.5 px-3 py-3"} ${
+          locked ? "text-zinc-500" : "text-zinc-100"
+        } ${isActive ? "bg-accent-500/[0.07]" : ""}`}
+      >
+        {compact && (
+          <span
+            className={`flex-none w-4 pt-0 text-center text-[11px] tabular-nums ${
+              isActive || isNextUp ? "font-medium text-accent-500" : "text-zinc-600"
+            }`}
           >
-            <span
-              className={`flex-none pt-0 text-center tabular-nums ${compact ? "w-4 text-[11px]" : "w-5 text-[13px]"} ${
-                isActive || isNextUp ? "font-medium text-accent-500" : "text-zinc-600"
-              }`}
-            >
-              {String(item.lessonNumber).padStart(2, "0")}
-            </span>
+            {String(item.lessonNumber).padStart(2, "0")}
+          </span>
+        )}
 
-            <Thumbnail item={item} isActive={isActive} size={compact ? "compact" : "full"} />
+        <Thumbnail item={item} isActive={isActive} size={compact ? "compact" : "full"} />
 
-            <div className="min-w-0 flex-1">
-              <div
-                className={`${
-                  compact ? "line-clamp-2 text-[13px] leading-snug" : "line-clamp-2 text-[14px] leading-snug sm:truncate sm:text-[15px] sm:leading-normal"
-                } ${isActive ? "font-medium text-accent-400" : ""}`}
-              >
-                {item.title}
-              </div>
-              {!compact && item.tagline && <div className="mt-0.5 line-clamp-1 text-[13px] text-zinc-500">{item.tagline}</div>}
-              {compact && locked && <div className="mt-0.5 text-[11px] text-zinc-600">Locked</div>}
-            </div>
+        <div className="min-w-0 flex-1">
+          <div
+            className={`${
+              compact ? "line-clamp-2 text-[13px] leading-snug" : "line-clamp-2 text-[14px] leading-snug sm:truncate sm:text-[15px] sm:leading-normal"
+            } ${isActive ? "font-medium text-accent-400" : ""}`}
+          >
+            {item.title}
           </div>
-        );
+          {!compact && item.tagline && <div className="mt-0.5 line-clamp-1 text-[13px] text-zinc-500">{item.tagline}</div>}
+          {compact && locked && <div className="mt-0.5 text-[11px] text-zinc-600">Locked</div>}
+        </div>
+      </div>
+    );
 
-        // Cascade the first screenful of rows in one after another instead
-        // of every row snapping in at once; capped so a long course list
-        // doesn't leave the last rows waiting on a visible delay.
-        const staggerStyle = { "--delay": `${Math.min(index, 10) * 30}ms` } as CSSProperties;
+    // Cascade the first screenful of rows in one after another instead
+    // of every row snapping in at once; capped so a long course list
+    // doesn't leave the last rows waiting on a visible delay.
+    const staggerStyle = { "--delay": `${Math.min(index, 10) * 30}ms` } as CSSProperties;
+
+    return (
+      <div key={item.lessonNumber} ref={isActive ? activeRowRef : undefined} className="list-item-enter" style={staggerStyle}>
+        {/* Locked rows are navigable too — the Lesson page itself shows
+            the thumbnail behind a locked overlay and explains why
+            (finish the previous class, or unlock the mentorship), so
+            there's no dead end here anymore. */}
+        <Link
+          to={`/lesson/${item.lessonNumber}`}
+          className={`focus-ring block rounded-md transition-all duration-150 hover:bg-base-900/50 ${
+            compact ? "-mx-2" : "-mx-3 hover:translate-x-0.5"
+          }`}
+          aria-current={isActive ? "true" : undefined}
+          aria-disabled={locked ? "true" : undefined}
+        >
+          {row}
+        </Link>
+      </div>
+    );
+  };
+
+  // Compact (Lesson-page "up next" panel): a flat, continuous numbered
+  // list with no section text anywhere — this is exactly how YouTube's
+  // own watch-page sidebar behaves, it never prints a chapter/section
+  // label between entries, just number + thumbnail + title straight down
+  // the list. (The Learn/playlist page below drops numbers instead, to
+  // match YouTube's *other* list style — see the "full" branch.)
+  if (compact) {
+    return <div>{items.map((item) => renderRow(item))}</div>;
+  }
+
+  // Group consecutive items by chapter — used below only to decide the
+  // tinted band boundaries and which name/tagline the info popover shows,
+  // never rendered as a heading in the row flow itself.
+  const groups: { chapterName: string; semester?: SemesterMeta; groupItems: OutlineItem[] }[] = [];
+  for (const item of items) {
+    const lastGroup = groups[groups.length - 1];
+    if (lastGroup && lastGroup.chapterName === item.chapterName) {
+      lastGroup.groupItems.push(item);
+    } else {
+      groups.push({ chapterName: item.chapterName, semester: semesterByChapter.get(item.chapterName), groupItems: [item] });
+    }
+  }
+
+  // Full (Learn index page): a flat, YouTube-plain row list — no chapter
+  // title, no tagline line, no collapse control anywhere in the row flow.
+  // Chapters are told apart only by a soft background tint on their block
+  // of rows (cycling through a small set of brand-only, low-opacity
+  // washes so it never reads as a "new" color, just a lighter/darker
+  // band), plus a small "i" mark in the corner of each block — the one
+  // and only place a chapter's name and description appear, in a small
+  // popover, on demand.
+  const CHAPTER_TINTS = ["bg-transparent", "bg-base-800/35", "bg-accent-500/[0.045]", "bg-highlight-500/[0.06]"];
+
+  return (
+    <div className="space-y-3">
+      {groups.map((group, groupIndex) => {
+        const label = group.semester?.name ?? group.chapterName;
+        const tagline = group.semester?.tagline;
+        const tint = CHAPTER_TINTS[groupIndex % CHAPTER_TINTS.length];
+        const infoOpen = openInfoChapter === group.chapterName;
 
         return (
-          <div key={item.lessonNumber} ref={isActive ? activeRowRef : undefined} className="list-item-enter" style={staggerStyle}>
-            {header}
-            {/* Locked rows are navigable too — the Lesson page itself shows
-                the thumbnail behind a locked overlay and explains why
-                (finish the previous class, or unlock the mentorship), so
-                there's no dead end here anymore. */}
-            <Link
-              to={`/lesson/${item.lessonNumber}`}
-              className={`focus-ring block rounded-md transition-all duration-150 hover:bg-base-900/50 ${
-                compact ? "-mx-2" : "-mx-3 hover:translate-x-0.5"
-              }`}
-              aria-current={isActive ? "true" : undefined}
-              aria-disabled={locked ? "true" : undefined}
+          <div
+            key={group.chapterName}
+            ref={(el) => {
+              if (el) chapterBlockRefs.current.set(group.chapterName, el);
+              else chapterBlockRefs.current.delete(group.chapterName);
+            }}
+            // pt-10 (up from pt-8) only applies below `lg` — the extra 8px
+            // is just breathing room for the enlarged info button above
+            // (see InfoGlyph button below). At `lg`+ this reverts to the
+            // original pt-8, which Learn.tsx's cover-card `lg:mt-6` offset
+            // is pixel-tuned against (see the comment there) — changing it
+            // there too would throw off the cover/first-thumbnail
+            // alignment on desktop, which is out of scope for this pass.
+            className={`relative rounded-2xl px-1 pb-1 pt-10 sm:px-2 lg:pt-8 ${tint}`}
+          >
+            {/* The only entry point to this chapter's name/description —
+                a quiet corner mark, not a header competing with the rows
+                for attention. */}
+            <button
+              type="button"
+              onClick={() => setOpenInfoChapter((cur) => (cur === group.chapterName ? null : group.chapterName))}
+              aria-expanded={infoOpen}
+              aria-label={`${label} — chapter details`}
+              // A quiet corner mark, but it's the ONLY way to reach a
+              // chapter's name/description — h-6/w-6 (24px) was well under
+              // a comfortable tap target on a phone. Grown to h-9/w-9
+              // (36px) below `lg` only; reverts to the original h-6/w-6 at
+              // `lg`+ so desktop's look is byte-for-byte unchanged.
+              className="focus-ring absolute right-1 top-1 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-base-950/10 text-zinc-500 transition-colors hover:bg-base-950/20 hover:text-zinc-700 lg:right-2 lg:top-2 lg:h-6 lg:w-6"
             >
-              {row}
-            </Link>
+              <InfoGlyph />
+            </button>
+
+            {infoOpen && (
+              <div className="animate-scale-in absolute right-1 top-11 z-20 w-64 max-w-[85vw] origin-top-right rounded-xl border border-base-700 bg-base-900 p-3.5 shadow-lg shadow-base-800/30 lg:right-2 lg:top-9">
+                <p className="text-[13px] font-semibold text-zinc-100">{label}</p>
+                {tagline && <p className="mt-1 text-[12px] leading-snug text-zinc-500">{tagline}</p>}
+              </div>
+            )}
+
+            {group.groupItems.map((item) => renderRow(item))}
           </div>
         );
       })}

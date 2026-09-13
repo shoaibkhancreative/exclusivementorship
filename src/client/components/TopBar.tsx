@@ -34,16 +34,26 @@ export function TopBar() {
   const [logoBroken, setLogoBroken] = useState(false);
 
   // The Dashboard (Learn, rendered at both "/" once logged in and "/learn")
-  // and Lesson pages use a wider content stage (max-w-6xl, growing further
-  // at xl/2xl) than every other page (max-w-4xl) — see Learn.tsx/Lesson.tsx.
-  // The header used to stay a fixed max-w-4xl everywhere, which made it
-  // visibly narrower than the content it sits above on those two pages.
-  // Matching the header's max-width to whichever page is actually showing
-  // keeps the header edge-aligned with the content edge on every page,
-  // instead of hardcoding one width for all of them.
-  const isWideContentPage =
-    pathname.startsWith("/learn") || pathname.startsWith("/lesson") || (pathname === "/" && Boolean(me?.authenticated));
-  const containerWidthClass = isWideContentPage ? "max-w-6xl xl:max-w-7xl 2xl:max-w-[90rem]" : "max-w-4xl";
+  // and Lesson pages use a wider content stage than every other page
+  // (max-w-4xl) — see Learn.tsx/Lesson.tsx. The header used to stay a
+  // fixed max-w-4xl everywhere, which made it visibly narrower than the
+  // content it sits above on those two pages. Matching the header's
+  // max-width to whichever page is actually showing keeps the header
+  // edge-aligned with the content edge on every page, instead of
+  // hardcoding one width for all of them.
+  //
+  // Lesson now uses its own near-full-width, viewport-scaled stage
+  // (max-w-[min(96vw,1920px)] — see Lesson.tsx) rather than Learn's
+  // fixed max-w-6xl/xl:max-w-7xl/2xl:max-w-[90rem] steps, so it needs its
+  // own branch here to keep the header lined up with it specifically —
+  // Learn/root keep the narrower playlist-style width unchanged.
+  const isLessonPage = pathname.startsWith("/lesson");
+  const isWideContentPage = pathname.startsWith("/learn") || isLessonPage || (pathname === "/" && Boolean(me?.authenticated));
+  const containerWidthClass = isLessonPage
+    ? "max-w-[min(96vw,1920px)]"
+    : isWideContentPage
+      ? "max-w-6xl xl:max-w-7xl 2xl:max-w-[90rem]"
+      : "max-w-4xl";
 
   return (
     // Sticky + a translucent brand-cream backdrop: on scroll the header
@@ -51,19 +61,28 @@ export function TopBar() {
     // scrolling away and reappearing.
     <header className="sticky top-0 z-40 border-b border-base-800 bg-base-950/85 shadow-sm shadow-base-800/20 backdrop-blur-md">
       <div className={`mx-auto flex items-center justify-between px-5 py-4 sm:px-6 ${containerWidthClass}`}>
-        <Link to="/" className="focus-ring flex items-center gap-2.5 rounded-full text-[15px] font-semibold tracking-tight text-zinc-100">
+        {/* min-w-0 lets this shrink below its content width instead of
+            forcing the header to overflow horizontally on a narrow phone —
+            flex children don't shrink by default, so without this an
+            admin-set long site name could push the nav off-screen at
+            ~360px viewports. truncate on the name span below does the
+            actual clipping once there's no room left. */}
+        <Link
+          to="/"
+          className="focus-ring flex min-w-0 items-center gap-2.5 rounded-full text-[15px] font-semibold tracking-tight text-zinc-100"
+        >
           {/* Logo is optional (Phase 4) — an admin can paste a URL from
               Settings and it replaces the plain text brand name; until
               then a soft rounded chip with a flat brand mark stands in for
               it, so the wordmark is never left floating on its own. */}
           {config?.siteLogoUrl && !logoBroken ? (
-            <img src={config.siteLogoUrl} alt={t("site.brand_name")} className="h-6 w-auto" onError={() => setLogoBroken(true)} />
+            <img src={config.siteLogoUrl} alt={t("site.brand_name")} className="h-6 w-auto shrink-0" onError={() => setLogoBroken(true)} />
           ) : (
             <>
               <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-500/10 text-accent-500">
                 <BrandMark />
               </span>
-              <span>{t("site.brand_name")}</span>
+              <span className="truncate">{t("site.brand_name")}</span>
             </>
           )}
         </Link>

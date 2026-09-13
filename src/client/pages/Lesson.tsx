@@ -120,15 +120,31 @@ export default function Lesson() {
   const canGoPrev = Boolean(prevItem);
   const canGoNext = Boolean(nextItem);
 
+  // Previous/Next is mobile-only now (see the row below) — the desktop
+  // playlist panel already covers moving between classes there, and
+  // "Back to Home" isn't shown on any breakpoint anymore (the header's
+  // own logo/Home link already covers that). Sized for a comfortable
+  // touch target now that it's not sharing a row with a third button.
   const navButtonClass =
-    "focus-ring rounded-md border border-base-800 bg-base-900 px-2.5 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:border-base-600 hover:bg-base-800 hover:text-zinc-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-base-800 disabled:hover:bg-base-900 disabled:hover:text-zinc-300 disabled:active:scale-100";
+    "focus-ring flex items-center justify-center rounded-md border border-base-800 bg-base-900 px-3 py-2.5 text-sm font-medium text-zinc-300 transition-colors hover:border-base-600 hover:bg-base-800 hover:text-zinc-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-base-800 disabled:hover:bg-base-900 disabled:hover:text-zinc-300 disabled:active:scale-100";
 
   return (
     // A wider stage than the rest of the site (matched by the Learn page)
     // so the video and the playlist panel can sit side by side on desktop —
     // the class content itself keeps reading top-to-bottom just as before.
-    // Scales up again past lg so the layout doesn't stay pinned to a fixed
-    // width on large/multi-monitor desktops.
+    //
+    // Unlike Learn.tsx, this stage isn't capped at a fixed Tailwind
+    // breakpoint (max-w-6xl/7xl/90rem) — a watch page's video player is
+    // the whole point of the page, so it should keep growing with the
+    // monitor the way YouTube's own watch page does, not stop widening
+    // partway through a 1440p/4K/ultrawide screen. `max-w-[min(96vw,1920px)]`
+    // scales continuously with the viewport (96vw, matching the small
+    // side margin YouTube itself leaves) instead of jumping between fixed
+    // breakpoint widths, capped at 1920px so the video/text don't stretch
+    // to an unreadable size on a genuinely huge or ultrawide display. On
+    // mobile this is a no-op (96vw is already far wider than a phone
+    // screen, same as the old max-w-6xl was) — mobile keeps the exact
+    // same single-column, viewport-fit layout as before.
     //
     // NOTE: `.page-enter` (globals.css) animates `transform: translateY(...)`
     // and holds that transform on the element permanently afterwards
@@ -139,61 +155,31 @@ export default function Lesson() {
     // becomes the sticky element's containing block instead of the
     // viewport/scrollport. That's exactly what was happening here: this
     // outer div used to carry `page-enter` and is an ancestor of the
-    // `sticky` nav+video wrapper below, so the video could never actually
+    // `sticky` video wrapper below, so the video could never actually
     // stick — it just scrolled away like a normal block. Fixed by moving
     // `page-enter` off this ancestor and onto the sticky element itself
     // (a transform on the sticky element itself is harmless; only
     // ancestors break it) and onto the non-ancestor content below it, so
     // the same fade-in look is preserved without breaking sticky.
-    <div className="mx-auto max-w-6xl px-4 py-5 sm:px-6 sm:py-10 xl:max-w-7xl 2xl:max-w-[90rem]">
+    <div className="mx-auto w-full max-w-[min(96vw,1920px)] px-4 py-5 sm:px-6 sm:py-10">
       <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start lg:gap-8 xl:grid-cols-[minmax(0,1fr)_420px]">
         <div>
-          {/* Pinned on mobile only: the nav row + video/player stay fixed
-              at the top of the screen while everything else (title,
+          {/* Pinned on mobile only: the video/player itself stays fixed at
+              the top of the screen while everything else (nav row, title,
               description, playlist) scrolls underneath — same idea as a
-              mobile video app keeping the player in place. top-16 clears
-              the site's own sticky TopBar (see TopBar.tsx). Reset back to
+              mobile video app keeping the player in place, and the reason
+              the Back/Previous/Next row below isn't inside this box
+              anymore: it used to sit above the video inside this same
+              sticky block, which meant it stayed pinned on top of the
+              player too. Moving it out keeps the video the only thing
+              that freezes, with nothing overlapping it. top-16 clears the
+              site's own sticky TopBar (see TopBar.tsx). Reset back to
               normal document flow at the lg breakpoint, where the two-
               column layout already keeps things comfortably in view.
               `page-enter` lives directly on this sticky element (not on an
               ancestor) — see the note above for why that distinction is
               what makes sticky actually work here. */}
-          <div className="page-enter sticky top-16 z-10 -mx-4 bg-base-950 px-4 pb-3 pt-3 sm:-mx-6 sm:px-6 lg:static lg:z-auto lg:mx-0 lg:bg-transparent lg:px-0 lg:pb-0 lg:pt-0">
-            {/* Back to Home / Previous / Next — one compact row, all three
-                buttons the same small size. No more breadcrumb text above
-                this row (chapter name / lesson number was removed as
-                clutter). */}
-            <div className="mb-3 flex items-center justify-between gap-2 lg:mb-5">
-              <button type="button" onClick={() => navigate("/")} className={navButtonClass}>
-                <span className="inline-flex items-center gap-1">
-                  <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                    <path d="M10 3.5 5 8l5 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                  {t("lesson.back_to_home")}
-                </span>
-              </button>
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  disabled={!canGoPrev}
-                  onClick={() => prevItem && navigate(`/lesson/${prevItem.lessonNumber}`)}
-                  className={navButtonClass}
-                >
-                  {t("lesson.nav_previous")}
-                </button>
-                <button
-                  type="button"
-                  disabled={!canGoNext}
-                  onClick={() => nextItem && navigate(`/lesson/${nextItem.lessonNumber}`)}
-                  title={!canGoNext ? t("lesson.nav_next_title_last") : undefined}
-                  className={navButtonClass}
-                >
-                  {t("lesson.nav_next")}
-                </button>
-              </div>
-            </div>
-
+          <div className="page-enter sticky top-16 z-10 -mx-4 border-b border-base-800/70 bg-base-950 px-4 pb-3 pt-3 sm:-mx-6 sm:px-6 lg:static lg:z-auto lg:mx-0 lg:border-b-0 lg:bg-transparent lg:px-0 lg:pb-0 lg:pt-0">
             {lesson.isLocked ? (
               <div>
                 {/* The thumbnail is always shown, even fully locked — it's
@@ -233,7 +219,12 @@ export default function Lesson() {
                           ? t("lesson.locked_payment_message_bn")
                           : t("lesson.locked_sequence_message_bn")
                       }
-                      className="focus-ring flex h-10 w-10 flex-none items-center justify-center rounded-full bg-accent-500 text-base-950 shadow-md transition-transform duration-150 hover:scale-105 active:scale-95 sm:h-11 sm:w-11"
+                      // Was h-10/w-10 (40px) below `sm`, h-11/w-11 (44px)
+                      // at `sm`+ — same fix as VideoStage's play button:
+                      // 44px everywhere so the narrow-phone size (the one
+                      // that was actually a bit small) matches everything
+                      // else instead of being the outlier.
+                      className="focus-ring flex h-11 w-11 flex-none items-center justify-center rounded-full bg-accent-500 text-base-950 shadow-md transition-transform duration-150 hover:scale-105 active:scale-95"
                     >
                       <svg width="15" height="16" viewBox="0 0 12 13" aria-hidden="true">
                         <rect x="1.5" y="5.5" width="9" height="6.5" rx="1.3" stroke="currentColor" strokeWidth="1.3" fill="none" />
@@ -264,15 +255,43 @@ export default function Lesson() {
             )}
           </div>
 
+          {/* Previous / Next only — "Back to Home" is gone from here
+              entirely (the header's logo/Home link already does that
+              job), and the whole row is hidden past `lg` since the
+              playlist panel next to the video already covers moving
+              between classes on desktop. That leaves this as mobile-only
+              real estate, so instead of the old compact three-button row
+              it's now a full-width, equal-size two-button grid — bigger,
+              easier-to-hit touch targets than a cramped inline pair. */}
+          <div className="grid grid-cols-2 gap-2 lg:hidden">
+            <button
+              type="button"
+              disabled={!canGoPrev}
+              onClick={() => prevItem && navigate(`/lesson/${prevItem.lessonNumber}`)}
+              className={navButtonClass}
+            >
+              {t("lesson.nav_previous")}
+            </button>
+            <button
+              type="button"
+              disabled={!canGoNext}
+              onClick={() => nextItem && navigate(`/lesson/${nextItem.lessonNumber}`)}
+              title={!canGoNext ? t("lesson.nav_next_title_last") : undefined}
+              className={navButtonClass}
+            >
+              {t("lesson.nav_next")}
+            </button>
+          </div>
+
           {/* Everything below this point scrolls normally underneath the
-              pinned nav/video section on mobile. Title/description sizing
-              is tuned down a step on small screens (was overflowing/too
-              cramped at the desktop sizes on narrow phones).
+              pinned video on mobile. Title/description sizing is tuned
+              down a step on small screens (was overflowing/too cramped at
+              the desktop sizes on narrow phones).
               `page-enter` here (rather than on an ancestor further up)
               keeps the same fade-in for this block without sitting above
               the sticky video wrapper — see the note near the top of this
               component for why that placement matters. */}
-          <div className="page-enter">
+          <div className="page-enter mt-3 lg:mt-0">
             <h1 className="mb-4 mt-4 break-words text-lg font-semibold leading-snug text-zinc-50 sm:text-xl lg:mb-5 lg:text-2xl">
               {lesson.title}
             </h1>
