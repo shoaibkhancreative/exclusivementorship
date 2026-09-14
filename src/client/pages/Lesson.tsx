@@ -152,10 +152,14 @@ export default function Lesson() {
                   </div>
                 </div>
               </div>
-            ) : lesson.videoEmbedUrl ? (
+            ) : lesson.hasBunnyVideo ? (
+              // Phase 3: rawEmbedUrl is intentionally not passed for paid lessons
+              // (the server no longer sends it). VideoStage detects hasBunnyVideo &&
+              // !rawEmbedUrl and fetches a short-lived signed URL via /video-token.
               <VideoStage
                 lessonNumber={lesson.lessonNumber}
-                rawEmbedUrl={lesson.videoEmbedUrl}
+                rawEmbedUrl={null}
+                hasBunnyVideo={lesson.hasBunnyVideo}
                 title={lesson.title}
                 onEnded={handleVideoEnded}
                 watermarkLabel={lesson.watermarkEnabled && me?.authenticated ? (me.email ?? null) : null}

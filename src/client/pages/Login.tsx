@@ -242,7 +242,9 @@ export default function Login() {
           setError("This app can't run on a rooted or modified device.");
           return;
         }
-        await api.post("/auth/app/login", { email, code, deviceId: deviceInfo.deviceId });
+        // Phase 3: forward isTrusted to the server so it can enforce the
+        // device trust policy server-side as well as client-side.
+        await api.post("/auth/app/login", { email, code, deviceId: deviceInfo.deviceId, isTrusted: deviceInfo.isTrusted });
       } else {
         await api.post("/auth/verify-otp", { email, code });
       }

@@ -30,6 +30,15 @@ export const api = {
   get: <T>(path: string) => request<T>(path, { method: "GET" }),
   post: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: "POST", body: body ? JSON.stringify(body) : undefined }),
+  // Phase 3: postWithHeaders allows passing arbitrary extra request headers
+  // (e.g. X-Device-Trusted from VideoStage) without leaking that concern
+  // into the base `post` helper used everywhere else.
+  postWithHeaders: <T>(path: string, body: unknown | undefined, extraHeaders: Record<string, string>) =>
+    request<T>(path, {
+      method: "POST",
+      body: body ? JSON.stringify(body) : undefined,
+      headers: extraHeaders
+    }),
   patch: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: "PATCH", body: body ? JSON.stringify(body) : undefined }),
   delete: <T>(path: string, body?: unknown) =>
@@ -93,7 +102,9 @@ export interface LessonDetail {
   description: string | null;
   thumbnailUrl: string | null;
   durationLabel: string | null;
-  videoEmbedUrl: string | null;
+  // Phase 3: videoEmbedUrl is no longer returned by the server.
+  // hasBunnyVideo indicates whether to show a video player and fetch a token.
+  hasBunnyVideo: boolean;
   videoCompleted: boolean;
   isLastFreeLesson: boolean;
   isLocked: boolean;

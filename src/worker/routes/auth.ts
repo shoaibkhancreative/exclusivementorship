@@ -122,23 +122,39 @@ authRoutes.post("/verify-otp", async (c) => {
   return c.json({ ok: true, user: { email: result.user.email, courseStatus: result.user.course_status } });
 });
 
-// Login endpoint for the Android app only. It's the same OTP check as
-// /verify-otp, plus the paid-user single-device lock (see lib/deviceLock.ts).
+// Login endpoint for the Android app only.
 //
-// LIMITATION: `deviceId` is currently whatever string the client sends. This
-// is fine for exercising the lock/reset/admin workflow now, but it is NOT a
-// real device attestation — a modified client could send any value it likes.
-// The Android app phase should replace this with a value derived from a real
-// attestation signal (e.g. Play Integrity), and the web app must keep
-// rejecting requests to this route with no Capacitor-originated proof once
-// that lands, so a browser can never pretend to be the app.
+// Phase 3 hardening on top of Phase 1/2:
+//
+//   1. `isTrusted` (from DeviceIdentityPlugin / SecurityChecks.kt) is now
+//      required in the request body for paid users.  If the client-reported
+//      value is false the login is rejected with a distinct error code so the
+//      app can show a meaningful message.  This is still a client-reported
+//      signal — a patched app can always send isTrusted=true — but it closes
+//      the gap for users who try to use a modified/rooted build without
+//      actually patching the native plugin.
+//
+//   2. All the Phase 2 device-lock checks (checkAndRegisterAppDevice) remain
+//      in place.  The session created here carries platform="app" in the DB,
+//      which is what video-token reads to enforce app-only issuance.
+//
+// Known limitation (honest):
+//   A determined attacker who patches SecurityChecks.kt and repackages the
+//   APK with the original release signing certificate (not feasible, but with
+//   root they can bypass signature verification at the OS level) can bypass
+//   this check.  Play Integrity (Phase 4) would verify the binary and
+//   certificate server-side through Google's attestation service, closing
+//   this gap without any client-side trust requirement.
 authRoutes.post("/app/login", async (c) => {
   const body = await c.req
-    .json<{ email?: string; code?: string; deviceId?: string }>()
-    .catch(() => ({}) as { email?: string; code?: string; deviceId?: string });
+    .json<{ email?: string; code?: string; deviceId?: string; isTrusted?: boolean }>()
+    .catch(() => ({}) as { email?: string; code?: string; deviceId?: string; isTrusted?: boolean });
   const email = (body.email ?? "").trim();
   const code = (body.code ?? "").trim();
   const deviceId = (body.deviceId ?? "").trim();
+  // Phase 3: isTrusted comes from the native SecurityChecks.kt result,
+  // reported by DeviceIdentityPlugin.getDeviceId() and forwarded by Login.tsx.
+  const isTrusted = Boolean(body.isTrusted);
 
   if (!isValidEmail(email) || !/^\d{6}$/.test(code)) {
     return c.json({ error: "invalid_input", message: "Please enter the 6-digit code." }, 400);
@@ -163,6 +179,22 @@ authRoutes.post("/app/login", async (c) => {
       too_many_attempts: "Too many incorrect attempts. Please request a new code."
     };
     return c.json({ error: result.reason, message: messages[result.reason] }, 400);
+  }
+
+  // Phase 3: reject login from paid users on untrusted (rooted/debuggable/
+  // resigned) devices.  Free users are not restricted here — they can't
+  // access paid content anyway, and blocking them on device trust would
+  // prevent legitimate evaluation of the course.
+  if (result.user.course_status === "paid" && !isTrusted) {
+    await logAuditEvent(c.env, "login_app_untrusted_device", { userId: result.user.id, ipHash });
+    return c.json(
+      {
+        error: "device_not_trusted",
+        message:
+          "For your account's security, paid content cannot be accessed from a modified or rooted device."
+      },
+      403
+    );
   }
 
   const deviceCheck = await checkAndRegisterAppDevice(c.env, result.user.id, result.user.course_status, deviceId);

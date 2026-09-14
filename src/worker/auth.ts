@@ -75,13 +75,14 @@ export async function verifyOtp(env: Env, email: string, code: string): Promise<
 
 export type SessionPlatform = "web" | "app";
 
-// NOTE: there used to be a "single active session per account" rule here —
-// logging in anywhere would silently revoke every other session. That
-// restriction has been removed entirely: any number of web and app sessions
-// can now be active at once for the same account. The only remaining
-// per-account limit is the app-only single-device lock for paid users,
-// which lives in ./lib/deviceLock.ts and is enforced *before* this function
-// is ever called for an app login (see routes/auth.ts's /app/login).
+// Phase 3: resolveSession now returns platform alongside the user so that
+// downstream handlers (e.g. video-token) can enforce app-only access for
+// paid lessons without a second DB round-trip.
+export interface ResolvedSession {
+  user: UserRow;
+  platform: SessionPlatform;
+}
+
 export async function createSession(env: Env, userId: string, platform: SessionPlatform = "web"): Promise<string> {
   const token = randomToken(32);
   const secret = requireSecret(env);
@@ -96,8 +97,6 @@ export async function createSession(env: Env, userId: string, platform: SessionP
   return token;
 }
 
-// Used by the admin "reset app device" action: logs the user out of every
-// app session while leaving their web sessions untouched.
 export async function revokeSessionsByPlatform(env: Env, userId: string, platform: SessionPlatform): Promise<void> {
   const rows = await env.DB.prepare(
     `SELECT token_hash FROM sessions WHERE user_id = ? AND platform = ? AND revoked_at IS NULL`
@@ -116,7 +115,14 @@ export async function revokeSessionsByPlatform(env: Env, userId: string, platfor
   }
 }
 
-export async function resolveSession(env: Env, token: string | undefined | null): Promise<UserRow | null> {
+// Phase 3: resolveSession now returns the full ResolvedSession (user + platform)
+// so callers don't need to re-query the DB just to know whether the session
+// originated from the native app or a browser.
+//
+// Cache key is unchanged (token-hash-based), but the cached payload now
+// includes the platform string, so old cached entries (which won't have it)
+// are handled gracefully: a missing platform field defaults to "web".
+export async function resolveSession(env: Env, token: string | undefined | null): Promise<ResolvedSession | null> {
   if (!token) return null;
   const secret = requireSecret(env);
   const tokenHash = await hmacSha256Hex(secret, `session:${token}`);
@@ -125,17 +131,29 @@ export async function resolveSession(env: Env, token: string | undefined | null)
   const cached = await getRawCached(env, cacheKey);
   if (cached !== null) {
     try {
-      return JSON.parse(cached) as UserRow;
+      const parsed = JSON.parse(cached) as { user: UserRow; platform?: string };
+      if (parsed && parsed.user) {
+        return {
+          user: parsed.user,
+          platform: (parsed.platform === "app" ? "app" : "web") as SessionPlatform
+        };
+      }
+      // Legacy cache entry: just a UserRow, no platform. Treat as "web".
+      const legacyUser = parsed as unknown as UserRow;
+      if (legacyUser && legacyUser.id) {
+        return { user: legacyUser, platform: "web" };
+      }
     } catch {
+      // ignore malformed cache entries
     }
   }
 
   const row = await env.DB.prepare(
-    `SELECT s.user_id as user_id, s.expires_at as expires_at, s.revoked_at as revoked_at
+    `SELECT s.user_id as user_id, s.expires_at as expires_at, s.revoked_at as revoked_at, s.platform as platform
      FROM sessions s WHERE s.token_hash = ?`
   )
     .bind(tokenHash)
-    .first<{ user_id: string; expires_at: string; revoked_at: string | null }>();
+    .first<{ user_id: string; expires_at: string; revoked_at: string | null; platform: string | null }>();
 
   if (!row || row.revoked_at) return null;
 
@@ -144,10 +162,11 @@ export async function resolveSession(env: Env, token: string | undefined | null)
 
   const { findUserById } = await import("./db");
   const user = await findUserById(env, row.user_id);
-  if (user) {
-    await putRawCached(env, cacheKey, JSON.stringify(user), SESSION_CACHE_TTL_SECONDS);
-  }
-  return user;
+  if (!user) return null;
+
+  const platform: SessionPlatform = row.platform === "app" ? "app" : "web";
+  await putRawCached(env, cacheKey, JSON.stringify({ user, platform }), SESSION_CACHE_TTL_SECONDS);
+  return { user, platform };
 }
 
 export async function revokeSession(env: Env, token: string): Promise<void> {

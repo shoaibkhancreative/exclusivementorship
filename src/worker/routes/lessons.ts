@@ -123,6 +123,9 @@ lessonRoutes.get("/:number", async (c) => {
       description: null,
       thumbnailUrl: lesson.thumbnail_url,
       durationLabel: lesson.duration_label,
+      // Phase 3: never expose the raw Bunny embed URL in a locked-lesson
+      // response. (It was already null here in Phase 1/2 due to the lockReason
+      // guard, but stated explicitly for auditability.)
       videoEmbedUrl: null,
       videoCompleted: false,
       isLastFreeLesson: false,
@@ -141,6 +144,16 @@ lessonRoutes.get("/:number", async (c) => {
       .first<ProgressRow>();
   }
 
+  // Phase 3: never send the raw Bunny embed URL to the client in GET /lessons/:number.
+  // The client must call POST /lessons/:number/video-token to get a short-lived
+  // signed URL.  Sending the raw URL here would let any authenticated user
+  // (even a browser session) copy it from the Network tab and construct their
+  // own signed URL offline.
+  //
+  // We still expose a boolean flag `hasBunnyVideo` so the client knows to
+  // show a video player UI and fetch the token when the user presses Play.
+  const hasBunnyVideo = Boolean(lesson.video_embed_url && isBunnyEmbedUrl(lesson.video_embed_url));
+
   return c.json({
     lessonNumber: lesson.lesson_number,
     title: lesson.title,
@@ -149,7 +162,8 @@ lessonRoutes.get("/:number", async (c) => {
     description: lesson.description,
     thumbnailUrl: lesson.thumbnail_url,
     durationLabel: lesson.duration_label,
-    videoEmbedUrl: lesson.video_embed_url,
+    // videoEmbedUrl is intentionally omitted — clients must use /video-token.
+    hasBunnyVideo,
     videoCompleted: Boolean(progress?.video_completed),
     isLastFreeLesson: lessonNumber === freeLessonCount,
     isLocked: false,
@@ -158,6 +172,37 @@ lessonRoutes.get("/:number", async (c) => {
   });
 });
 
+// POST /lessons/:number/video-token
+//
+// Phase 3 hardening:
+//   1. Paid users: only app sessions receive a token (browser sessions get a
+//      distinct error code the client maps to the "download the app" modal).
+//      Free-lesson tokens continue to be issued regardless of platform so
+//      that new visitors can preview content in their browser.
+//   2. The raw Bunny embed URL is never returned; only the signed URL with a
+//      short TTL (VIDEO_TOKEN_TTL_SECONDS = 5 min) is returned.
+//   3. The signed URL is returned once and never cached server-side — each
+//      play tap generates a fresh token, so there is no stable URL to share.
+//   4. App sessions additionally must send the X-Device-Trusted: true header
+//      (set by VideoStage.tsx after calling DeviceIdentityPlugin.getDeviceId()
+//      and checking isTrusted).  This is a best-effort client-reported signal
+//      — it is NOT a cryptographic proof — but it adds another layer of
+//      friction and creates an audit trail (see the logAuditEvent call below).
+//
+// Security limitations (honest accounting):
+//   - The signed URL is still visible in the app's webview Network traffic if
+//     a dev build / USB debugging is active and DevTools are attached.  This
+//     is mitigated by the short TTL and the isTrusted check that rejects
+//     debuggable builds.
+//   - A rooted device running Magisk DenyList can hide root from our
+//     SecurityChecks.kt heuristics, so isTrusted can be spoofed at the OS
+//     level.  Play Integrity (planned for Phase 4) would largely close this
+//     gap.  FLAG_SECURE (Phase 2) makes screen-recording harder but is not
+//     immune to hardware capture methods.
+//   - Even with all checks passing, Bunny Stream does not support per-segment
+//     token signing on the non-enterprise tier, so once the player is
+//     bootstrapped with a valid signed URL the HLS segments themselves are
+//     fetched without per-request re-validation.
 lessonRoutes.post("/:number/video-token", requireAuth, async (c) => {
   const lessonNumber = Number(c.req.param("number"));
   if (!Number.isInteger(lessonNumber) || lessonNumber < 1) {
@@ -165,6 +210,7 @@ lessonRoutes.post("/:number/video-token", requireAuth, async (c) => {
   }
 
   const user = c.get("user")!;
+  const sessionPlatform = c.get("sessionPlatform");
 
   const rate = await checkRateLimit(c.env, `video_token:user:${user.id}`, RATE_LIMITS.videoTokenPerUserPerHour, 3600);
   if (!rate.allowed) {
@@ -172,10 +218,10 @@ lessonRoutes.post("/:number/video-token", requireAuth, async (c) => {
   }
 
   const lesson = await c.env.DB.prepare(
-    "SELECT id, video_embed_url FROM lessons WHERE lesson_number = ? AND is_active = 1"
+    "SELECT id, video_embed_url, is_free FROM lessons WHERE lesson_number = ? AND is_active = 1"
   )
     .bind(lessonNumber)
-    .first<{ id: number; video_embed_url: string | null }>();
+    .first<{ id: number; video_embed_url: string | null; is_free: number }>();
   if (!lesson) return c.json({ error: "not_found" }, 404);
 
   const freeLessonCount = await getFreeLessonCount(c.env);
@@ -191,6 +237,57 @@ lessonRoutes.post("/:number/video-token", requireAuth, async (c) => {
     return c.json({ error: "not_bunny_video", message: "This lesson doesn't use a signed video." }, 400);
   }
 
+  // Phase 3: Paid lessons require an app session.
+  //
+  // Free / preview lessons are served regardless of platform so that
+  // visitors can evaluate the course in their browser before enrolling.
+  // Once a user is paid, every gated lesson is app-only.
+  const isPaidLesson = lessonNumber > freeLessonCount;
+  if (isPaidLesson && user.course_status === "paid" && sessionPlatform !== "app") {
+    await logAuditEvent(c.env, "video_token_denied_browser", {
+      userId: user.id,
+      metadata: { lessonNumber, reason: "paid_lesson_requires_app_session" }
+    });
+    return c.json(
+      {
+        error: "app_required",
+        message: "Paid lessons can only be played in the app. Please download the app to continue."
+      },
+      403
+    );
+  }
+
+  // Phase 3: Within an app session, also check the client-reported device
+  // trust signal (X-Device-Trusted header set by VideoStage.tsx only when
+  // DeviceIdentityPlugin.getDeviceId() returns isTrusted === true).
+  //
+  // This is a *best-effort* check — a patched client can always send the
+  // header regardless of the actual device state.  Its value is:
+  //   a) It forces even a lightly-modified app to actively lie, rather than
+  //      just omit a check.
+  //   b) It generates a distinct audit event for untrusted devices so we can
+  //      monitor for anomalies.
+  //   c) It is consistent with the front-end guard in VideoStage.tsx that
+  //      refuses to call fetchToken() at all for untrusted devices —
+  //      the server-side check closes the gap for modified clients that
+  //      bypass the front-end guard.
+  if (isPaidLesson && sessionPlatform === "app") {
+    const deviceTrusted = c.req.header("X-Device-Trusted");
+    if (deviceTrusted !== "true") {
+      await logAuditEvent(c.env, "video_token_denied_untrusted_device", {
+        userId: user.id,
+        metadata: { lessonNumber, reason: "device_not_trusted" }
+      });
+      return c.json(
+        {
+          error: "device_not_trusted",
+          message: "Video playback is not available on this device."
+        },
+        403
+      );
+    }
+  }
+
   let signedEmbedUrl: string;
   try {
     signedEmbedUrl = await signBunnyEmbedUrl(c.env, lesson.video_embed_url);
@@ -198,7 +295,10 @@ lessonRoutes.post("/:number/video-token", requireAuth, async (c) => {
     return c.json({ error: "video_unavailable", message: "This video can't be played right now." }, 500);
   }
 
-  await logAuditEvent(c.env, "video_token_issued", { userId: user.id, metadata: { lessonNumber } });
+  await logAuditEvent(c.env, "video_token_issued", {
+    userId: user.id,
+    metadata: { lessonNumber, platform: sessionPlatform }
+  });
 
   return c.json({ embedUrl: signedEmbedUrl, expiresInSeconds: VIDEO_TOKEN_TTL_SECONDS });
 });

@@ -3,9 +3,29 @@ import { sha256Hex } from "./crypto";
 
 export const BUNNY_LIBRARY_ID = "747219";
 
-export const VIDEO_TOKEN_TTL_SECONDS = 30 * 60;
+// Phase 3: TTL shortened from 30 min → 5 min.
+//
+// Rationale: the signed embed URL is returned to the client and used
+// immediately in an <iframe>; there is no reason it should remain valid for
+// half an hour.  5 minutes is long enough to cover:
+//   - The token fetch round-trip (< 1 s)
+//   - The Bunny CDN iframe load time (typically < 5 s)
+//   - A brief network hiccup / retry (a few seconds)
+// but short enough that a leaked URL (e.g. copied from a dev-tools Network
+// tab during the few seconds it is visible there) expires before it can be
+// meaningfully shared.
+//
+// Note: this only limits the *window* during which a captured signed URL
+// can be replayed from a different context.  It does NOT prevent someone
+// from leaving the stream running in their own session after the token was
+// originally issued, because the Bunny player holds its own CDN session once
+// playback starts (the signed URL is only used to bootstrap the player, not
+// for every HLS segment request).  Keeping segment-level token auth would
+// require the Bunny "DRM token per-segment" feature (enterprise tier), which
+// is outside scope here.
+export const VIDEO_TOKEN_TTL_SECONDS = 5 * 60; // 5 minutes
 
-const BUNNY_HOST_PATTERN = /(^|\.)(mediadelivery\.net|b-cdn\.net)$/;
+const BUNNY_HOST_PATTERN = /(^|\\.)(mediadelivery\\.net|b-cdn\\.net)$/;
 
 export interface BunnyEmbedRef {
   libraryId: string;

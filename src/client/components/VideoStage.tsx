@@ -11,7 +11,7 @@ import { AppRequiredModal } from "./AppRequiredModal";
 
 function isBunnyHost(url: string): boolean {
   try {
-    return /(^|\.)(mediadelivery\.net|b-cdn\.net)$/.test(new URL(url).hostname);
+    return /(^|\\.)(mediadelivery\\.net|b-cdn\\.net)$/.test(new URL(url).hostname);
   } catch {
     return false;
   }
@@ -57,7 +57,12 @@ function DeviceUntrustedNotice({ onClose }: { onClose: () => void }) {
 
 interface VideoStageProps {
   lessonNumber: number;
-  rawEmbedUrl: string;
+  // Phase 3: rawEmbedUrl is no longer sent by the server for paid lessons.
+  // The prop is now optional; when absent (paid lesson), hasBunnyVideo=true
+  // signals that a token must be fetched.  Free-lesson embed URLs are still
+  // passed directly.
+  rawEmbedUrl: string | null;
+  hasBunnyVideo: boolean;
   title: string;
   onEnded: () => void;
   watermarkLabel: string | null;
@@ -67,6 +72,7 @@ interface VideoStageProps {
 export function VideoStage({
   lessonNumber,
   rawEmbedUrl,
+  hasBunnyVideo,
   title,
   onEnded,
   watermarkLabel,
@@ -74,8 +80,15 @@ export function VideoStage({
 }: VideoStageProps) {
   const { t } = useContent();
   const { me } = useSession();
-  const isBunny = isBunnyHost(rawEmbedUrl);
-  const needsToken = isBunny;
+
+  // needsToken: true when the lesson uses Bunny and the server will not
+  // inline the URL (i.e. always for paid Bunny lessons; also for free Bunny
+  // lessons when no rawEmbedUrl was supplied).
+  const needsToken = hasBunnyVideo && !rawEmbedUrl;
+
+  // For free lessons the server still returns a direct (unsigned) embed URL;
+  // for paid lessons rawEmbedUrl is null and we must fetch a signed token.
+  const isBunny = hasBunnyVideo || (rawEmbedUrl !== null && isBunnyHost(rawEmbedUrl));
 
   const [started, setStarted] = useState(false);
   const [showAppRequired, setShowAppRequired] = useState(false);
@@ -85,14 +98,53 @@ export function VideoStage({
   const [tokenError, setTokenError] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
 
-  const fetchToken = useCallback(() => {
+  // Phase 3: fetchToken passes the device trust signal as a request header.
+  //
+  // When running in the native app, we ask DeviceIdentityPlugin for the
+  // current trust status immediately before every fetch — this means a device
+  // that was fine at login time but was rooted afterwards is caught on the
+  // next play tap, not just at login.
+  //
+  // The header value is intentionally "true" / absent (not sent when false or
+  // unknown).  The server treats a missing header the same as "false" for
+  // paid lessons, so a client that simply omits the header gets the same
+  // "device_not_trusted" rejection as one that sends "false" explicitly.
+  // This means the effective check is:
+  //   "is running in the app AND DeviceIdentityPlugin says isTrusted AND
+  //    the native code's SecurityChecks.kt checks all passed"
+  const fetchToken = useCallback(async () => {
     setTokenError(false);
     setSignedUrl(null);
+
+    const extraHeaders: Record<string, string> = {};
+    if (isRunningInNativeApp()) {
+      const deviceInfo = await getNativeDeviceInfo();
+      if (deviceInfo?.isTrusted) {
+        extraHeaders["X-Device-Trusted"] = "true";
+      }
+      // If isTrusted is false or the plugin failed, we do NOT set the header.
+      // The server will reject with 403 device_not_trusted for paid lessons.
+    }
+
     api
-      .post<VideoTokenResponse>(`/lessons/${lessonNumber}/video-token`)
+      .postWithHeaders<VideoTokenResponse>(`/lessons/${lessonNumber}/video-token`, undefined, extraHeaders)
       .then((res) => setSignedUrl(res.embedUrl))
-      .catch(() => {
-        setTokenError(true);
+      .catch((err) => {
+        // Distinguish specific server rejection reasons from generic errors
+        // so the UI can show the appropriate notice rather than a retry prompt.
+        if (err && "code" in err && err.code === "device_not_trusted") {
+          // Server rejected because SecurityChecks.kt reported an untrusted device.
+          setShowDeviceUntrusted(true);
+        } else if (err && "code" in err && err.code === "app_required") {
+          // Browser session tried to fetch a paid-lesson token — show the
+          // "download the app" modal.  This is the server-enforced counterpart
+          // of the client-side guard that normally prevents reaching fetchToken
+          // from a browser; it fires when a browser user somehow bypasses that
+          // guard (e.g. directly POSTing to /video-token with a valid web cookie).
+          setShowAppRequired(true);
+        } else {
+          setTokenError(true);
+        }
       });
   }, [lessonNumber]);
 
@@ -109,7 +161,7 @@ export function VideoStage({
 
   useEffect(() => {
     if (!needsToken || !started) return;
-    fetchToken();
+    void fetchToken();
   }, [needsToken, started, fetchToken]);
 
   if (isBunny && !started) {
