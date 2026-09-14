@@ -15,7 +15,7 @@ android {
         // *legitimate* build looks like. Fill this in with your release
         // keystore's SHA-256 cert fingerprint once you've generated it
         // (`keytool -list -v -keystore your.keystore | grep SHA256`).
-        buildConfigField "String", "EXPECTED_SIGNATURE_SHA256", "\"REPLACE_WITH_RELEASE_CERT_SHA256\""
+        buildConfigField "String", "EXPECTED_SIGNATURE_SHA256", "\"4A3A3BA851F80A0806B0D4B15F07C51E03326B4E0B3008A07A0238221B11F5EC\""
     }
 
     // Release signing config is read from android/keystore.properties, which

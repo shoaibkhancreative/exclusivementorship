@@ -13,3 +13,6 @@ android/capacitor.settings.gradle
 android/app/capacitor.build.gradle
 android/app/src/main/assets/public/
 android/app/src/main/assets/capacitor.config.json
+release.keystore
+keystore-base64.txt
+*.keystore
