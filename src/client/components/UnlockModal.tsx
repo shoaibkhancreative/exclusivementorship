@@ -28,13 +28,13 @@ function useSecondsLeft(expiresAt: string | null | undefined): number | null {
 
 function GiftBadge() {
   return (
-    <IllustrationBadge size={92} bg="linear-gradient(180deg, rgba(184,134,46,0.18), rgba(230,57,70,0.14))" breathe>
+    <IllustrationBadge size={92} bg="linear-gradient(180deg, rgba(18,196,107,0.20), rgba(155,130,255,0.12))" breathe>
       <svg viewBox="0 0 80 80" width={56} height={56} aria-hidden="true">
-        <rect x="16" y="34" width="48" height="30" rx="8" fill="#e63946" />
-        <rect x="12" y="24" width="56" height="14" rx="6" fill="#ef4f5b" />
-        <rect x="36" y="24" width="8" height="40" fill="#fdf8e9" opacity="0.85" />
-        <path d="M40 24c-6-10-22-8-18 2 2 5 12 5 18-2z" fill="#c99a49" />
-        <path d="M40 24c6-10 22-8 18 2-2 5-12 5-18-2z" fill="#c99a49" />
+        <rect x="16" y="34" width="48" height="30" rx="8" fill="#12C46B" />
+        <rect x="12" y="24" width="56" height="14" rx="6" fill="#4DF0A0" />
+        <rect x="36" y="24" width="8" height="40" fill="#0B0F0D" opacity="0.7" />
+        <path d="M40 24c-6-10-22-8-18 2 2 5 12 5 18-2z" fill="#9B82FF" />
+        <path d="M40 24c6-10 22-8 18 2-2 5-12 5-18-2z" fill="#9B82FF" />
       </svg>
     </IllustrationBadge>
   );
@@ -42,13 +42,13 @@ function GiftBadge() {
 
 function CheckBadge() {
   return (
-    <IllustrationBadge size={92} bg="rgba(230,57,70,0.14)">
+    <IllustrationBadge size={92} bg="rgba(18,196,107,0.16)">
       <svg viewBox="0 0 80 80" width={56} height={56} className="animate-[gentle-pop_0.5s_ease-out]" aria-hidden="true">
-        <circle cx="40" cy="40" r="25" fill="#e63946" />
+        <circle cx="40" cy="40" r="25" fill="#12C46B" />
         <path
           d="M28 41l8 8 16-18"
           fill="none"
-          stroke="#fdf8e9"
+          stroke="#0B0F0D"
           strokeWidth="5"
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -60,18 +60,18 @@ function CheckBadge() {
 
 function ClockBadge() {
   return (
-    <IllustrationBadge size={76} bg="var(--tw-base-800, #f0e3b8)">
+    <IllustrationBadge size={76} bg="var(--tw-base-800, #16201C)">
       <svg viewBox="0 0 64 64" width={40} height={40} aria-hidden="true">
-        <circle cx="32" cy="34" r="18" fill="none" stroke="#a69f89" strokeWidth="4" />
+        <circle cx="32" cy="34" r="18" fill="none" stroke="#7E9188" strokeWidth="4" />
         <path
           d="M32 25v9l6 6"
           fill="none"
-          stroke="#a69f89"
+          stroke="#7E9188"
           strokeWidth="4"
           strokeLinecap="round"
           strokeLinejoin="round"
         />
-        <rect x="27" y="9" width="10" height="5" rx="2.5" fill="#a69f89" />
+        <rect x="27" y="9" width="10" height="5" rx="2.5" fill="#7E9188" />
       </svg>
     </IllustrationBadge>
   );
@@ -82,12 +82,12 @@ function SlimTimer({ percent, urgent, mm, ss }: { percent: number; urgent: boole
     <div className="mx-auto flex w-36 flex-col items-center gap-1.5 pt-1">
       <div className="h-1 w-full overflow-hidden rounded-full bg-base-700">
         <div
-          className={`h-full rounded-full transition-[width] duration-1000 ease-linear ${urgent ? "bg-accent-500" : "bg-[#b8862e]"}`}
+          className={`h-full rounded-full transition-[width] duration-1000 ease-linear ${urgent ? "bg-red-400" : "bg-accent-500"}`}
           style={{ width: `${Math.max(0, Math.min(100, percent))}%` }}
         />
       </div>
       <span
-        className={`font-mono text-[11px] font-semibold tabular-nums ${urgent ? "text-accent-500" : "text-zinc-500"}`}
+        className={`font-mono text-[11px] font-semibold tabular-nums ${urgent ? "text-red-700" : "text-zinc-500"}`}
       >
         {mm}:{String(ss).padStart(2, "0")}
       </span>
@@ -258,7 +258,7 @@ export function UnlockModal({ onClose }: { onClose: () => void }) {
       return;
     }
     let cancelled = false;
-    QRCode.toDataURL(order.payAddress, { margin: 1, width: 240, color: { dark: "#1c1b17", light: "#ffffff" } })
+    QRCode.toDataURL(order.payAddress, { margin: 1, width: 240, color: { dark: "#0B0F0D", light: "#FFFFFF" } })
       .then((url) => {
         if (!cancelled) setQrDataUrl(url);
       })
@@ -305,14 +305,14 @@ export function UnlockModal({ onClose }: { onClose: () => void }) {
   return (
     // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions
     <div
-      className="animate-fade-in fixed inset-0 z-[100] flex items-center justify-center bg-[#2b1a10]/50 px-4 backdrop-blur-sm"
+      className="animate-fade-in fixed inset-0 z-[100] flex items-center justify-center bg-[#05070A]/80 px-4 backdrop-blur-sm"
       onClick={handleOverlayClick}
       role="dialog"
       aria-modal="true"
       aria-label="Unlock Exclusive Mentorship"
     >
       <div
-        className="animate-slide-up relative max-h-[85vh] w-full max-w-sm overflow-hidden overflow-y-auto rounded-[28px] bg-base-900 shadow-[0_24px_70px_-20px_rgba(230,57,70,0.35)]"
+        className="animate-slide-up relative max-h-[85vh] w-full max-w-sm overflow-hidden overflow-y-auto rounded-[28px] bg-base-900 shadow-[0_24px_70px_-20px_rgba(18,196,107,0.35)]"
         ref={panelRef}
       >
         <button
@@ -354,7 +354,7 @@ export function UnlockModal({ onClose }: { onClose: () => void }) {
                     href={config.mentorshipPdfUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="focus-ring inline-block text-sm text-accent-400 hover:underline"
+                    className="focus-ring inline-block text-sm text-accent-500 hover:underline"
                   >
                     {t("unlock_modal.pdf_link_label")}
                   </a>
@@ -376,7 +376,7 @@ export function UnlockModal({ onClose }: { onClose: () => void }) {
             </div>
           ) : error ? (
             <div className="space-y-4 py-2 text-center">
-              <p className="text-sm text-accent-300">{error}</p>
+              <p className="text-sm text-red-700">{error}</p>
               <button onClick={onClose} className={pillSecondaryClass}>
                 Close
               </button>

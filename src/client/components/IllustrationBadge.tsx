@@ -21,13 +21,13 @@ export function IllustrationBadge({
 
 export function RetryBadge({ size = 72 }: { size?: number }) {
   return (
-    <IllustrationBadge size={size} bg="var(--tw-base-800, #f0e3b8)">
+    <IllustrationBadge size={size} bg="var(--tw-base-800, #16201C)">
       <svg viewBox="0 0 64 64" width={Math.round(size * 0.47)} height={Math.round(size * 0.47)} aria-hidden="true">
-        <path d="M46 20a18 18 0 1 0 4 14" fill="none" stroke="#a69f89" strokeWidth="4.5" strokeLinecap="round" />
+        <path d="M46 20a18 18 0 1 0 4 14" fill="none" stroke="#7E9188" strokeWidth="4.5" strokeLinecap="round" />
         <path
           d="M46 8v13h-13"
           fill="none"
-          stroke="#a69f89"
+          stroke="#7E9188"
           strokeWidth="4.5"
           strokeLinecap="round"
           strokeLinejoin="round"

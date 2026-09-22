@@ -66,6 +66,8 @@ const BUNDLED_DEFAULTS: Record<string, string> = {
   "lesson.outline_loading": "Loading outline…",
   "lesson.playlist_title": "Course content",
   "lesson.playlist_position": "{current} / {total}",
+  "lesson.description_show_more": "Show more",
+  "lesson.description_show_less": "Show less",
   "profile.access_button": "Access",
   "profile.unlock_button": "Unlock Full Mentorship",
   "profile.logout_button": "Log out",

@@ -8,7 +8,8 @@ export function Button({ variant = "primary", className = "", ...props }: Button
   const base =
     "focus-ring inline-flex items-center justify-center rounded-md px-5 py-3 text-sm font-medium transition-colors duration-150 active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100";
   const variants: Record<string, string> = {
-    primary: "bg-accent-500 text-base-950 hover:bg-accent-400",
+    primary:
+      "bg-accent-500 font-semibold text-base-950 shadow-[0_6px_20px_-8px_rgba(18,196,107,0.55)] hover:bg-accent-400 active:bg-accent-600",
     secondary: "border border-base-700 text-zinc-200 hover:border-base-600 hover:bg-base-900",
     ghost: "text-zinc-400 hover:text-zinc-100"
   };
@@ -19,7 +20,10 @@ type CardProps = React.HTMLAttributes<HTMLDivElement> & { children: React.ReactN
 
 export function Card({ children, className = "", ...rest }: CardProps) {
   return (
-    <div className={`rounded-md border border-base-800 bg-base-900/40 p-6 ${className}`} {...rest}>
+    <div
+      className={`rounded-md border border-base-700 bg-base-900/95 p-6 shadow-[0_1px_0_rgba(255,255,255,0.03)_inset,0_18px_40px_-24px_rgba(0,0,0,0.85)] ${className}`}
+      {...rest}
+    >
       {children}
     </div>
   );

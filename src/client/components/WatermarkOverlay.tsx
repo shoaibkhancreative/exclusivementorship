@@ -47,7 +47,7 @@ export function WatermarkOverlay({ label, playing }: WatermarkOverlayProps) {
         white-space: nowrap;
         user-select: none;
         border-radius: 4px;
-        background: rgba(0, 0, 0, 0.2);
+        background: rgba(0, 0, 0, 0.32);
         padding: 4px 8px;
         font-family: ui-monospace, SFMono-Regular, monospace;
         font-size: 11px;

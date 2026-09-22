@@ -108,8 +108,8 @@ function PageLayoutCard({
           <Button type="button" onClick={handleSave} disabled={!dirty || saving} className="!px-3 !py-1.5 text-xs">
             {saving ? "Saving…" : "Save order"}
           </Button>
-          {status === "saved" && <span className="text-xs text-accent-400">Saved.</span>}
-          {status === "error" && <span className="text-xs text-red-400">Couldn't save.</span>}
+          {status === "saved" && <span className="text-xs text-highlight-500">Saved.</span>}
+          {status === "error" && <span className="text-xs text-red-700">Couldn't save.</span>}
         </div>
       </Card>
     </div>
@@ -140,7 +140,7 @@ export default function SectionsPage() {
   if (error) {
     return (
       <div className="page-enter">
-        <p className="mb-4 text-sm text-red-400">{error}</p>
+        <p className="mb-4 text-sm text-red-700">{error}</p>
         <Button variant="secondary" onClick={load}>
           Retry
         </Button>

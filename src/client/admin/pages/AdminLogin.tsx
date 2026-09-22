@@ -32,7 +32,7 @@ export default function AdminLogin() {
       <div className="pointer-events-none absolute -top-40 left-1/2 h-80 w-80 -translate-x-1/2 rounded-full bg-accent-500/10 blur-3xl" />
       <Card className="relative w-full max-w-sm border-base-700/60">
         <div className="mb-6 flex flex-col items-center text-center">
-          <span className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-accent-400 to-accent-600 text-sm font-bold text-base-950 shadow-lg shadow-accent-500/30">
+          <span className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-accent-300 to-accent-600 text-sm font-bold text-base-950 shadow-lg shadow-accent-500/35">
             EM
           </span>
           <div className="text-[10px] uppercase tracking-wide text-accent-500">Exclusive Mentorship</div>
@@ -68,7 +68,7 @@ export default function AdminLogin() {
             />
           </div>
           {error && (
-            <p className="rounded-lg border border-red-900/40 bg-red-950/30 px-3 py-2 text-sm text-red-400">{error}</p>
+            <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
           )}
           <Button type="submit" disabled={submitting} className="mt-1">
             {submitting ? "Logging in…" : "Log in"}

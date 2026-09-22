@@ -63,14 +63,14 @@ function formatShortDate(iso: string) {
 }
 
 const STATUS_TONE: Record<string, string> = {
-  confirmed: "bg-accent-500/15 text-accent-300",
-  finished: "bg-accent-500/15 text-accent-300",
-  waiting: "bg-yellow-500/15 text-yellow-300",
-  confirming: "bg-yellow-500/15 text-yellow-300",
+  confirmed: "bg-highlight-500/15 text-highlight-400",
+  finished: "bg-highlight-500/15 text-highlight-400",
+  waiting: "bg-amber-50 text-amber-700",
+  confirming: "bg-amber-50 text-amber-700",
   created: "bg-base-800 text-zinc-400",
-  failed: "bg-red-500/15 text-red-300",
-  expired: "bg-red-500/15 text-red-300",
-  cancelled: "bg-red-500/15 text-red-300"
+  failed: "bg-red-50 text-red-700",
+  expired: "bg-red-50 text-red-700",
+  cancelled: "bg-red-50 text-red-700"
 };
 
 export default function DashboardPage() {
@@ -93,7 +93,7 @@ export default function DashboardPage() {
       .catch(() => setError("Couldn't load dashboard data."));
   }, []);
 
-  if (error) return <p className="text-sm text-red-400">{error}</p>;
+  if (error) return <p className="text-sm text-red-700">{error}</p>;
   if (!students || !lessons || !analytics) return <p className="text-sm text-zinc-500">Loading…</p>;
 
   const paidCount = students.filter((s) => s.courseStatus === "paid").length;
@@ -177,7 +177,7 @@ export default function DashboardPage() {
           <BarChart
             points={analytics.dailyRevenue.map((d) => ({ label: formatShortDate(d.date), value: d.amount }))}
             formatValue={formatUsd}
-            color="#34d399"
+            color="#12C46B"
           />
           <div className="mt-1 flex justify-between text-[10px] text-zinc-600">
             <span>{formatShortDate(analytics.dailyRevenue[0]?.date ?? "")}</span>
@@ -195,7 +195,7 @@ export default function DashboardPage() {
           <BarChart
             points={analytics.dailySignups.map((d) => ({ label: formatShortDate(d.date), value: d.count }))}
             formatValue={(v) => `${v} signup${v === 1 ? "" : "s"}`}
-            color="#60a5fa"
+            color="#9B82FF"
           />
           <div className="mt-1 flex justify-between text-[10px] text-zinc-600">
             <span>{formatShortDate(analytics.dailySignups[0]?.date ?? "")}</span>
@@ -208,7 +208,7 @@ export default function DashboardPage() {
         <Card className="p-0">
           <div className="flex items-center justify-between border-b border-base-800 px-4 py-3">
             <h2 className="text-sm font-medium text-zinc-200">Recent signups</h2>
-            <Link to="/admin/students" className="text-xs text-accent-300 hover:underline">
+            <Link to="/admin/students" className="text-xs text-accent-500 hover:underline">
               View all students →
             </Link>
           </div>
@@ -226,7 +226,7 @@ export default function DashboardPage() {
                   </div>
                   <span
                     className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
-                      s.courseStatus === "paid" ? "bg-accent-500/15 text-accent-300" : "bg-base-800 text-zinc-400"
+                      s.courseStatus === "paid" ? "bg-accent-500/15 text-accent-500" : "bg-base-800 text-zinc-400"
                     }`}
                   >
                     {s.courseStatus === "paid" ? "Paid" : "Free"}

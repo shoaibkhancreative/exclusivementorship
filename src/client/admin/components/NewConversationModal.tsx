@@ -96,7 +96,7 @@ export function NewConversationModal({
 
         <div className="flex-1 space-y-3 overflow-y-auto p-5">
           {error && (
-            <div className="rounded-md border border-accent-500/40 bg-accent-500/10 px-3 py-2 text-sm text-accent-300">
+            <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
               {error}
             </div>
           )}
@@ -134,7 +134,7 @@ export function NewConversationModal({
                             {s.name && <span className="truncate">{s.email}</span>}
                             <span
                               className={`rounded-full border px-1.5 py-[1px] ${
-                                s.courseStatus === "paid" ? "border-accent-500/40 text-accent-400" : "border-base-700"
+                                s.courseStatus === "paid" ? "border-accent-500/40 text-accent-500" : "border-base-700"
                               }`}
                             >
                               {s.courseStatus === "paid" ? "Paid" : "Free"}

@@ -82,10 +82,16 @@ export default function Learn() {
       <div className="mx-auto max-w-6xl px-5 pb-6 pt-3 sm:px-6 sm:pb-10 sm:pt-4 lg:pb-12 lg:pt-5 xl:max-w-7xl 2xl:max-w-[90rem]">
         <div className="lg:grid lg:grid-cols-[320px_1fr] lg:items-start lg:gap-8 xl:grid-cols-[360px_1fr] xl:gap-10">
           <div className="page-enter lg:sticky lg:top-24 lg:mt-6">
-            <div className="rounded-md border border-base-800 bg-base-900 p-4 shadow-[0_4px_16px_-4px_rgba(28,27,23,0.14),0_1px_3px_rgba(28,27,23,0.08)] sm:p-5">
-              <div className="relative mb-4 aspect-video overflow-hidden rounded-md bg-base-800 bg-cover bg-center shadow-[0_1px_3px_rgba(28,27,23,0.16),0_1px_2px_rgba(28,27,23,0.10)] ring-1 ring-black/10 sm:mb-5">
+            <div className="rounded-md border border-base-800 bg-base-900 p-4 shadow-[0_1px_0_rgba(255,255,255,0.03)_inset,0_16px_36px_-20px_rgba(0,0,0,0.8)] sm:p-5">
+              <div className="relative mb-4 aspect-video overflow-hidden rounded-md bg-base-800 bg-cover bg-center shadow-[0_2px_10px_-4px_rgba(0,0,0,0.7)] ring-1 ring-white/10 sm:mb-5">
                 {cover?.thumbnailUrl ? (
-                  <img src={cover.thumbnailUrl} alt="" className="h-full w-full object-cover" />
+                  <img
+                    src={cover.thumbnailUrl}
+                    alt=""
+                    decoding="async"
+                    fetchPriority="high"
+                    className="h-full w-full object-cover"
+                  />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center">
                     <span className="flex h-14 w-14 items-center justify-center rounded-full bg-accent-500/12 text-accent-500 sm:h-16 sm:w-16">
@@ -98,9 +104,9 @@ export default function Learn() {
                     </span>
                   </div>
                 )}
-                <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-base-950/55 via-transparent to-transparent" />
+                <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-transparent" />
                 {cover?.durationLabel && (
-                  <span className="absolute bottom-2 right-2 rounded bg-zinc-100/90 px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-base-950">
+                  <span className="absolute bottom-2 right-2 rounded bg-base-900/90 px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-zinc-50 shadow-sm">
                     {cover.durationLabel}
                   </span>
                 )}
@@ -112,12 +118,12 @@ export default function Learn() {
               <p className="mb-4 text-[13px] text-zinc-500 sm:mb-5">
                 {t("learn.classes_count_label", { count: total })}
                 <span className="mx-1.5 text-zinc-700">•</span>
-                <span className="font-medium text-accent-300">{progressPercent}%</span>
+                <span className="font-medium text-accent-500">{progressPercent}%</span>
               </p>
 
               <div className="mb-6">
                 <div
-                  className="h-2 w-full overflow-hidden rounded-full bg-base-800 shadow-[inset_0_1px_2px_rgba(28,27,23,0.15)]"
+                  className="h-2 w-full overflow-hidden rounded-full bg-base-800 shadow-[inset_0_1px_2px_rgba(0,0,0,0.6)]"
                   role="progressbar"
                   aria-valuenow={progressPercent}
                   aria-valuemin={0}

@@ -9,22 +9,22 @@ import { IllustrationBadge } from "../components/IllustrationBadge";
 
 function EnvelopeBadge() {
   return (
-    <IllustrationBadge size={60} bg="linear-gradient(180deg, rgba(230,57,70,0.14), rgba(184,134,46,0.12))" breathe>
+    <IllustrationBadge size={60} bg="linear-gradient(180deg, rgba(18,196,107,0.20), rgba(155,130,255,0.12))" breathe>
       <svg viewBox="0 0 80 80" width={36} height={36} aria-hidden="true">
-        <rect x="12" y="24" width="56" height="38" rx="8" fill="#e63946" />
+        <rect x="12" y="24" width="56" height="38" rx="8" fill="#12C46B" />
         <path
           d="M12 28 L40 50 L68 28"
           fill="none"
-          stroke="#fdf8e9"
+          stroke="#0B0F0D"
           strokeWidth="4.5"
           strokeLinecap="round"
           strokeLinejoin="round"
         />
-        <circle cx="60" cy="24" r="7" fill="#c99a49" />
+        <circle cx="60" cy="24" r="7" fill="#9B82FF" />
         <path
           d="M57 24l2 2 3.5-4"
           fill="none"
-          stroke="#fdf8e9"
+          stroke="#0B0F0D"
           strokeWidth="1.8"
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -36,12 +36,12 @@ function EnvelopeBadge() {
 
 function LockBadge() {
   return (
-    <IllustrationBadge size={60} bg="rgba(230,57,70,0.14)">
+    <IllustrationBadge size={60} bg="rgba(18,196,107,0.16)">
       <svg viewBox="0 0 80 80" width={34} height={34} className="animate-[gentle-pop_0.4s_ease-out]" aria-hidden="true">
-        <path d="M28 36v-8a12 12 0 0 1 24 0v8" fill="none" stroke="#c99a49" strokeWidth="5" strokeLinecap="round" />
-        <rect x="20" y="36" width="40" height="30" rx="8" fill="#e63946" />
-        <circle cx="40" cy="49" r="4.5" fill="#fdf8e9" />
-        <rect x="38" y="49" width="4" height="8" rx="2" fill="#fdf8e9" />
+        <path d="M28 36v-8a12 12 0 0 1 24 0v8" fill="none" stroke="#7E9188" strokeWidth="5" strokeLinecap="round" />
+        <rect x="20" y="36" width="40" height="30" rx="8" fill="#12C46B" />
+        <circle cx="40" cy="49" r="4.5" fill="#0B0F0D" />
+        <rect x="38" y="49" width="4" height="8" rx="2" fill="#0B0F0D" />
       </svg>
     </IllustrationBadge>
   );
@@ -276,7 +276,7 @@ export default function Login() {
                   className="focus-ring w-full rounded-lg border border-base-700 bg-base-950 px-3 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600"
                 />
               </div>
-              {error && <p className="text-sm text-accent-300">{error}</p>}
+              {error && <p className="text-sm text-red-700">{error}</p>}
               <Button type="submit" disabled={submitting} className="w-full">
                 {submitting ? t("login.send_otp_button_loading") : t("login.send_otp_button")}
               </Button>
@@ -302,7 +302,7 @@ export default function Login() {
                 placeholder="000000"
                 className="focus-ring w-full rounded-lg border border-base-700 bg-base-950 px-3 py-2.5 text-center text-lg tracking-[0.5em] text-zinc-100 placeholder:text-zinc-700"
               />
-              {error && <p className="text-sm text-accent-300">{error}</p>}
+              {error && <p className="text-sm text-red-700">{error}</p>}
               <Button type="submit" disabled={submitting} className="w-full">
                 {submitting ? t("login.verify_button_loading") : t("login.verify_button")}
               </Button>

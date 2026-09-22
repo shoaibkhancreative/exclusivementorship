@@ -16,7 +16,7 @@ export default function Privacy() {
       <p className="mb-4">{t("privacy.p3")}</p>
       <p className="mb-4">
         {t("privacy.p4_prefix")}{" "}
-        <a className="text-accent-400 hover:underline" href={`mailto:${t("privacy.contact_email")}`}>
+        <a className="text-accent-500 hover:underline" href={`mailto:${t("privacy.contact_email")}`}>
           {t("privacy.contact_email")}
         </a>
         .

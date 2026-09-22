@@ -70,8 +70,8 @@ function Thumbnail({ item, isActive, size }: { item: OutlineItem; isActive: bool
 
   return (
     <div
-      className={`relative aspect-video flex-none overflow-hidden rounded-md bg-base-800 shadow-[0_1px_3px_rgba(28,27,23,0.16),0_1px_2px_rgba(28,27,23,0.10)] ring-1 ${dims} ${
-        isActive ? "ring-accent-500/70" : "ring-black/10"
+      className={`relative aspect-video flex-none overflow-hidden rounded-md bg-base-800 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.7)] ring-1 ${dims} ${
+        isActive ? "ring-accent-500/70" : "ring-white/10"
       }`}
     >
       {item.thumbnailUrl ? (
@@ -79,6 +79,7 @@ function Thumbnail({ item, isActive, size }: { item: OutlineItem; isActive: bool
           src={item.thumbnailUrl}
           alt=""
           loading="lazy"
+          decoding="async"
           className="h-full w-full object-cover"
         />
       ) : (
@@ -89,14 +90,14 @@ function Thumbnail({ item, isActive, size }: { item: OutlineItem; isActive: bool
 
       {locked && (
         <div className="absolute inset-0 flex items-center justify-center">
-          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-base-950/55 text-zinc-100 backdrop-blur-[1px]">
+          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-[1px]">
             <LockGlyph />
           </span>
         </div>
       )}
 
       {!locked && isActive && (
-        <div className="absolute inset-0 flex items-center justify-center bg-base-950/20">
+        <div className="absolute inset-0 flex items-center justify-center bg-black/20">
           <span className="flex h-7 w-7 items-center justify-center rounded-full bg-accent-500 pl-0.5 text-base-950 shadow-sm">
             <PlayGlyph />
           </span>
@@ -104,13 +105,13 @@ function Thumbnail({ item, isActive, size }: { item: OutlineItem; isActive: bool
       )}
 
       {!locked && !isActive && completed && (
-        <span className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-base-950/75 text-accent-400">
+        <span className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-accent-300">
           <CheckGlyph />
         </span>
       )}
 
       {item.durationLabel && (
-        <span className="absolute bottom-1 right-1 rounded bg-zinc-100/90 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-base-950">
+        <span className="absolute bottom-1 right-1 rounded bg-base-900/90 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-zinc-50 shadow-sm">
           {item.durationLabel}
         </span>
       )}
@@ -121,14 +122,14 @@ function Thumbnail({ item, isActive, size }: { item: OutlineItem; isActive: bool
 function EmptyOutline({ message }: { message: string }) {
   return (
     <div className="page-enter py-12 text-center sm:py-16">
-      <IllustrationBadge size={72} bg="rgba(230,57,70,0.1)">
+      <IllustrationBadge size={72} bg="rgba(18,196,107,0.12)">
         <svg viewBox="0 0 64 64" width={34} height={34} aria-hidden="true">
-          <rect x="12" y="14" width="40" height="36" rx="6" fill="#e63946" opacity="0.16" />
-          <path d="M12 22h40" stroke="#e63946" strokeWidth="3.5" strokeLinecap="round" />
-          <path d="M22 12v8M42 12v8" stroke="#e63946" strokeWidth="3.5" strokeLinecap="round" />
-          <circle cx="26" cy="35" r="3" fill="#e63946" />
-          <circle cx="38" cy="35" r="3" fill="#e63946" />
-          <circle cx="26" cy="43" r="3" fill="#e63946" opacity="0.5" />
+          <rect x="12" y="14" width="40" height="36" rx="6" fill="#12C46B" opacity="0.14" />
+          <path d="M12 22h40" stroke="#12C46B" strokeWidth="3.5" strokeLinecap="round" />
+          <path d="M22 12v8M42 12v8" stroke="#12C46B" strokeWidth="3.5" strokeLinecap="round" />
+          <circle cx="26" cy="35" r="3" fill="#12C46B" />
+          <circle cx="38" cy="35" r="3" fill="#12C46B" />
+          <circle cx="26" cy="43" r="3" fill="#12C46B" opacity="0.5" />
         </svg>
       </IllustrationBadge>
       <p className="mx-auto mt-5 max-w-xs text-sm leading-snug text-zinc-400">{message}</p>
@@ -216,7 +217,7 @@ export function OutlineList({
               compact
                 ? "line-clamp-2 text-[13px] leading-snug"
                 : "line-clamp-2 text-[14px] leading-snug sm:truncate sm:text-[15px] sm:leading-normal"
-            } ${isActive ? "font-medium text-accent-400" : ""}`}
+            } ${isActive ? "font-medium text-accent-500" : ""}`}
           >
             {item.title}
           </div>
@@ -269,7 +270,7 @@ export function OutlineList({
     }
   }
 
-  const CHAPTER_TINTS = ["bg-transparent", "bg-base-800/35", "bg-accent-500/[0.045]", "bg-highlight-500/[0.06]"];
+  const CHAPTER_TINTS = ["bg-transparent", "bg-base-800/35", "bg-accent-500/[0.055]", "bg-highlight-500/[0.07]"];
 
   return (
     <div className="space-y-3">
@@ -299,7 +300,7 @@ export function OutlineList({
             </button>
 
             {infoOpen && (
-              <div className="animate-scale-in absolute right-1 top-11 z-20 w-64 max-w-[85vw] origin-top-right rounded-xl border border-base-700 bg-base-900 p-3.5 shadow-lg shadow-base-800/30 lg:right-2 lg:top-9">
+              <div className="animate-scale-in absolute right-1 top-11 z-20 w-64 max-w-[85vw] origin-top-right rounded-xl border border-base-700 bg-base-900 p-3.5 shadow-2xl shadow-black/60 lg:right-2 lg:top-9">
                 <p className="text-[13px] font-semibold text-zinc-100">{label}</p>
                 {tagline && <p className="mt-1 text-[12px] leading-snug text-zinc-500">{tagline}</p>}
               </div>

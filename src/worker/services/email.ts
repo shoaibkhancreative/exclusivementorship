@@ -9,21 +9,21 @@ function escapeHtml(value: string): string {
 function otpEmailHtml(code: string, content: Record<string, string>): string {
   return `<!doctype html>
 <html>
-  <body style="margin:0;padding:0;background:#0a0a0b;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,sans-serif;">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#0a0a0b;padding:40px 0;">
+  <body style="margin:0;padding:0;background:#0B0F0D;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,sans-serif;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#0B0F0D;padding:40px 0;">
       <tr>
         <td align="center">
-          <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="background:#111113;border:1px solid #26262a;border-radius:12px;padding:32px;">
-            <tr><td style="color:#c9a24b;font-size:13px;letter-spacing:2px;text-transform:uppercase;">${escapeHtml(content["email.otp_kicker"])}</td></tr>
-            <tr><td style="color:#f4f4f5;font-size:20px;font-weight:600;padding-top:8px;">${escapeHtml(content["email.otp_brand"])}</td></tr>
-            <tr><td style="color:#a1a1aa;font-size:14px;padding-top:20px;">${escapeHtml(content["email.otp_intro"])}</td></tr>
+          <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="background:#101715;border:1px solid #1E2A24;border-radius:12px;padding:32px;">
+            <tr><td style="color:#12C46B;font-size:13px;letter-spacing:2px;text-transform:uppercase;">${escapeHtml(content["email.otp_kicker"])}</td></tr>
+            <tr><td style="color:#F5FFF9;font-size:20px;font-weight:600;padding-top:8px;">${escapeHtml(content["email.otp_brand"])}</td></tr>
+            <tr><td style="color:#C9D6CF;font-size:14px;padding-top:20px;">${escapeHtml(content["email.otp_intro"])}</td></tr>
             <tr>
               <td style="padding-top:12px;">
-                <span style="display:inline-block;background:#1a1a1d;border:1px solid #38383e;border-radius:8px;padding:14px 20px;color:#e6cf94;font-size:28px;font-weight:700;letter-spacing:8px;">${escapeHtml(code)}</span>
+                <span style="display:inline-block;background:#16201C;border:1px solid #2C3B33;border-radius:8px;padding:14px 20px;color:#4DF0A0;font-size:28px;font-weight:700;letter-spacing:8px;">${escapeHtml(code)}</span>
               </td>
             </tr>
-            <tr><td style="color:#71717a;font-size:13px;padding-top:20px;">${escapeHtml(content["email.otp_expiry_note"])}</td></tr>
-            <tr><td style="color:#52525b;font-size:12px;padding-top:24px;border-top:1px solid #26262a;margin-top:24px;">${escapeHtml(content["email.otp_ignore_note"])}</td></tr>
+            <tr><td style="color:#94A69C;font-size:13px;padding-top:20px;">${escapeHtml(content["email.otp_expiry_note"])}</td></tr>
+            <tr><td style="color:#667A70;font-size:12px;padding-top:24px;border-top:1px solid #1E2A24;margin-top:24px;">${escapeHtml(content["email.otp_ignore_note"])}</td></tr>
           </table>
         </td>
       </tr>
@@ -35,20 +35,20 @@ function otpEmailHtml(code: string, content: Record<string, string>): string {
 function abandonedCheckoutEmailHtml(unlockUrl: string, content: Record<string, string>): string {
   return `<!doctype html>
 <html>
-  <body style="margin:0;padding:0;background:#0a0a0b;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,sans-serif;">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#0a0a0b;padding:40px 0;">
+  <body style="margin:0;padding:0;background:#0B0F0D;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,sans-serif;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#0B0F0D;padding:40px 0;">
       <tr>
         <td align="center">
-          <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="background:#111113;border:1px solid #26262a;border-radius:12px;padding:32px;">
-            <tr><td style="color:#c9a24b;font-size:13px;letter-spacing:2px;text-transform:uppercase;">${escapeHtml(content["email.reminder_kicker"])}</td></tr>
-            <tr><td style="color:#f4f4f5;font-size:20px;font-weight:600;padding-top:8px;">${escapeHtml(content["email.reminder_brand"])}</td></tr>
-            <tr><td style="color:#a1a1aa;font-size:14px;padding-top:20px;line-height:1.5;">${escapeHtml(content["email.reminder_body"])}</td></tr>
+          <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="background:#101715;border:1px solid #1E2A24;border-radius:12px;padding:32px;">
+            <tr><td style="color:#12C46B;font-size:13px;letter-spacing:2px;text-transform:uppercase;">${escapeHtml(content["email.reminder_kicker"])}</td></tr>
+            <tr><td style="color:#F5FFF9;font-size:20px;font-weight:600;padding-top:8px;">${escapeHtml(content["email.reminder_brand"])}</td></tr>
+            <tr><td style="color:#C9D6CF;font-size:14px;padding-top:20px;line-height:1.5;">${escapeHtml(content["email.reminder_body"])}</td></tr>
             <tr>
               <td style="padding-top:20px;">
-                <a href="${escapeHtml(unlockUrl)}" style="display:inline-block;background:#e6cf94;color:#0a0a0b;font-size:14px;font-weight:600;padding:12px 20px;border-radius:8px;text-decoration:none;">${escapeHtml(content["email.reminder_cta"])}</a>
+                <a href="${escapeHtml(unlockUrl)}" style="display:inline-block;background:#12C46B;color:#0B0F0D;font-size:14px;font-weight:700;padding:12px 20px;border-radius:8px;text-decoration:none;">${escapeHtml(content["email.reminder_cta"])}</a>
               </td>
             </tr>
-            <tr><td style="color:#52525b;font-size:12px;padding-top:24px;border-top:1px solid #26262a;margin-top:24px;">${escapeHtml(content["email.reminder_ignore_note"])}</td></tr>
+            <tr><td style="color:#667A70;font-size:12px;padding-top:24px;border-top:1px solid #1E2A24;margin-top:24px;">${escapeHtml(content["email.reminder_ignore_note"])}</td></tr>
           </table>
         </td>
       </tr>
@@ -90,17 +90,17 @@ export async function sendAbandonedCheckoutEmail(env: Env, toEmail: string): Pro
 function supportEmailHtml(opts: { kicker: string; body: string; ctaLabel: string; ctaUrl: string }): string {
   return `<!doctype html>
 <html>
-  <body style="margin:0;padding:0;background:#0a0a0b;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,sans-serif;">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#0a0a0b;padding:40px 0;">
+  <body style="margin:0;padding:0;background:#0B0F0D;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,sans-serif;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#0B0F0D;padding:40px 0;">
       <tr>
         <td align="center">
-          <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="background:#111113;border:1px solid #26262a;border-radius:12px;padding:32px;">
-            <tr><td style="color:#c9a24b;font-size:13px;letter-spacing:2px;text-transform:uppercase;">${escapeHtml(opts.kicker)}</td></tr>
-            <tr><td style="color:#f4f4f5;font-size:20px;font-weight:600;padding-top:8px;">Exclusive Mentorship</td></tr>
-            <tr><td style="color:#a1a1aa;font-size:14px;padding-top:20px;line-height:1.5;">${escapeHtml(opts.body)}</td></tr>
+          <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="background:#101715;border:1px solid #1E2A24;border-radius:12px;padding:32px;">
+            <tr><td style="color:#12C46B;font-size:13px;letter-spacing:2px;text-transform:uppercase;">${escapeHtml(opts.kicker)}</td></tr>
+            <tr><td style="color:#F5FFF9;font-size:20px;font-weight:600;padding-top:8px;">Exclusive Mentorship</td></tr>
+            <tr><td style="color:#C9D6CF;font-size:14px;padding-top:20px;line-height:1.5;">${escapeHtml(opts.body)}</td></tr>
             <tr>
               <td style="padding-top:20px;">
-                <a href="${escapeHtml(opts.ctaUrl)}" style="display:inline-block;background:#e6cf94;color:#0a0a0b;font-size:14px;font-weight:600;padding:12px 20px;border-radius:8px;text-decoration:none;">${escapeHtml(opts.ctaLabel)}</a>
+                <a href="${escapeHtml(opts.ctaUrl)}" style="display:inline-block;background:#12C46B;color:#0B0F0D;font-size:14px;font-weight:700;padding:12px 20px;border-radius:8px;text-decoration:none;">${escapeHtml(opts.ctaLabel)}</a>
               </td>
             </tr>
           </table>

@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useState } from "react";
 import { api, type SupportTicket } from "../lib/api";
 import { useContent } from "../lib/useContent";
 import { useSession } from "../lib/SessionContext";
-import { SupportChatPanel } from "./SupportChatPanel";
+
+const SupportChatPanel = lazy(() => import("./SupportChatPanel").then((m) => ({ default: m.SupportChatPanel })));
 
 const NOTIFICATION_POLL_MS = 5_000;
 
@@ -61,12 +62,14 @@ export function SupportButton() {
   return (
     <>
       {open && (
-        <SupportChatPanel
-          fullscreen={fullscreen}
-          onToggleFullscreen={() => setFullscreen((f) => !f)}
-          onMinimize={handleMinimize}
-          onTicketsChange={handleTicketsChange}
-        />
+        <Suspense fallback={null}>
+          <SupportChatPanel
+            fullscreen={fullscreen}
+            onToggleFullscreen={() => setFullscreen((f) => !f)}
+            onMinimize={handleMinimize}
+            onTicketsChange={handleTicketsChange}
+          />
+        </Suspense>
       )}
 
       {!open && (
@@ -75,17 +78,17 @@ export function SupportButton() {
           onClick={handleOpen}
           aria-label="Contact support"
           title={t("support.button_label")}
-          className="focus-ring fixed bottom-[max(1.25rem,calc(env(safe-area-inset-bottom)+0.5rem))] right-5 z-40 flex items-center justify-center rounded-full bg-accent-500 shadow-[0_10px_28px_-8px_rgba(230,57,70,0.55)] transition-transform duration-150 hover:scale-105 hover:bg-accent-400 active:scale-95 sm:bottom-6 sm:right-6"
+          className="focus-ring fixed bottom-[max(1.25rem,calc(env(safe-area-inset-bottom)+0.5rem))] right-5 z-40 flex items-center justify-center rounded-full bg-accent-500 shadow-[0_10px_28px_-8px_rgba(18,196,107,0.55)] transition-transform duration-150 hover:scale-105 hover:bg-accent-400 active:scale-95 sm:bottom-6 sm:right-6"
           style={{ width: 56, height: 56 }}
         >
           <svg width="26" height="26" viewBox="0 0 26 26" fill="none" aria-hidden="true">
             <path
               d="M13 4c-5.8 0-10 3.9-10 8.5 0 2.5 1.25 4.75 3.3 6.3-.1 1.2-.5 2.25-1.2 3.15a.5.5 0 0 0 .55.78c1.7-.45 3.05-1.1 4.1-1.85.98.25 2.05.37 3.25.37 5.8 0 10-3.9 10-8.75S18.8 4 13 4Z"
-              fill="#fdf8e9"
+              fill="#0B0F0D"
             />
             <path
               d="M8.7 13.4c.85 1.05 2.4 1.75 4.3 1.75s3.45-.7 4.3-1.75"
-              stroke="#e63946"
+              stroke="#12C46B"
               strokeWidth="1.6"
               strokeLinecap="round"
             />

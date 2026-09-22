@@ -15,7 +15,7 @@ interface BarChartProps {
 export default function BarChart({
   points,
   formatValue = (v) => String(v),
-  color = "#34d399",
+  color = "#12C46B",
   height = 120
 }: BarChartProps) {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);

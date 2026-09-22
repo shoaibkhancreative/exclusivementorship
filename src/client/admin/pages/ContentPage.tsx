@@ -66,7 +66,7 @@ function ContentFieldRow({
           {field.label}
         </label>
         {isOverridden && (
-          <span className="rounded-full bg-accent-500/10 px-2 py-0.5 text-[11px] font-medium text-accent-400">
+          <span className="rounded-full bg-accent-500/10 px-2 py-0.5 text-[11px] font-medium text-accent-500">
             Customized
           </span>
         )}
@@ -110,8 +110,8 @@ function ContentFieldRow({
         >
           {resetting ? "Resetting…" : "Reset to default"}
         </button>
-        {status === "saved" && <span className="text-xs text-accent-400">Saved.</span>}
-        {status === "error" && <span className="text-xs text-red-400">Couldn't save.</span>}
+        {status === "saved" && <span className="text-xs text-highlight-500">Saved.</span>}
+        {status === "error" && <span className="text-xs text-red-700">Couldn't save.</span>}
       </div>
     </div>
   );
@@ -157,7 +157,7 @@ export default function ContentPage() {
   if (error) {
     return (
       <div className="page-enter">
-        <p className="mb-4 text-sm text-red-400">{error}</p>
+        <p className="mb-4 text-sm text-red-700">{error}</p>
         <Button variant="secondary" onClick={load}>
           Retry
         </Button>

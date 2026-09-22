@@ -301,7 +301,7 @@ export default function SupportPage() {
       )}
 
       {error && (
-        <div className="rounded-md border border-accent-500/40 bg-accent-500/10 px-3 py-2 text-sm text-accent-300">
+        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
           {error}
         </div>
       )}
@@ -393,7 +393,7 @@ export default function SupportPage() {
                         <span
                           className={`rounded-full border px-1.5 py-[1px] ${
                             identity.courseStatus === "paid"
-                              ? "border-accent-500/40 text-accent-400"
+                              ? "border-accent-500/40 text-accent-500"
                               : "border-base-700"
                           }`}
                         >
@@ -454,7 +454,7 @@ export default function SupportPage() {
                           {t.agentDisplayName}
                         </span>
                         <span
-                          className={`rounded-full border px-1.5 py-[1px] ${t.status === "open" ? "border-accent-500/40 text-accent-400" : "border-base-700"}`}
+                          className={`rounded-full border px-1.5 py-[1px] ${t.status === "open" ? "border-accent-500/40 text-accent-500" : "border-base-700"}`}
                         >
                           {t.status}
                         </span>
@@ -532,7 +532,7 @@ export default function SupportPage() {
                       variant="secondary"
                       onClick={deleteTicket}
                       disabled={busy}
-                      className="!px-3 !py-1.5 text-xs !text-accent-400"
+                      className="!px-3 !py-1.5 text-xs !text-accent-500"
                     >
                       Delete ticket
                     </Button>
@@ -545,7 +545,7 @@ export default function SupportPage() {
                   </span>
                   {!selectedTicket.isGuest && (
                     <span
-                      className={`rounded-full border px-2 py-0.5 ${selectedTicket.courseStatus === "paid" ? "border-accent-500/40 text-accent-400" : "border-base-700"}`}
+                      className={`rounded-full border px-2 py-0.5 ${selectedTicket.courseStatus === "paid" ? "border-accent-500/40 text-accent-500" : "border-base-700"}`}
                     >
                       {selectedTicket.courseStatus === "paid" ? "Paid student" : "Free student"}
                     </span>

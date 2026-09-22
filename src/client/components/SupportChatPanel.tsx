@@ -266,7 +266,7 @@ export function SupportChatPanel({ fullscreen, onToggleFullscreen, onMinimize, o
           </button>
         </div>
       )}
-      {error && <div className="mb-2 text-xs text-accent-300">{error}</div>}
+      {error && <div className="mb-2 text-xs text-red-700">{error}</div>}
       <div className="flex items-end gap-2">
         <button
           type="button"
@@ -319,14 +319,14 @@ export function SupportChatPanel({ fullscreen, onToggleFullscreen, onMinimize, o
     <>
       {isMobileViewport && (
         <div
-          className="animate-fade-in fixed inset-0 z-[99] bg-[#1c1b17]/60 backdrop-blur-sm"
+          className="animate-fade-in fixed inset-0 z-[99] bg-[#05070A]/75 backdrop-blur-sm"
           onClick={onMinimize}
           aria-hidden="true"
         />
       )}
       <div
         style={{ transformOrigin: "bottom right" }}
-        className={`animate-slide-up sm:animate-scale-in fixed z-[100] flex flex-col overflow-hidden border border-base-700 bg-base-900 shadow-2xl shadow-base-800/40 ${
+        className={`animate-slide-up sm:animate-scale-in fixed z-[100] flex flex-col overflow-hidden border border-base-700 bg-base-900 shadow-2xl shadow-black/70 ${
           fullscreen
             ? "inset-0 rounded-none"
             : "inset-x-3 bottom-3 top-16 rounded-t-[28px] rounded-b-[28px] sm:inset-x-auto sm:top-auto sm:bottom-24 sm:right-6 sm:h-[min(560px,calc(100vh-7rem))] sm:w-[min(392px,calc(100vw-2.5rem))] sm:rounded-[28px]"
@@ -525,7 +525,7 @@ export function SupportChatPanel({ fullscreen, onToggleFullscreen, onMinimize, o
                         />
                       )}
                       <div
-                        className={`mt-1 text-[10px] ${m.senderType === "user" ? "text-base-950/60" : "text-zinc-500"}`}
+                        className={`mt-1 text-[10px] ${m.senderType === "user" ? "text-base-950/65" : "text-zinc-500"}`}
                       >
                         {formatTime(m.createdAt)}
                       </div>

@@ -13,7 +13,7 @@ export default function Access() {
 
   const blocks: Record<string, React.ReactNode> = {
     badge: (
-      <p key="badge" className="mb-2 text-sm font-medium text-accent-400">
+      <p key="badge" className="mb-2 text-sm font-medium text-accent-500">
         {t("access.badge")}
       </p>
     ),

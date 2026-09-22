@@ -28,7 +28,7 @@ const NAV_ITEMS = [
 
 function AdminBadge() {
   return (
-    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-accent-400 to-accent-600 text-[11px] font-bold text-base-950 shadow-sm shadow-accent-500/30">
+    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-accent-300 to-accent-600 text-[11px] font-bold text-base-950 shadow-sm shadow-accent-500/35">
       EM
     </span>
   );

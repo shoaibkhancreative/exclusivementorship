@@ -75,7 +75,7 @@ function ThumbnailField({ value, onChange }: { value: string; onChange: (dataUrl
           <button
             type="button"
             onClick={() => onChange("")}
-            className="focus-ring text-xs text-zinc-500 hover:text-red-400"
+            className="focus-ring text-xs text-zinc-500 hover:text-red-700"
           >
             Remove
           </button>
@@ -85,7 +85,7 @@ function ThumbnailField({ value, onChange }: { value: string; onChange: (dataUrl
         JPEG, PNG, WebP, or GIF. Resized automatically — under 1MB. Leave blank for a Bunny-hosted lesson to use Bunny's
         own thumbnail automatically.
       </p>
-      {error && <p className="mt-1 text-xs text-red-400">{error}</p>}
+      {error && <p className="mt-1 text-xs text-red-700">{error}</p>}
       <ImageUrlPreview url={value} />
     </div>
   );
@@ -398,7 +398,7 @@ export default function LessonsPage() {
     }
   }
 
-  if (error && !lessons) return <p className="text-sm text-red-400">{error}</p>;
+  if (error && !lessons) return <p className="text-sm text-red-700">{error}</p>;
   if (!lessons || !chapters) return <p className="text-sm text-zinc-500">Loading…</p>;
 
   const lessonGroups = groupLessonsByChapterOrder(lessons, chapters);
@@ -435,7 +435,7 @@ export default function LessonsPage() {
 
   return (
     <div className="page-enter flex flex-col gap-8">
-      {error && <p className="text-sm text-red-400">{error}</p>}
+      {error && <p className="text-sm text-red-700">{error}</p>}
 
       <section>
         <div className="mb-3 flex items-center justify-between">
@@ -519,7 +519,7 @@ export default function LessonsPage() {
                     <button
                       onClick={() => deleteChapter(chapter.id)}
                       disabled={busy}
-                      className="focus-ring rounded-md border border-red-900/50 px-3 py-1 text-xs text-red-300 hover:bg-red-950/40 disabled:opacity-50"
+                      className="focus-ring rounded-md border border-red-200 px-3 py-1 text-xs text-red-700 hover:bg-red-50 disabled:opacity-50"
                     >
                       Delete
                     </button>
@@ -586,7 +586,7 @@ export default function LessonsPage() {
         </div>
 
         {isFiltering && (
-          <p className="mb-3 text-xs text-yellow-300/80">
+          <p className="mb-3 text-xs text-amber-700/90">
             Filtering hides non-matching classes and turns off drag-and-drop / reorder arrows — clear filters to
             reorder.
           </p>
@@ -623,7 +623,7 @@ export default function LessonsPage() {
                 <button
                   onClick={() => runBulkAction("delete")}
                   disabled={bulkBusy}
-                  className="focus-ring rounded-md border border-red-900/50 px-2.5 py-1 text-xs text-red-300 hover:bg-red-950/40 disabled:opacity-50"
+                  className="focus-ring rounded-md border border-red-200 px-2.5 py-1 text-xs text-red-700 hover:bg-red-50 disabled:opacity-50"
                 >
                   Delete
                 </button>
@@ -753,18 +753,18 @@ export default function LessonsPage() {
                             <span className="text-xs text-zinc-500">Class {lesson.lessonNumber}</span>
                             <span
                               className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                                lesson.isFree ? "bg-base-800 text-zinc-400" : "bg-accent-500/15 text-accent-300"
+                                lesson.isFree ? "bg-base-800 text-zinc-400" : "bg-accent-500/15 text-accent-500"
                               }`}
                             >
                               {lesson.isFree ? "Free" : "Paid"}
                             </span>
                             {!lesson.isActive && (
-                              <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] font-medium text-red-300">
+                              <span className="rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-medium text-red-700">
                                 Hidden
                               </span>
                             )}
                             {!lesson.videoEmbedUrl && (
-                              <span className="rounded-full bg-yellow-500/15 px-2 py-0.5 text-[10px] font-medium text-yellow-300">
+                              <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700">
                                 No video yet
                               </span>
                             )}
@@ -827,7 +827,7 @@ export default function LessonsPage() {
                             <button
                               onClick={() => deleteLesson(lesson.id)}
                               disabled={busy}
-                              className="focus-ring rounded-md border border-red-900/50 px-3 py-1 text-xs text-red-300 hover:bg-red-950/40 disabled:opacity-50"
+                              className="focus-ring rounded-md border border-red-200 px-3 py-1 text-xs text-red-700 hover:bg-red-50 disabled:opacity-50"
                             >
                               Delete
                             </button>

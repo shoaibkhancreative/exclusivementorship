@@ -110,13 +110,13 @@ export function ProfileMenu() {
         aria-expanded={open}
         aria-label="Account menu"
       >
-        <Avatar label={label} premium={isPremium} size={34} />
+        <Avatar label={label} premium={isPremium} size={30} />
       </button>
 
       {open && (
         <div
           role="menu"
-          className="animate-scale-in absolute right-0 top-full z-50 mt-2 w-72 max-w-[90vw] origin-top-right overflow-hidden rounded-2xl border border-base-800 bg-base-900 shadow-lg shadow-base-800/30"
+          className="animate-scale-in absolute right-0 top-full z-50 mt-2 w-72 max-w-[90vw] origin-top-right overflow-hidden rounded-2xl border border-base-800 bg-base-900 shadow-2xl shadow-black/60"
         >
           <div className="flex items-center gap-3 px-4 pb-3 pt-4">
             <Avatar label={label} premium={isPremium} size={40} />
@@ -132,7 +132,7 @@ export function ProfileMenu() {
                 type="button"
                 onClick={handleUnlockClick}
                 role="menuitem"
-                className="focus-ring flex w-full items-center justify-center gap-2 rounded-xl bg-accent-500 px-3 py-2.5 text-sm font-medium text-base-950 transition-colors hover:bg-accent-400"
+                className="focus-ring flex w-full items-center justify-center gap-2 rounded-xl bg-accent-500 px-3 py-2.5 text-sm font-semibold text-base-950 transition-colors hover:bg-accent-400"
               >
                 <UnlockGlyph />
                 {t("profile.unlock_button")}

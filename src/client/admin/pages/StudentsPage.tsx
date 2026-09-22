@@ -249,7 +249,7 @@ export default function StudentsPage() {
         </div>
       )}
 
-      {error && <p className="text-sm text-red-400">{error}</p>}
+      {error && <p className="text-sm text-red-700">{error}</p>}
       {!students && !error && <p className="text-sm text-zinc-500">Loading…</p>}
 
       {paged && (
@@ -295,7 +295,7 @@ export default function StudentsPage() {
                   <td className="px-4 py-3">
                     <span
                       className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                        s.courseStatus === "paid" ? "bg-accent-500/15 text-accent-300" : "bg-base-800 text-zinc-400"
+                        s.courseStatus === "paid" ? "bg-accent-500/15 text-accent-500" : "bg-base-800 text-zinc-400"
                       }`}
                     >
                       {s.courseStatus === "paid" ? "Paid" : "Free"}
@@ -326,7 +326,7 @@ export default function StudentsPage() {
                       className={`focus-ring rounded-md border px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 ${
                         s.courseStatus === "paid"
                           ? "border-base-700 text-zinc-400 hover:bg-base-800"
-                          : "border-accent-500/40 text-accent-300 hover:bg-accent-500/10"
+                          : "border-accent-500/40 text-accent-500 hover:bg-accent-500/10"
                       }`}
                     >
                       {busyId === s.id ? "Working…" : s.courseStatus === "paid" ? "Revoke access" : "Grant paid access"}
@@ -336,7 +336,7 @@ export default function StudentsPage() {
                     <button
                       onClick={() => deleteStudent(s)}
                       disabled={busyId === s.id}
-                      className="focus-ring rounded-md border border-red-900/50 px-3 py-1.5 text-xs font-medium text-red-400 transition-colors hover:bg-red-950/40 disabled:opacity-50"
+                      className="focus-ring rounded-md border border-red-200 px-3 py-1.5 text-xs font-medium text-red-700 transition-colors hover:bg-red-50 disabled:opacity-50"
                     >
                       {busyId === s.id ? "Working…" : "Delete account"}
                     </button>
@@ -433,19 +433,19 @@ function DangerZone({ studentCount, onWiped }: { studentCount: number; onWiped: 
   }
 
   return (
-    <Card className="border-red-900/50">
-      <h2 className="mb-1 text-sm font-semibold text-red-400">Danger zone</h2>
+    <Card className="border-red-200">
+      <h2 className="mb-1 text-sm font-semibold text-red-700">Danger zone</h2>
       <p className="mb-4 text-sm text-zinc-400">
         Permanently delete every student account and all data tied to them. Course content and admin logins are
         unaffected. This cannot be undone.
       </p>
-      {error && <p className="mb-3 text-sm text-red-400">{error}</p>}
-      {result && <p className="mb-3 text-sm text-accent-300">{result}</p>}
+      {error && <p className="mb-3 text-sm text-red-700">{error}</p>}
+      {result && <p className="mb-3 text-sm text-highlight-500">{result}</p>}
       <Button
         variant="secondary"
         onClick={wipeAll}
         disabled={busy || studentCount === 0}
-        className="border-red-900/50 text-red-400 hover:bg-red-950/40"
+        className="border-red-200 text-red-700 hover:bg-red-50"
       >
         {busy ? "Working…" : "Delete all student data"}
       </Button>

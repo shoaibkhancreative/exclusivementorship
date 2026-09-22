@@ -13,7 +13,7 @@ export function SequenceLockModal({ message, onClose }: { message: string; onClo
   return (
     // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions
     <div
-      className="animate-fade-in fixed inset-0 z-[100] flex items-center justify-center bg-[#1c1b17]/70 px-4 backdrop-blur-sm"
+      className="animate-fade-in fixed inset-0 z-[100] flex items-center justify-center bg-[#05070A]/80 px-4 backdrop-blur-sm"
       onClick={handleOverlayClick}
       role="dialog"
       aria-modal="true"

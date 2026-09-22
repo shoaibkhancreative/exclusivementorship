@@ -73,14 +73,14 @@ interface AdvancedAnalytics {
 }
 
 const STATUS_TONE: Record<string, string> = {
-  confirmed: "bg-accent-500/15 text-accent-300",
-  finished: "bg-accent-500/15 text-accent-300",
-  waiting: "bg-yellow-500/15 text-yellow-300",
-  confirming: "bg-yellow-500/15 text-yellow-300",
+  confirmed: "bg-highlight-500/15 text-highlight-400",
+  finished: "bg-highlight-500/15 text-highlight-400",
+  waiting: "bg-amber-50 text-amber-700",
+  confirming: "bg-amber-50 text-amber-700",
   created: "bg-base-800 text-zinc-400",
-  failed: "bg-red-500/15 text-red-300",
-  expired: "bg-red-500/15 text-red-300",
-  cancelled: "bg-red-500/15 text-red-300"
+  failed: "bg-red-50 text-red-700",
+  expired: "bg-red-50 text-red-700",
+  cancelled: "bg-red-50 text-red-700"
 };
 
 function formatUsd(n: number) {
@@ -346,7 +346,7 @@ export default function AnalyticsPage() {
         </div>
       </Card>
 
-      {error && <p className="text-sm text-red-400">{error}</p>}
+      {error && <p className="text-sm text-red-700">{error}</p>}
       {!data && !error && <p className="text-sm text-zinc-500">Loading…</p>}
 
       {data && (
@@ -421,7 +421,7 @@ export default function AnalyticsPage() {
                 <BarChart
                   points={data.revenueTrend.map((p) => ({ label: p.period, value: p.amount }))}
                   formatValue={formatUsd}
-                  color="#34d399"
+                  color="#12C46B"
                 />
               )}
             </Card>
@@ -437,7 +437,7 @@ export default function AnalyticsPage() {
                 <BarChart
                   points={data.signupTrend.map((p) => ({ label: p.period, value: p.count }))}
                   formatValue={(v) => `${v} signup${v === 1 ? "" : "s"}`}
-                  color="#60a5fa"
+                  color="#9B82FF"
                 />
               )}
             </Card>

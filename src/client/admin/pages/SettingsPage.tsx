@@ -125,7 +125,7 @@ export default function SettingsPage() {
             <div className="mb-4 flex items-baseline gap-2 rounded-lg border border-base-700/60 bg-base-800/50 px-3 py-2.5">
               <span className="text-lg font-semibold text-zinc-100">${data.enrollmentPrice}</span>
               <span className="text-sm text-zinc-500 line-through">${data.referencePrice}</span>
-              <span className="ml-auto rounded-full bg-accent-500/15 px-2 py-0.5 text-xs font-medium text-accent-300">
+              <span className="ml-auto rounded-full bg-accent-500/15 px-2 py-0.5 text-xs font-medium text-accent-500">
                 {data.discountPercent}% off
               </span>
             </div>
@@ -161,8 +161,8 @@ export default function SettingsPage() {
                 className="focus-ring w-full rounded-lg border border-base-700 bg-base-800 px-3 py-2 text-sm text-zinc-100 outline-none"
               />
             </div>
-            {priceError && <p className="text-sm text-red-400">{priceError}</p>}
-            {priceSuccess && <p className="text-sm text-accent-300">{priceSuccess}</p>}
+            {priceError && <p className="text-sm text-red-700">{priceError}</p>}
+            {priceSuccess && <p className="text-sm text-highlight-500">{priceSuccess}</p>}
             <Button type="submit" disabled={savingPrice} className="self-start">
               {savingPrice ? "Saving…" : "Save price"}
             </Button>
@@ -210,8 +210,8 @@ export default function SettingsPage() {
                 blank to show a placeholder.
               </p>
             </div>
-            {courseError && <p className="text-sm text-red-400">{courseError}</p>}
-            {courseSuccess && <p className="text-sm text-accent-300">{courseSuccess}</p>}
+            {courseError && <p className="text-sm text-red-700">{courseError}</p>}
+            {courseSuccess && <p className="text-sm text-highlight-500">{courseSuccess}</p>}
             <Button type="submit" disabled={savingCourse} className="self-start">
               {savingCourse ? "Saving…" : "Save course settings"}
             </Button>
@@ -255,8 +255,8 @@ export default function SettingsPage() {
               />
               <ImageUrlPreview url={siteFaviconUrl} className="h-10 w-10" />
             </div>
-            {siteError && <p className="text-sm text-red-400">{siteError}</p>}
-            {siteSuccess && <p className="text-sm text-accent-300">{siteSuccess}</p>}
+            {siteError && <p className="text-sm text-red-700">{siteError}</p>}
+            {siteSuccess && <p className="text-sm text-highlight-500">{siteSuccess}</p>}
             <Button type="submit" disabled={savingSite} className="self-start">
               {savingSite ? "Saving…" : "Save site settings"}
             </Button>

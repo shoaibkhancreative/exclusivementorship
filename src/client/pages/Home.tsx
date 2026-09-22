@@ -33,7 +33,7 @@ export default function Home() {
 
   const blocks: Record<string, React.ReactNode> = {
     kicker: (
-      <div key="kicker" className="kicker mb-4 text-accent-400">
+      <div key="kicker" className="kicker mb-4 text-accent-500">
         {t("home.kicker")}
       </div>
     ),

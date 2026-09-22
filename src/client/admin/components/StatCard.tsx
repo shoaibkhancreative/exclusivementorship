@@ -10,9 +10,9 @@ interface StatCardProps {
 
 const TONE_STYLES: Record<NonNullable<StatCardProps["tone"]>, { iconBg: string; iconText: string }> = {
   default: { iconBg: "bg-base-800", iconText: "text-zinc-300" },
-  accent: { iconBg: "bg-accent-500/15", iconText: "text-accent-300" },
-  warning: { iconBg: "bg-yellow-500/15", iconText: "text-yellow-300" },
-  danger: { iconBg: "bg-red-500/15", iconText: "text-red-300" }
+  accent: { iconBg: "bg-highlight-500/15", iconText: "text-highlight-400" },
+  warning: { iconBg: "bg-amber-50", iconText: "text-amber-700" },
+  danger: { iconBg: "bg-red-50", iconText: "text-red-700" }
 };
 
 export default function StatCard({ label, value, icon, tone = "default", hint }: StatCardProps) {

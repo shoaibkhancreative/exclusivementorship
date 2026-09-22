@@ -7,7 +7,7 @@ import { ProfileMenu } from "./ProfileMenu";
 
 function BrandMark() {
   return (
-    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <path
         d="M12 6.5c-1.7-1.3-4-1.8-6.2-1.3-.5.1-.8.6-.8 1.1v10.4c0 .7.6 1.1 1.2 1 2-.4 4.1 0 5.8 1.2 1.7-1.2 3.8-1.6 5.8-1.2.6.1 1.2-.3 1.2-1V6.3c0-.5-.3-1-.8-1.1-2.2-.5-4.5 0-6.2 1.3Z"
         stroke="currentColor"
@@ -37,8 +37,8 @@ export function TopBar() {
       : "max-w-4xl";
 
   return (
-    <header className="sticky top-0 z-40 border-b border-base-800 bg-base-950/85 shadow-sm shadow-base-800/20 backdrop-blur-md">
-      <div className={`mx-auto flex items-center justify-between px-5 py-4 sm:px-6 ${containerWidthClass}`}>
+    <header className="sticky top-0 z-40 border-b border-base-800 bg-base-950/85 shadow-sm shadow-black/50 backdrop-blur-md">
+      <div className={`mx-auto flex items-center justify-between px-4 py-2.5 sm:px-5 sm:py-3 ${containerWidthClass}`}>
         <Link
           to="/"
           className="focus-ring flex min-w-0 items-center gap-2.5 rounded-full text-[15px] font-semibold tracking-tight text-zinc-100"
@@ -47,12 +47,13 @@ export function TopBar() {
             <img
               src={config.siteLogoUrl}
               alt={t("site.brand_name")}
-              className="h-6 w-auto shrink-0"
+              decoding="async"
+              className="h-5 w-auto shrink-0"
               onError={() => setLogoBroken(true)}
             />
           ) : (
             <>
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-500/10 text-accent-500">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent-500/10 text-accent-500">
                 <BrandMark />
               </span>
               <span className="truncate">{t("site.brand_name")}</span>
@@ -65,7 +66,7 @@ export function TopBar() {
             <>
               <Link
                 to="/"
-                className="focus-ring rounded-full px-3 py-1.5 text-zinc-400 transition-colors hover:bg-base-800 hover:text-zinc-100"
+                className="focus-ring rounded-full px-2.5 py-1.5 text-zinc-400 transition-colors hover:bg-base-800 hover:text-zinc-100"
               >
                 {t("topbar.nav_home")}
               </Link>
@@ -74,7 +75,7 @@ export function TopBar() {
           ) : (
             <Link
               to="/login"
-              className="focus-ring rounded-full px-4 py-1.5 text-zinc-200 transition-colors hover:bg-base-800 hover:text-accent-400"
+              className="focus-ring rounded-full px-3.5 py-1.5 text-zinc-200 transition-colors hover:bg-base-800 hover:text-accent-400"
             >
               {t("topbar.nav_login")}
             </Link>

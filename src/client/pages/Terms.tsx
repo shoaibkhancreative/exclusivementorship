@@ -15,7 +15,7 @@ export default function Terms() {
       <p className="mb-4">{t("terms.p2")}</p>
       <p className="mb-4">
         {t("terms.p3_prefix")}{" "}
-        <a className="text-accent-400 hover:underline" href={`mailto:${t("privacy.contact_email")}`}>
+        <a className="text-accent-500 hover:underline" href={`mailto:${t("privacy.contact_email")}`}>
           {t("privacy.contact_email")}
         </a>
         .
